@@ -5,14 +5,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build, Install & Test
 
 ```bash
-mvn clean package
+mvn install
 ```
 
-Produces `target/ZTracker_Fiji.jar`, a fat JAR (via `maven-assembly-plugin`) suitable for single-file Fiji distribution. Install by copying the JAR into `Fiji.app/plugins/` and restarting Fiji; the plugin then appears under **Plugins > ZTracker > 3D Z-Coordinate Extractor**.
+Produces `target/z-tracker-v4-pN.n.jar` (a fat JAR via `maven-assembly-plugin`), copies it
+automatically to the local Fiji plugins folder, and verifies both steps succeeded. The plugin
+appears under **Plugins > ZTracker > 3D Z-Coordinate Extractor** after restarting Fiji.
 
-Optional auto-deploy: uncomment the `maven-resources-plugin` block in `pom.xml`, set the `Fiji.app/plugins` path, and `mvn install` copies the JAR there automatically.
+**Version number** — controlled by `<patch.version>` in `pom.xml` line 18. Increment the
+patch number (e.g. `p1.3` → `p2.0`) for a major new capability, or the minor version
+(e.g. `p1.3` → `p1.4`) for iterative fixes within the same feature.
 
-There is **no automated test suite**. Testing is manual: build, install in Fiji, and run the dialog against sample JSON / TIFF / CSV inputs, inspecting the `.npy`, CSV, and ROI `.zip` outputs.
+**Auto-deploy path** — machine-specific. To use on a different machine, update
+`<outputDirectory>` in `pom.xml` line 120.
+
+**Build verification** — `maven-antrun-plugin` runs after the copy and fails the build with a
+clear message if either the fat JAR in `target/` or the deployed file in the Fiji plugins
+folder is missing.
+
+There is **no automated test suite**. Testing is manual: build, install in Fiji, and run the
+dialog against sample JSON / TIFF / CSV inputs, inspecting the `.npy`, CSV, and ROI `.zip` outputs.
 
 ## Critical Constraints
 
