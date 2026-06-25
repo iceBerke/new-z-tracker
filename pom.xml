@@ -15,7 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <patch.version>p1.0</patch.version>
+        <patch.version>p1.1</patch.version>
     </properties>
 
     <repositories>
@@ -79,6 +79,18 @@
                 </executions>
             </plugin>
 
+            <!-- Suppress the default thin JAR — only the fat JAR from assembly is needed -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-jar</id>
+                        <phase>none</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- Auto-deploy: copies jar to local Fiji plugins folder on mvn install.
                  Path is machine-specific (berke.santos desktop install). -->
             <plugin>
@@ -94,7 +106,7 @@
                                 <resource>
                                     <directory>${project.build.directory}</directory>
                                     <includes>
-                                        <include>ZTracker_Fiji.jar</include>
+                                        <include>z-tracker-v4-${patch.version}.jar</include>
                                     </includes>
                                 </resource>
                             </resources>
