@@ -15,6 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <patch.version>p1.0</patch.version>
     </properties>
 
     <repositories>
@@ -64,7 +65,7 @@
                             <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
                         </manifest>
                     </archive>
-                    <finalName>ZTracker_Fiji</finalName>
+                    <finalName>z-tracker-v4-${patch.version}</finalName>
                     <appendAssemblyId>false</appendAssemblyId>
                 </configuration>
                 <executions>
@@ -78,7 +79,8 @@
                 </executions>
             </plugin>
 
-            <!-- Uncomment and set path to auto-copy jar into Fiji after build
+            <!-- Auto-deploy: copies jar to local Fiji plugins folder on mvn install.
+                 Path is machine-specific (berke.santos desktop install). -->
             <plugin>
                 <artifactId>maven-resources-plugin</artifactId>
                 <executions>
@@ -87,7 +89,7 @@
                         <phase>install</phase>
                         <goals><goal>copy-resources</goal></goals>
                         <configuration>
-                            <outputDirectory>C:/path/to/Fiji.app/plugins</outputDirectory>
+                            <outputDirectory>C:/Users/berke.santos/Desktop/Fiji-Stable/plugins</outputDirectory>
                             <resources>
                                 <resource>
                                     <directory>${project.build.directory}</directory>
@@ -100,7 +102,6 @@
                     </execution>
                 </executions>
             </plugin>
-            -->
         </plugins>
     </build>
 </project>
