@@ -118,3 +118,14 @@ Files are NumPy float64, C-order, no header row:
 - `tracks_3D/track_XXXXX.npy` → columns `[X, Y, Z, T]`
 
 Fully compatible with the existing Python smoothing and visualization scripts.
+
+---
+
+## Patch history
+
+| Version | Description |
+|---------|-------------|
+| p1.0 | Auto-deploy enabled via `maven-resources-plugin`; versioned JAR filename introduced (`z-tracker-v4-pN.n`) |
+| p1.1 | Fixed auto-deploy filename mismatch; suppressed duplicate thin JAR (`ZTracker_Fiji-1.0.0.jar`) |
+| p1.2 | Added post-install build verification via `maven-antrun-plugin`; fixed missing version tags on Maven plugins |
+| p1.3 | Eliminated all assembly warnings (`<attach>false</attach>`, skipped local repo install); updated CLAUDE.md and README |
