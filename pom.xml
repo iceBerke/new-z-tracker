@@ -15,7 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <patch.version>p1.2</patch.version>
+        <patch.version>p1.3</patch.version>
     </properties>
 
     <repositories>
@@ -67,6 +67,7 @@
                     </archive>
                     <finalName>z-tracker-v4-${patch.version}</finalName>
                     <appendAssemblyId>false</appendAssemblyId>
+                    <attach>false</attach>
                 </configuration>
                 <executions>
                     <execution>
@@ -79,7 +80,8 @@
                 </executions>
             </plugin>
 
-            <!-- Suppress the default thin JAR — only the fat JAR from assembly is needed -->
+            <!-- Suppress the default thin JAR and the local-repo install step.
+                 This is a Fiji plugin, not a library — no local Maven repo install needed. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
@@ -87,6 +89,17 @@
                 <executions>
                     <execution>
                         <id>default-jar</id>
+                        <phase>none</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <version>3.1.2</version>
+                <executions>
+                    <execution>
+                        <id>default-install</id>
                         <phase>none</phase>
                     </execution>
                 </executions>
