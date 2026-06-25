@@ -36,7 +36,7 @@ ZTracker_Fiji/
 
 ---
 
-## Build (IntelliJ + Maven)
+## Build & Deploy (IntelliJ + Maven)
 
 ### Prerequisites
 - JDK 8 or later
@@ -48,23 +48,32 @@ ZTracker_Fiji/
 1. **Open the project** in IntelliJ: `File > Open` → select `ZTracker_Fiji/` folder.
    IntelliJ will detect `pom.xml` automatically.
 
-2. **Build the jar**:
+2. **Build and deploy**:
    - Open the Maven tool window (`View > Tool Windows > Maven`)
-   - Run `Lifecycle > package`
-   - Or in the terminal: `mvn package`
+   - Run `Lifecycle > install`
+   - Or in the terminal: `mvn install`
 
-3. **Output**: `target/ZTracker_Fiji.jar`
+3. **Output**: `target/z-tracker-v4-pN.n.jar` — automatically copied to the local
+   Fiji plugins folder and verified. Restart Fiji to load the updated plugin.
+
+### Versioning
+
+The JAR filename is controlled by `<patch.version>` in `pom.xml` line 18:
+- Increment the patch number (e.g. `p1.3` → `p2.0`) for a major new capability.
+- Increment the minor version (e.g. `p1.3` → `p1.4`) for iterative fixes within the same feature.
+
+### Adapting to a different machine
+
+The Fiji plugins path is machine-specific. Update `<outputDirectory>` in `pom.xml` line 120
+to point to your local `Fiji.app/plugins/` folder.
 
 ---
 
 ## Installation in Fiji
 
-1. Copy `target/ZTracker_Fiji.jar` into your `Fiji.app/plugins/` folder.
-2. Restart Fiji (or `Help > Refresh Menus`).
-3. The plugin appears under `Plugins > ZTracker > 3D Z-Coordinate Extractor`.
-
-> **Tip**: To automate the copy step, uncomment the `maven-resources-plugin`
-> block in `pom.xml` and set the correct path to your `Fiji.app/plugins/`.
+The build step handles deployment automatically — no manual copy needed.
+After `mvn install` completes successfully, restart Fiji (or `Help > Refresh Menus`).
+The plugin appears under `Plugins > ZTracker > 3D Z-Coordinate Extractor`.
 
 ---
 
