@@ -115,9 +115,9 @@ public class ZTrackerDialog {
         csvPathLbl.setForeground(Color.GRAY);
 
         // Folder buttons
-        Button jsonBtn = new Button("📂");
-        Button tiffBtn = new Button("📂");
-        Button csvBtn  = new Button("📂");
+        Button jsonBtn = new Button("...");
+        Button tiffBtn = new Button("...");
+        Button csvBtn  = new Button("...");
 
         Panel grid = new Panel(new GridBagLayout());
         int row = 0;
@@ -223,7 +223,9 @@ public class ZTrackerDialog {
         c.weightx = 1.0;
         c.insets = new Insets(isFirst ? 4 : 16, 8, 2, 8);
         Label titleLabel = new Label(title);
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD));
+        Font base = titleLabel.getFont();
+        if (base == null) base = new Font(Font.DIALOG, Font.PLAIN, 12);
+        titleLabel.setFont(base.deriveFont(Font.BOLD));
         grid.add(titleLabel, c);
 
         // Description
