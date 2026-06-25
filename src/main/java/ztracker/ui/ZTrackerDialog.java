@@ -2,6 +2,7 @@ package ztracker.ui;
 
 import ij.IJ;
 import ij.gui.GenericDialog;
+import ij.io.DirectoryChooser;
 import ztracker.core.FrameAligner;
 import ztracker.core.ZAggregator;
 import ztracker.core.ZSampler;
@@ -11,6 +12,21 @@ import ztracker.io.TrackCsvLoader.ColumnConfig;
 import ztracker.io.TrackCsvLoader.CsvConfig;
 import ztracker.model.TrackData;
 
+import java.awt.BorderLayout;
+import java.awt.Button;
+import java.awt.Dialog;
+import java.awt.FileDialog;
+import java.awt.FlowLayout;
+import java.awt.Frame;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.GridLayout;
+import java.awt.Insets;
+import java.awt.Label;
+import java.awt.Panel;
+import java.awt.TextField;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
 
 /**
@@ -76,19 +92,79 @@ public class ZTrackerDialog {
 
     /** Step 1: Select JSON, TIFF folder, and CSV. */
     private boolean step1_files() {
-        GenericDialog gd = new GenericDialog("ZTracker — Step 1: Input Files");
-        gd.addMessage("=== 3D Z-Coordinate Extractor ===\n"
-                + "Extracts Z depth from 16-bit indexed TIFF projections.\n ");
-        gd.addFileField("Z-mapping JSON file:", "", 40);
-        gd.addDirectoryField("TIFF projection folder:", "", 40);
-        gd.addFileField("Tracking CSV (TrackMate):", "", 40);
-        gd.showDialog();
+        Frame parent = IJ.getInstance();
+        final Dialog dlg = new Dialog(
+                parent != null ? parent : new Frame(),
+                "ZTracker — Step 1: Input Files", true);
+        dlg.setLayout(new BorderLayout(8, 8));
 
-        if (gd.wasCanceled()) return false;
+        // Header
+        Panel headerPanel = new Panel(new GridLayout(2, 1));
+        headerPanel.add(new Label("=== 3D Z-Coordinate Extractor ===", Label.CENTER));
+        headerPanel.add(new Label("Extracts Z depth from 16-bit indexed TIFF projections.", Label.CENTER));
 
-        jsonFile   = new File(gd.getNextString().trim());
-        tiffFolder = new File(gd.getNextString().trim());
-        csvFile    = new File(gd.getNextString().trim());
+        // File rows
+        final TextField jsonField = new TextField("", 50);
+        final TextField tiffField = new TextField("", 50);
+        final TextField csvField  = new TextField("", 50);
+        Button jsonBrowse = new Button("Browse...");
+        Button tiffBrowse = new Button("Browse...");
+        Button csvBrowse  = new Button("Browse...");
+
+        Panel grid = new Panel(new GridBagLayout());
+        addFileRow(grid, 0, "Z-mapping JSON:",         jsonField, jsonBrowse);
+        addFileRow(grid, 1, "TIFF projection folder:", tiffField, tiffBrowse);
+        addFileRow(grid, 2, "Tracking CSV:",           csvField,  csvBrowse);
+
+        // Browse actions
+        jsonBrowse.addActionListener(e -> {
+            FileDialog fd = new FileDialog(dlg, "Select Z-mapping JSON", FileDialog.LOAD);
+            fd.setFile("*.json");
+            fd.setVisible(true);
+            if (fd.getFile() != null) jsonField.setText(fd.getDirectory() + fd.getFile());
+            fd.dispose();
+        });
+        tiffBrowse.addActionListener(e -> {
+            DirectoryChooser dc = new DirectoryChooser("Select TIFF projection folder");
+            String dir = dc.getDirectory();
+            if (dir != null) tiffField.setText(dir);
+        });
+        csvBrowse.addActionListener(e -> {
+            FileDialog fd = new FileDialog(dlg, "Select tracking CSV", FileDialog.LOAD);
+            fd.setFile("*.csv");
+            fd.setVisible(true);
+            if (fd.getFile() != null) csvField.setText(fd.getDirectory() + fd.getFile());
+            fd.dispose();
+        });
+
+        // OK / Cancel
+        final boolean[] confirmed = {false};
+        Button okBtn     = new Button("OK");
+        Button cancelBtn = new Button("Cancel");
+        Panel btnPanel   = new Panel(new FlowLayout(FlowLayout.RIGHT));
+        btnPanel.add(cancelBtn);
+        btnPanel.add(okBtn);
+
+        okBtn.addActionListener(e     -> { confirmed[0] = true; dlg.setVisible(false); });
+        cancelBtn.addActionListener(e -> dlg.setVisible(false));
+        dlg.addWindowListener(new WindowAdapter() {
+            public void windowClosing(WindowEvent e) { dlg.setVisible(false); }
+        });
+
+        dlg.add(headerPanel, BorderLayout.NORTH);
+        dlg.add(grid,        BorderLayout.CENTER);
+        dlg.add(btnPanel,    BorderLayout.SOUTH);
+        dlg.pack();
+        dlg.setMinimumSize(dlg.getSize());
+        if (parent != null) dlg.setLocationRelativeTo(parent);
+        dlg.setVisible(true); // blocks until hidden
+        dlg.dispose();
+
+        if (!confirmed[0]) return false;
+
+        jsonFile   = new File(jsonField.getText().trim());
+        tiffFolder = new File(tiffField.getText().trim());
+        csvFile    = new File(csvField.getText().trim());
 
         if (!jsonFile.exists()) {
             IJ.error("ZTracker", "JSON file not found:\n" + jsonFile.getAbsolutePath());
@@ -103,6 +179,27 @@ public class ZTrackerDialog {
             return false;
         }
         return true;
+    }
+
+    private static void addFileRow(Panel grid, int row, String labelText,
+                                   TextField field, Button browse) {
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.gridx = 0; lc.gridy = row;
+        lc.anchor = GridBagConstraints.EAST;
+        lc.insets = new Insets(4, 8, 4, 4);
+        grid.add(new Label(labelText), lc);
+
+        GridBagConstraints fc = new GridBagConstraints();
+        fc.gridx = 1; fc.gridy = row;
+        fc.fill = GridBagConstraints.HORIZONTAL;
+        fc.weightx = 1.0;
+        fc.insets = new Insets(4, 0, 4, 4);
+        grid.add(field, fc);
+
+        GridBagConstraints bc = new GridBagConstraints();
+        bc.gridx = 2; bc.gridy = row;
+        bc.insets = new Insets(4, 0, 4, 8);
+        grid.add(browse, bc);
     }
 
     /** Step 2: Configure CSV parsing (header row, skip rows, default radius). */
