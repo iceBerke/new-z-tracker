@@ -68,7 +68,7 @@ The entry point is `ZTrackerPlugin` (implements ImageJ's `PlugIn`). It is a **th
 Keep the package layout clean — `model` / `io` / `core` / `export` / `ui`, each with a **single responsibility**. Prefer small, focused classes over large ones. Keep business logic out of `ZTrackerPlugin`.
 
 - `ztracker` — `ZTrackerPlugin` entry point (orchestration only).
-- `ztracker.ui` — `ZTrackerDialog`, the 6-step `GenericDialog` wizard.
+- `ztracker.ui` — `ZTrackerDialog`, the 6-step dialog wizard (Step 1 uses a custom resizable AWT `Dialog`; Steps 2–6 use `GenericDialog`).
 - `ztracker.io` — input loaders (`ZMappingLoader`, `TiffStackLoader`, `TrackCsvLoader`).
 - `ztracker.core` — extraction logic (`FrameAligner`, `ZSampler`, `ZAggregator`, `ZExtractor`).
 - `ztracker.export` — output writers (`NpyExporter`, `FijiPointsExporter`, `TrackExportManager`).
@@ -95,6 +95,7 @@ To add a sampling or aggregation strategy, extend the relevant enum and its disp
 
 ## Known Gotchas (real bugs we've already hit)
 
+- **AWT Label.getFont() returns null before peer creation.** Calling `getFont().deriveFont(...)` on a freshly constructed `Label` that hasn't been added to a visible container will NPE. Always null-check and fall back to `new Font(Font.DIALOG, Font.PLAIN, 12)` before deriving a style.
 - **Frame indexing mismatch.** Tracking CSVs are often 0-indexed while TIFF files start at frame 1. `FrameAligner` handles a configurable offset; the most common correct value is **+1**. **Always preserve the offset confirmation/preview step** in the dialog — silent misalignment corrupts results.
 - **Unsigned 16-bit pixels.** TIFF Z-index values can exceed 32767, which overflows a signed Java `short`. Pixel reads **MUST mask with `& 0xFFFF`** to read them as unsigned. Do not "simplify" this away.
 - **CSV variety.** TrackMate CSVs have a header row followed by **3 metadata rows that must be skipped**. But not all inputs are TrackMate — some come from other trackers (e.g. columns `Track n°`, `Slice n°`, 1-based frames, latin-1 encoding, no metadata rows). Keep column detection **alias-based and tolerant**, not hard-coded to TrackMate.

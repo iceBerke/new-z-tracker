@@ -14,7 +14,7 @@ ZTracker_Fiji/
 └── src/main/
     ├── java/ztracker/
     │   ├── ZTrackerPlugin.java          ← plugin entry point
-    │   ├── ui/ZTrackerDialog.java       ← GenericDialog wizard (6 steps)
+    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard (Step 1: custom AWT; Steps 2–6: GenericDialog)
     │   ├── io/
     │   │   ├── ZMappingLoader.java      ← JSON index→Z parsing (no external lib)
     │   │   ├── TiffStackLoader.java     ← TIFF folder loader with frame→index map
@@ -83,7 +83,7 @@ The plugin runs as a 6-step dialog wizard:
 
 | Step | What you configure |
 |------|--------------------|
-| 1 | Z-mapping JSON, TIFF folder, TrackMate CSV |
+| 1 | Z-mapping JSON, TIFF projection folder, tracking CSV (TrackMate and other formats) |
 | 2 | CSV format (header row, skip rows, default radius) |
 | 3 | Column names (auto-detected, editable) |
 | 4 | CSV-to-TIFF frame offset (with alignment preview) |
@@ -129,3 +129,6 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p1.1 | Fixed auto-deploy filename mismatch; suppressed duplicate thin JAR (`ZTracker_Fiji-1.0.0.jar`) |
 | p1.2 | Added post-install build verification via `maven-antrun-plugin`; fixed missing version tags on Maven plugins |
 | p1.3 | Eliminated all assembly warnings (`<attach>false</attach>`, skipped local repo install); updated CLAUDE.md and README |
+| p2.0 | Replaced Step 1 `GenericDialog` with a custom resizable AWT dialog; file fields now stretch horizontally on window resize |
+| p2.1 | Reworked Step 1 layout: each input shows a bold title, format description, `...` browse button, and selected path below |
+| p2.2 | Fixed browse button rendering (emoji → `...`) and NPE from `Label.getFont()` returning null before native peer creation |
