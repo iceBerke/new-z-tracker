@@ -15,7 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <patch.version>p1.1</patch.version>
+        <patch.version>p1.2</patch.version>
     </properties>
 
     <repositories>
@@ -83,6 +83,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
                 <executions>
                     <execution>
                         <id>default-jar</id>
@@ -94,7 +95,9 @@
             <!-- Auto-deploy: copies jar to local Fiji plugins folder on mvn install.
                  Path is machine-specific (berke.santos desktop install). -->
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
                 <executions>
                     <execution>
                         <id>copy-to-fiji</id>
@@ -110,6 +113,33 @@
                                     </includes>
                                 </resource>
                             </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Post-install verification: fails the build if the fat JAR was not
+                 created in target/ or not copied to the Fiji plugins folder. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>verify-deploy</id>
+                        <phase>install</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <available file="${project.build.directory}/z-tracker-v4-${patch.version}.jar"
+                                           property="fat.jar.exists"/>
+                                <fail unless="fat.jar.exists"
+                                      message="FAT JAR not found in target/. Did mvn package run?"/>
+                                <available file="C:/Users/berke.santos/Desktop/Fiji-Stable/plugins/z-tracker-v4-${patch.version}.jar"
+                                           property="fiji.jar.exists"/>
+                                <fail unless="fiji.jar.exists"
+                                      message="JAR not copied to Fiji plugins folder. Check outputDirectory in pom.xml line 99."/>
+                                <echo level="info" message="[verify-deploy] OK — z-tracker-v4-${patch.version}.jar built and deployed."/>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>
