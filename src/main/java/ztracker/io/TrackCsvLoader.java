@@ -1,0 +1,257 @@
+package ztracker.io;
+
+import ij.IJ;
+import ztracker.model.TrackData;
+
+import java.io.*;
+import java.nio.file.Path;
+import java.util.*;
+
+/**
+ * Parses a TrackMate-style CSV file into a {@link TrackData} object.
+ *
+ * <p>TrackMate CSVs have a specific structure:
+ * <pre>
+ *   Row 0:  column headers
+ *   Rows 1–3: metadata rows (units, etc.) — typically skipped
+ *   Row 4+: actual data
+ * </pre>
+ * Both the header row index and the number of skip rows are configurable.
+ *
+ * <p>Column names are auto-detected from a priority list of known aliases
+ * (case-insensitive). If auto-detection fails, the caller must supply
+ * the column name explicitly via the {@link ColumnConfig}.
+ */
+public class TrackCsvLoader {
+
+    // ── Known column name aliases (upper-cased for comparison) ───────────────
+
+    private static final String[] X_ALIASES      = {"X", "POSITION_X", "X_POSITION"};
+    private static final String[] Y_ALIASES      = {"Y", "POSITION_Y", "Y_POSITION"};
+    private static final String[] FRAME_ALIASES  = {"FRAME", "T", "TIME", "TIMEPOINT"};
+    private static final String[] TRACKID_ALIASES= {"TRACK_ID", "TRACKID", "ID"};
+    private static final String[] RADIUS_ALIASES = {"RADIUS", "R", "SIZE"};
+
+    // ── Configuration ─────────────────────────────────────────────────────────
+
+    /**
+     * Specifies CSV parsing options.
+     * Use {@link #defaults()} for typical TrackMate files.
+     */
+    public static class CsvConfig {
+        /** Zero-based row index of the header line. */
+        public final int headerRow;
+        /** Number of rows to skip immediately after the header (metadata rows). */
+        public final int skipRowsAfterHeader;
+        /** Default radius in pixels, used when no radius column is present. */
+        public final double defaultRadius;
+
+        public CsvConfig(int headerRow, int skipRowsAfterHeader, double defaultRadius) {
+            this.headerRow            = headerRow;
+            this.skipRowsAfterHeader  = skipRowsAfterHeader;
+            this.defaultRadius        = defaultRadius;
+        }
+
+        public static CsvConfig defaults() {
+            return new CsvConfig(0, 3, 3.5);
+        }
+    }
+
+    /**
+     * Holds the resolved column names after auto-detection.
+     * Null fields indicate columns that were not found.
+     */
+    public static class ColumnConfig {
+        public String xCol;
+        public String yCol;
+        public String frameCol;
+        public String trackIdCol;
+        public String radiusCol; // null if not present
+
+        /** Returns true if all mandatory columns have been resolved. */
+        public boolean isComplete() {
+            return xCol != null && yCol != null && frameCol != null && trackIdCol != null;
+        }
+    }
+
+    private TrackCsvLoader() {}
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * Auto-detects column names from the CSV header.
+     *
+     * @param csvPath path to the CSV file
+     * @param config  parsing configuration
+     * @return detected column mapping (may be incomplete — check {@link ColumnConfig#isComplete()})
+     * @throws IOException on file read errors
+     */
+    public static ColumnConfig detectColumns(Path csvPath, CsvConfig config) throws IOException {
+        String[] headers = readHeaders(csvPath, config.headerRow);
+        ColumnConfig cols = new ColumnConfig();
+        cols.xCol       = findColumn(headers, X_ALIASES);
+        cols.yCol       = findColumn(headers, Y_ALIASES);
+        cols.frameCol   = findColumn(headers, FRAME_ALIASES);
+        cols.trackIdCol = findColumn(headers, TRACKID_ALIASES);
+        cols.radiusCol  = findColumn(headers, RADIUS_ALIASES);
+        return cols;
+    }
+
+    /**
+     * Loads the CSV file into a {@link TrackData} object.
+     *
+     * @param csvPath path to the CSV file
+     * @param config  parsing configuration
+     * @param cols    resolved column mapping (must be complete)
+     * @return loaded track data
+     * @throws IOException              on file read errors
+     * @throws IllegalArgumentException if column mapping is incomplete or data is malformed
+     */
+    public static TrackData load(Path csvPath, CsvConfig config, ColumnConfig cols)
+            throws IOException {
+        if (!cols.isComplete()) {
+            throw new IllegalArgumentException(
+                    "Column mapping is incomplete. Resolve all mandatory columns first.");
+        }
+
+        String[] headers = readHeaders(csvPath, config.headerRow);
+        Map<String, Integer> headerIndex = buildHeaderIndex(headers);
+
+        int xIdx      = requireIndex(headerIndex, cols.xCol);
+        int yIdx      = requireIndex(headerIndex, cols.yCol);
+        int frameIdx  = requireIndex(headerIndex, cols.frameCol);
+        int trackIdx  = requireIndex(headerIndex, cols.trackIdCol);
+        int radiusIdx = (cols.radiusCol != null) ? headerIndex.getOrDefault(cols.radiusCol, -1) : -1;
+
+        List<Double> xList      = new ArrayList<>();
+        List<Double> yList      = new ArrayList<>();
+        List<Integer> frameList = new ArrayList<>();
+        List<Double>  radList   = new ArrayList<>();
+        List<String>  tidList   = new ArrayList<>();
+
+        int dataStartLine = config.headerRow + 1 + config.skipRowsAfterHeader;
+        int skippedNaN    = 0;
+        int lineNum       = 0;
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(csvPath.toFile()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                lineNum++;
+                if (lineNum <= dataStartLine) continue;  // skip header + metadata rows
+                if (line.trim().isEmpty())    continue;
+
+                String[] parts = line.split(",", -1);
+
+                // Skip rows where frame or track ID are empty/NaN (TrackMate quirk)
+                if (isBlankOrNaN(safeGet(parts, frameIdx))
+                        || isBlankOrNaN(safeGet(parts, trackIdx))) {
+                    skippedNaN++;
+                    continue;
+                }
+
+                try {
+                    double x     = Double.parseDouble(safeGet(parts, xIdx).trim());
+                    double y     = Double.parseDouble(safeGet(parts, yIdx).trim());
+                    int    frame = (int) Double.parseDouble(safeGet(parts, frameIdx).trim());
+                    String tid   = safeGet(parts, trackIdx).trim();
+                    double rad   = (radiusIdx >= 0)
+                            ? parseDoubleOrDefault(safeGet(parts, radiusIdx), config.defaultRadius)
+                            : config.defaultRadius;
+
+                    xList.add(x);
+                    yList.add(y);
+                    frameList.add(frame);
+                    radList.add(rad);
+                    tidList.add(tid);
+                } catch (NumberFormatException ignored) {
+                    // Silently skip malformed rows
+                }
+            }
+        }
+
+        if (skippedNaN > 0) {
+            IJ.log("[TrackCsvLoader] Skipped " + skippedNaN + " rows with empty Frame or Track_ID.");
+        }
+        IJ.log(String.format("[TrackCsvLoader] Loaded %d detections from %s",
+                xList.size(), csvPath.getFileName()));
+
+        return new TrackData(
+                toDoubleArray(xList),
+                toDoubleArray(yList),
+                toIntArray(frameList),
+                toDoubleArray(radList),
+                tidList.toArray(new String[0]),
+                cols.xCol, cols.yCol, cols.frameCol, cols.trackIdCol,
+                cols.radiusCol,
+                config.defaultRadius
+        );
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private static String[] readHeaders(Path csvPath, int headerRow) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new FileReader(csvPath.toFile()))) {
+            String line;
+            int lineNum = 0;
+            while ((line = reader.readLine()) != null) {
+                if (lineNum == headerRow) return line.split(",", -1);
+                lineNum++;
+            }
+        }
+        throw new IOException("Header row " + headerRow + " not found in CSV.");
+    }
+
+    private static Map<String, Integer> buildHeaderIndex(String[] headers) {
+        Map<String, Integer> index = new LinkedHashMap<>();
+        for (int i = 0; i < headers.length; i++) {
+            index.put(headers[i].trim(), i);
+        }
+        return index;
+    }
+
+    /** Returns the first header that matches any alias (case-insensitive), or null. */
+    private static String findColumn(String[] headers, String[] aliases) {
+        Set<String> aliasSet = new HashSet<>();
+        for (String a : aliases) aliasSet.add(a.toUpperCase(Locale.ROOT));
+
+        for (String h : headers) {
+            if (aliasSet.contains(h.trim().toUpperCase(Locale.ROOT))) return h.trim();
+        }
+        return null;
+    }
+
+    private static int requireIndex(Map<String, Integer> index, String colName) {
+        Integer i = index.get(colName);
+        if (i == null) {
+            throw new IllegalArgumentException("Column not found in CSV: '" + colName + "'");
+        }
+        return i;
+    }
+
+    private static String safeGet(String[] parts, int idx) {
+        return (idx >= 0 && idx < parts.length) ? parts[idx] : "";
+    }
+
+    private static boolean isBlankOrNaN(String s) {
+        if (s == null || s.trim().isEmpty()) return true;
+        String t = s.trim().toUpperCase(Locale.ROOT);
+        return t.equals("NAN") || t.equals("NA") || t.equals("NULL");
+    }
+
+    private static double parseDoubleOrDefault(String s, double def) {
+        try { return Double.parseDouble(s.trim()); }
+        catch (NumberFormatException e) { return def; }
+    }
+
+    private static double[] toDoubleArray(List<Double> list) {
+        double[] arr = new double[list.size()];
+        for (int i = 0; i < list.size(); i++) arr[i] = list.get(i);
+        return arr;
+    }
+
+    private static int[] toIntArray(List<Integer> list) {
+        int[] arr = new int[list.size()];
+        for (int i = 0; i < list.size(); i++) arr[i] = list.get(i);
+        return arr;
+    }
+}
