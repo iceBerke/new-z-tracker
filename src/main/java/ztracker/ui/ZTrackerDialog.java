@@ -123,10 +123,10 @@ public class ZTrackerDialog {
         int row = 0;
         row = addInputGroup(grid, row, true,
                 "Z-mapping JSON",
-                "JSON mapping pixel indices (0–65535) to Z depth in µm  (e.g. {\"0\": 0.0, \"1\": 0.25, ...})",
+                "JSON mapping pixel indices to Z depth in µm  (e.g. {\"0\": 0.0, \"1\": 0.25, ...})",
                 jsonBtn, jsonPathLbl);
         row = addInputGroup(grid, row, false,
-                "TIFF projection folder",
+                "Z-origin TIFF projection folder",
                 "Folder with one 16-bit indexed TIFF per timepoint, sorted by leading integer in filename (e.g. 0001.tif)",
                 tiffBtn, tiffPathLbl);
         row = addInputGroup(grid, row, false,
