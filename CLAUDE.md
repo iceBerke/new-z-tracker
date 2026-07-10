@@ -109,5 +109,5 @@ To add a sampling or aggregation strategy, extend the relevant enum and its disp
 
 - **JSON Z-mapping** — parsed with regex `"(\d+)"\s*:\s*(-?[\d.]+(?:[eE][+-]?\d+)?)`; supports negatives, decimals, and scientific notation.
 - **TIFF loading** — files are natural-sorted by the last integer in the filename (the trailing frame index), so 0- vs 1-based numbering and gaps are handled, and incidental numbers earlier in the name don't get mistaken for the frame index.
-- **CSV columns** — auto-detected case-insensitively with aliases (X/POSITION_X, Y/POSITION_Y, FRAME/T/TIME/Slice n°, TRACK_ID/ID/Track n°, RADIUS/SIZE); user can override. Rows with blank/NaN Frame or Track_ID are skipped. Default radius is 3.5 px when no radius column exists.
+- **CSV columns** — auto-detected case-insensitively with aliases (X/POSITION_X, Y/POSITION_Y, FRAME/T/TIME/TIMEPOINT/Slice n°, TRACK_ID/ID/Track n°, RADIUS/SIZE); user can override. Rows with blank/NaN Frame or Track_ID are skipped. Default radius is 3.5 px when no radius column exists.
 - **Export filtering** — `TrackExportManager` applies a minimum track length (default 3 frames), an optional max-Z-std threshold, and separates 2D vs 3D output (excluding NaN-Z detections from 3D).

@@ -28,8 +28,8 @@ public class TrackCsvLoader {
 
     private static final String[] X_ALIASES      = {"X", "POSITION_X", "X_POSITION"};
     private static final String[] Y_ALIASES      = {"Y", "POSITION_Y", "Y_POSITION"};
-    private static final String[] FRAME_ALIASES  = {"FRAME", "T", "TIME", "TIMEPOINT"};
-    private static final String[] TRACKID_ALIASES= {"TRACK_ID", "TRACKID", "ID"};
+    private static final String[] FRAME_ALIASES  = {"FRAME", "T", "TIME", "TIMEPOINT", "SLICE N°"};
+    private static final String[] TRACKID_ALIASES= {"TRACK_ID", "TRACKID", "ID", "TRACK N°"};
     private static final String[] RADIUS_ALIASES = {"RADIUS", "R", "SIZE"};
 
     // ── Configuration ─────────────────────────────────────────────────────────

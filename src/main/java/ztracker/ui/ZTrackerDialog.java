@@ -259,7 +259,8 @@ public class ZTrackerDialog {
     /** Step 2: Configure CSV parsing (header row, skip rows, default radius). */
     private boolean step2_csvFormat() {
         GenericDialog gd = new GenericDialog("ZTracker — Step 2: CSV Format");
-        gd.addMessage("TrackMate default: header=0, skip 3 metadata rows.");
+        gd.addMessage("Specify the CSV header format and pixel size default.");
+        gd.addMessage("e.g., TrackMate default: header=0, skip 3 metadata rows.");
         gd.addNumericField("Header row index:", 0, 0);
         gd.addNumericField("Rows to skip after header:", 3, 0);
         gd.addNumericField("Default radius (pixels):", 3.5, 1);
