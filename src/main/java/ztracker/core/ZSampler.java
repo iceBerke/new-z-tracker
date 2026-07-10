@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Samples raw pixel values (Z-layer indices) from a 16-bit TIFF stack
- * at a given (x, y, frame) position.
+ * Samples raw pixel values (Z-layer indices) from a 16-bit or 32-bit indexed
+ * TIFF stack at a given (x, y, frame) position.
  *
  * <p>Three strategies are available, matching the Python pipeline:
  * <ul>
@@ -17,9 +17,9 @@ import java.util.Map;
  *   <li>{@link #sampleSinglePixel} — the nearest single pixel</li>
  * </ul>
  *
- * <p>All methods return a {@code double[]} of raw 16-bit index values
- * (treated as unsigned). An empty array signals that the frame was
- * missing from the stack or the position was out of bounds.
+ * <p>All methods return a {@code double[]} of raw index values. An empty array
+ * signals that the frame was missing from the stack or the position was out
+ * of bounds.
  */
 public class ZSampler {
 
@@ -80,7 +80,7 @@ public class ZSampler {
                     int px = cx + dx;
                     int py = cy + dy;
                     if (inBounds(stack, stackIdx, px, py)) {
-                        values.add(toUnsigned(stack.pixels[stackIdx][py][px]));
+                        values.add((double) stack.pixels[stackIdx][py][px]);
                     }
                 }
             }
@@ -99,7 +99,7 @@ public class ZSampler {
         List<Double> values = new ArrayList<>(4);
         for (int[] c : corners) {
             if (inBounds(stack, stackIdx, c[0], c[1])) {
-                values.add(toUnsigned(stack.pixels[stackIdx][c[1]][c[0]]));
+                values.add((double) stack.pixels[stackIdx][c[1]][c[0]]);
             }
         }
         return toArray(values);
@@ -112,7 +112,7 @@ public class ZSampler {
         int px = (int) Math.round(x);
         int py = (int) Math.round(y);
         if (!inBounds(stack, stackIdx, px, py)) return new double[0];
-        return new double[]{toUnsigned(stack.pixels[stackIdx][py][px])};
+        return new double[]{stack.pixels[stackIdx][py][px]};
     }
 
     // ── Utility ───────────────────────────────────────────────────────────────
@@ -121,11 +121,6 @@ public class ZSampler {
         return si >= 0 && si < stack.pixels.length
                 && py >= 0 && py < stack.height
                 && px >= 0 && px < stack.width;
-    }
-
-    /** Converts a signed short to an unsigned 16-bit value (0–65535). */
-    private static double toUnsigned(short s) {
-        return s & 0xFFFF;
     }
 
     private static double[] toArray(List<Double> list) {

@@ -11,8 +11,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Loads a folder of 16-bit TIFF projection images into a 3-D short array
- * and builds a frame-number → stack-index lookup map.
+ * Loads a folder of 16-bit or 32-bit indexed TIFF projection images into a
+ * 3-D int array and builds a frame-number → stack-index lookup map.
  *
  * <p>Frame numbers are extracted from filenames numerically, matching the
  * Python pipeline's {@code natural_sort_key} behaviour. Gaps in frame
@@ -25,8 +25,8 @@ public class TiffStackLoader {
     // ── Public result container ───────────────────────────────────────────────
 
     public static class LoadedStack {
-        /** Pixel data: [stackIndex][y][x]. Values are raw 16-bit indices (unsigned). */
-        public final short[][][] pixels;
+        /** Pixel data: [stackIndex][y][x]. Values are raw pixel indices. */
+        public final int[][][] pixels;
         /** Maps frame number (from filename) → index into {@code pixels}. */
         public final Map<Integer, Integer> frameToIdx;
         /** Sorted list of all frame numbers present (parallel to stack order). */
@@ -34,7 +34,7 @@ public class TiffStackLoader {
         public final int width;
         public final int height;
 
-        LoadedStack(short[][][] pixels,
+        public LoadedStack(int[][][] pixels,
                     Map<Integer, Integer> frameToIdx,
                     List<Integer> frameNumbers,
                     int width, int height) {
@@ -67,7 +67,7 @@ public class TiffStackLoader {
             throw new IOException("No TIFF files found in: " + folder.getAbsolutePath());
         }
 
-        // Sort by the leading integer in the filename (natural sort)
+        // Sort by the trailing integer in the filename (natural sort)
         Arrays.sort(tifFiles, Comparator.comparingInt(TiffStackLoader::extractFrameNumber));
 
         // Build frame number list and mapping
@@ -80,22 +80,29 @@ public class TiffStackLoader {
             frameToIdx.put(frameNum, i);
         }
 
-        // Read first frame to determine dimensions
+        // Read first frame to determine dimensions and bit depth
         ImagePlus first = IJ.openImage(tifFiles[0].getAbsolutePath());
         if (first == null) {
             throw new IOException("Could not open TIFF: " + tifFiles[0].getName());
         }
-        int width  = first.getWidth();
-        int height = first.getHeight();
+        int width    = first.getWidth();
+        int height   = first.getHeight();
+        int bitDepth = first.getBitDepth();
         first.close();
 
+        if (bitDepth != 16 && bitDepth != 32) {
+            throw new IOException(
+                    "Unsupported TIFF bit depth (" + bitDepth + "-bit): " + tifFiles[0].getName()
+                    + "\nOnly 16-bit and 32-bit indexed TIFFs are supported.");
+        }
+
         // Pre-allocate
-        short[][][] pixels = new short[tifFiles.length][height][width];
+        int[][][] pixels = new int[tifFiles.length][height][width];
 
         // Load all frames
         for (int i = 0; i < tifFiles.length; i++) {
             IJ.showProgress(i, tifFiles.length);
-            readFrameInto(tifFiles[i], pixels[i], width, height);
+            readFrameInto(tifFiles[i], pixels[i], width, height, bitDepth);
         }
         IJ.showProgress(1.0);
 
@@ -114,30 +121,49 @@ public class TiffStackLoader {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
-     * Extracts the first integer found in a filename (used for sorting and mapping).
+     * Extracts the last integer found in a filename (used for sorting and mapping).
      * Falls back to 0 if none found (should not happen with well-named TIFF stacks).
+     *
+     * <p>Uses the last match rather than the first because filenames can contain
+     * incidental numbers before the trailing frame index (e.g. {@code z_origin_32bit_0007.tif}
+     * — the "32" in "32bit" is not the frame number).
      */
-    private static int extractFrameNumber(File file) {
+    static int extractFrameNumber(File file) {
         Matcher m = NUMBER_PATTERN.matcher(file.getName());
-        return m.find() ? Integer.parseInt(m.group()) : 0;
+        String last = null;
+        while (m.find()) last = m.group();
+        return last != null ? Integer.parseInt(last) : 0;
     }
 
     /**
      * Opens one TIFF and copies its pixels into the pre-allocated {@code dest} slice.
-     * Handles both signed/unsigned 16-bit by reading via ImageJ's ImageProcessor.
+     *
+     * <p>16-bit frames use {@link ImageProcessor#getPixel(int, int)}, which already
+     * returns the correct unsigned {@code 0–65535} value for a {@code ShortProcessor}.
+     * 32-bit frames are backed by a {@code FloatProcessor}, so the index is read via
+     * {@link ImageProcessor#getf(int, int)} and rounded — {@code getPixel} on a
+     * {@code FloatProcessor} truncates toward zero, which can be off-by-one for
+     * indices with float rounding error.
      */
-    private static void readFrameInto(File file, short[][] dest, int width, int height)
+    private static void readFrameInto(File file, int[][] dest, int width, int height, int bitDepth)
             throws IOException {
         ImagePlus imp = IJ.openImage(file.getAbsolutePath());
         if (imp == null) {
             throw new IOException("Could not open TIFF: " + file.getName());
         }
+        if (imp.getBitDepth() != bitDepth) {
+            imp.close();
+            throw new IOException(
+                    "Mixed bit depths in TIFF folder: " + file.getName()
+                    + " is " + imp.getBitDepth() + "-bit, expected " + bitDepth + "-bit.");
+        }
         try {
             ImageProcessor ip = imp.getProcessor();
             for (int y = 0; y < height; y++) {
                 for (int x = 0; x < width; x++) {
-                    // getPixel returns the raw 16-bit value as int (0–65535)
-                    dest[y][x] = (short) ip.getPixel(x, y);
+                    dest[y][x] = (bitDepth == 32)
+                            ? Math.round(ip.getf(x, y))
+                            : ip.getPixel(x, y);
                 }
             }
         } finally {

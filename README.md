@@ -1,7 +1,7 @@
 # ZTracker Fiji Plugin
 
-A Fiji/ImageJ plugin that extracts Z-coordinates from 16-bit indexed TIFF
-projection stacks and exports 3D cell tracks. Ports the functionality of
+A Fiji/ImageJ plugin that extracts Z-coordinates from 16-bit or 32-bit indexed
+TIFF projection stacks and exports 3D cell tracks. Ports the functionality of
 `3D_tracking_Jay_app_unified_v1.py` into a native Fiji plugin.
 
 ---
@@ -105,7 +105,7 @@ The plugin runs as a 6-step dialog wizard:
 Same as the Python pipeline:
 
 - **JSON mapping**: `{"0": -600.0, "1": -599.0, ...}` (string keys, float values)
-- **TIFF stack**: 16-bit unsigned integer, one file per timepoint, numeric filenames
+- **TIFF stack**: 16-bit unsigned integer or 32-bit indexed, one file per timepoint, numeric filenames (all frames must share the same bit depth)
 - **CSV**: TrackMate format; required columns: X, Y, Frame, Track_ID
 
 ---
@@ -132,3 +132,5 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p2.0 | Replaced Step 1 `GenericDialog` with a custom resizable AWT dialog; file fields now stretch horizontally on window resize |
 | p2.1 | Reworked Step 1 layout: each input shows a bold title, format description, `...` browse button, and selected path below |
 | p2.2 | Fixed browse button rendering (emoji → `...`) and NPE from `Label.getFont()` returning null before native peer creation |
+| p3.0 | Step 1 label/description tweaks: renamed "TIFF projection folder" to "Z-origin TIFF projection folder"; trimmed JSON description |
+| p3.1 | Added 32-bit indexed TIFF support (`TiffStackLoader` now stores `int[][][]` pixels); fixed frame-number extraction to use the trailing digit run instead of the first (was misdetecting filenames like `z_origin_32bit_0007.tif`); introduced JUnit 5 test suite (`ZSamplerTest`, `TiffStackLoaderTest`) |

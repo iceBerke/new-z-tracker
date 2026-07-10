@@ -15,7 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <patch.version>p3.0</patch.version>
+        <patch.version>p3.1</patch.version>
     </properties>
 
     <repositories>
@@ -31,6 +31,12 @@
             <artifactId>ij</artifactId>
             <version>1.54f</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

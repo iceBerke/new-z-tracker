@@ -127,7 +127,7 @@ public class ZTrackerDialog {
                 jsonBtn, jsonPathLbl);
         row = addInputGroup(grid, row, false,
                 "Z-origin TIFF projection folder",
-                "Folder with one 16-bit indexed TIFF per timepoint, sorted by leading integer in filename (e.g. 0001.tif)",
+                "Folder with one 16-bit or 32-bit indexed TIFF per timepoint, sorted by the trailing frame number in filename (e.g. 0001.tif)",
                 tiffBtn, tiffPathLbl);
         row = addInputGroup(grid, row, false,
                 "Tracking CSV",
