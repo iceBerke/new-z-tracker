@@ -22,8 +22,8 @@ ZTracker_Fiji/
     │   ├── core/
     │   │   ├── FrameAligner.java        ← CSV-to-TIFF offset suggestion + per-track alignment reporting
     │   │   ├── ZSampler.java            ← radius / 4-neighbor / single-pixel sampling
-    │   │   ├── ZAggregator.java         ← median / mean / mode aggregation
-    │   │   └── ZExtractor.java          ← orchestrates sampling + mapping + aggregation
+    │   │   ├── ZAggregator.java         ← median / mean aggregation
+    │   │   └── ZExtractor.java          ← orchestrates sampling + mapping + aggregation; `extractAll` runs a full sampling × aggregation cross product
     │   ├── export/
     │   │   ├── NpyExporter.java         ← writes [X,Y,Z,T] .npy (pure Java, no Python)
     │   │   ├── FijiPointsExporter.java  ← Results Table CSV + ROI Manager .zip
@@ -87,8 +87,29 @@ The plugin runs as a 6-step dialog wizard:
 | 2 | CSV format (header row, skip rows, default radius) |
 | 3 | Column names (auto-detected, editable) |
 | 4 | CSV-to-TIFF frame offset — a live-updating box shows a per-track verdict as you type; a suggested offset is pre-filled, and the full per-track table (each track's span + how its first/last frame maps) is written to the Log for verification |
-| 5 | Sampling method (Radius / 4-Neighbor / Single Pixel) + aggregation (Median / Mean / Mode) |
+| 5 | Sampling method (Radius / 4-Neighbor / Single Pixel / **All**) + aggregation (Median / Mean / **All**) |
 | 6 | Output directory, track length filter, Z-std filter, export formats |
+
+Either Step-5 axis can be set to **All** instead of a single choice, running the full
+sampling × aggregation cross product (`ZExtractor.extractAll`). Each combination is
+exported to its own `outputDir/<sampling>/<aggregation>/` subfolder; a single chosen
+method still exports flat into `outputDir` as before.
+
+### How sampling works, precisely
+
+- **Radius** samples every pixel within a circular disk (`radius` from the CSV or the
+  Step-2 default) around the detection, rounded to the nearest pixel center.
+- **4-Neighbor** samples the 4 bilinear corner pixels around the sub-pixel position
+  (`floor(x)/ceil(x)` × `floor(y)/ceil(y)`).
+- **Single Pixel** rounds the sub-pixel `(x, y)` to the **nearest** integer pixel first
+  (`Math.round`), *then* checks whether that rounded pixel is in bounds — a detection is
+  only rejected for being out of the image after rounding, never for having a non-integer
+  coordinate.
+
+For all three methods, any sampled pixel that falls outside `[0, width) × [0, height)` is
+silently **dropped, not clamped** — near an image edge, Radius's disk and 4-Neighbor's
+corners can end up with fewer samples than usual; Single Pixel either succeeds normally or
+returns zero samples (never partial).
 
 ### Export formats
 
@@ -97,6 +118,38 @@ The plugin runs as a 6-step dialog wizard:
 | `.npy` | `tracks_2D/track_XXXXX.npy`, `tracks_3D/track_XXXXX.npy` | Python downstream pipeline |
 | Results Table CSV | `fiji/results_table.csv` | `Analyze > Import > Results…` |
 | ROI set | `fiji/track_rois.zip` | ROI Manager `More >> Open…` |
+| Export report | `export_report.txt` | Full, uncapped per-track breakdown of what was kept/dropped and why (see below) |
+
+### What happens to a bad detection (missing frame, out-of-bounds, or bad X/Y)
+
+A track is **never discarded wholesale** for one bad detection — only the specific bad
+point is dropped, and only from the export(s) it actually breaks:
+
+- **Invalid X/Y** (a detection whose X *or* Y — either one alone is enough — is missing,
+  unparseable, or a literal `"NaN"` in the source CSV) drops that point from **both** 2D
+  and 3D, since a point with no position can't be placed in either. This is caught in two
+  places: `TrackCsvLoader` already skips such rows at CSV-load time (logged and counted
+  separately from the Frame/Track_ID skip), and `TrackExportManager` re-checks defensively
+  at export time.
+- **A NaN Z** (missing TIFF frame, position/footprint out of image bounds, or every
+  sampled pixel unmapped in the JSON) drops that point from **3D only** — 2D never
+  depended on Z, so it's unaffected.
+- Each dimension (2D, 3D) is skipped for a track only if **too few valid points remain
+  for that dimension** (below the Step-6 minimum track length) — 2D and 3D are gated
+  independently, so 3D can be skipped while 2D still exports fine, or vice versa.
+- **Dropping a point never renumbers the surviving frame numbers.** The `T` column always
+  holds each kept detection's real original frame number, so a dropped point leaves a
+  genuine gap in the sequence (e.g. `0,1,3` if frame 2 was dropped) — never a shift or
+  compaction (never `0,1,2`). This is intentional: it distinguishes "this cell wasn't
+  trackable here" from "the recording only ran this long."
+- A per-track report is logged to the Fiji Log on **every** export run (capped at 50 rows
+  for on-screen readability) and written in full, uncapped, to `export_report.txt`
+  alongside the `.npy` output — one line per track, showing 2D and 3D independently, e.g.:
+  `Track A  2D ✓ (2/3 pt) — dropped 1: 1 invalid X/Y | 3D ✓ (1/3 pt) — dropped 2: 1 invalid X/Y, 1 missing frame`
+- A missing TIFF frame and an out-of-bounds position produce the identical symptom (NaN
+  Z, zero samples) but need different fixes — a bad detection X/Y (check the CSV) vs. a
+  frame-offset problem (revisit Step 4) — so they're counted and reported separately
+  rather than lumped together as "missing frames."
 
 ---
 
@@ -142,3 +195,9 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p3.7 | Log the full per-track table **before** confirm too (once per distinct offset evaluated, deduped), not only on OK; `CONFIRMED` header on the final record |
 | p3.8 | Made the Step-4 dialog **modeless** (blocks the plugin thread with a latch, not by AWT modality) so the Log stays interactive/resizable; order per-track rows by **track id** (numeric-aware, so `10` sorts after `2`). Later follow-up: extracted `buildPerTrackTable` for direct test coverage (no runtime change) |
 | p3.9 | Made **all** dialog steps non-modal so the Log stays interactive/resizable throughout: Step 1 converted to a modeless custom dialog (latch-blocked like Step 4); Steps 2, 3, 5, 6 switched to `NonBlockingGenericDialog` |
+| p4.0 | Step 5 can run **All** sampling and/or aggregation methods (`ZExtractor.extractAll`, full cross product, one output subfolder per combo); removed the Mode aggregation option entirely |
+| p4.1 | Disambiguated "TIFF frame missing" vs "frame exists but sampled position/footprint out of bounds" — separate `ExtractionResult.missingFrameCount`/`outOfBoundsCount`, both logged |
+| p4.2 | A track is no longer discarded from 3D wholesale for one NaN-Z detection — only that point is dropped, keeping the rest; 3D is skipped only if too few valid points remain. Per-track report logged every export run |
+| p4.3 | Per-track report also written in full (uncapped) to `export_report.txt` alongside the `.npy` output; added a test locking in that a dropped point leaves a genuine frame-number gap, never a renumbered/compacted sequence |
+| p4.4 | Applied the same keep-track/drop-point treatment to invalid X/Y (previously excluded the whole track); `TrackCsvLoader` now counts and logs unparseable/blank/NaN X or Y rows instead of silently dropping them |
+| p4.5 | Fixed a misleading `3D(insufficientValidZ)` summary label (a 3D shortfall can come from X/Y drops alone, not just Z) to `3D(insufficientValidPoints)`; closed test gaps confirming invalid-X/Y and invalid-Z drop reasons don't conflate when both occur in the same track |
