@@ -214,52 +214,51 @@ class FrameAlignerTest {
         assertEquals("late",  report.perTrack.get(2).trackId);
     }
 
+    // ── buildBoxSummary (compact confirm-box verdict) ─────────────────────────────
+
     @Test
-    void buildPreview_headerStatesScopeAcrossAllTracks() {
-        // Two tracks, five detections — the header must state it checks ALL of them.
+    void buildBoxSummary_allClean_reportsOkWithTrackCount() {
         LoadedStack stack = stackWithFrames(1, 2, 3, 4);
         TrackData track = trackWithIds(
-                new int[]{0, 1, 2, 3, 3},
-                new String[]{"A", "A", "B", "B", "B"});
+                new int[]{0, 1, 2, 3},
+                new String[]{"A", "A", "B", "B"});
 
-        String preview = FrameAligner.buildPreview(track, stack, 1);
+        String summary = FrameAligner.buildBoxSummary(
+                FrameAligner.perTrackAlignment(track, stack, 1));
 
-        assertTrue(preview.contains("ALL 2 track(s) / 5 detection(s)"), preview);
+        assertTrue(summary.contains("OK"), summary);
+        assertTrue(summary.contains("all 2 track(s)"), summary);
+        assertTrue(summary.contains("Log window"), summary);
     }
 
     @Test
-    void buildPreview_perTrackProblem_callsOutTheOffendingTrack() {
+    void buildBoxSummary_someOffStack_namesOffendingTracks() {
+        // Track A clean (0-2 -> 1-3); Track B off-stack (8-9 -> 9,10; stack ends at 4).
         LoadedStack stack = stackWithFrames(1, 2, 3, 4);
         TrackData track = trackWithIds(
                 new int[]{0, 1, 2, 8, 9},
                 new String[]{"A", "A", "A", "B", "B"});
 
-        String preview = FrameAligner.buildPreview(track, stack, 1);
+        String summary = FrameAligner.buildBoxSummary(
+                FrameAligner.perTrackAlignment(track, stack, 1));
 
-        assertTrue(preview.contains("Per-track"), preview);
-        assertTrue(preview.contains("Track B"), preview);
-    }
-
-    // ── buildPreview ─────────────────────────────────────────────────────────────
-
-    @Test
-    void buildPreview_allAligned_reportsSuccess() {
-        TrackData track = trackWithFrames(0, 1, 2, 3);
-        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
-
-        String preview = FrameAligner.buildPreview(track, stack, 1);
-
-        assertTrue(preview.contains("offset = +1"), preview);
-        assertTrue(preview.contains("All 4 CSV frames map"), preview);
+        assertTrue(summary.contains("WARNING"), summary);
+        assertTrue(summary.contains("1 of 2 track(s)"), summary);
+        assertTrue(summary.contains("Track B (2/2 det.)"), summary);
     }
 
     @Test
-    void buildPreview_missingFrames_flagsWarning() {
-        TrackData track = trackWithFrames(0, 1, 2, 3);
-        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+    void buildBoxSummary_manyOffStack_capsListWithMoreCount() {
+        // Six tracks, all off-stack under offset 100; the box names at most 4 then "+2 more".
+        LoadedStack stack = stackWithFrames(1, 2, 3);
+        TrackData track = trackWithIds(
+                new int[]{0, 1, 2, 3, 4, 5},
+                new String[]{"t0", "t1", "t2", "t3", "t4", "t5"});
 
-        String preview = FrameAligner.buildPreview(track, stack, 0);
+        String summary = FrameAligner.buildBoxSummary(
+                FrameAligner.perTrackAlignment(track, stack, 100));
 
-        assertTrue(preview.contains("MISSING"), preview);
+        assertTrue(summary.contains("WARNING"), summary);
+        assertTrue(summary.contains("+2 more"), summary);
     }
 }

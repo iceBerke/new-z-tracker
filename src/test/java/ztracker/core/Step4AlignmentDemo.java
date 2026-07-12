@@ -131,15 +131,14 @@ public class Step4AlignmentDemo {
                 new String[]{"A", "A", "A", "B", "B"},
                 1);
 
-        // Show the exact multi-line text the step-4 confirmation box renders (using
-        // scenario G): note the "Checked across ALL N track(s) / M detection(s)"
-        // header that makes the all-track scope explicit.
+        // Show the compact verdict the live step-4 confirmation box renders (scenario
+        // G, offset +1) — the decision-focused summary; full detail goes to the Log.
         System.out.println("\n============================================================");
-        System.out.println("Step-4 confirm box text (scenario G, offset +1):");
+        System.out.println("Step-4 confirm box verdict (scenario G, offset +1):");
         System.out.println("------------------------------------------------------------");
-        System.out.print(FrameAligner.buildPreview(
+        System.out.println(FrameAligner.buildBoxSummary(FrameAligner.perTrackAlignment(
                 track(new int[]{0, 1, 2, 8, 9}, new String[]{"A", "A", "A", "B", "B"}),
-                stack(1, 2, 3, 4), 1));
+                stack(1, 2, 3, 4), 1)));
     }
 
     private static int[] range(int firstInclusive, int lastInclusive) {

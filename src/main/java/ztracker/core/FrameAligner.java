@@ -176,108 +176,55 @@ public class FrameAligner {
         List<TrackAlignment> perTrack = perTrackAlignment(track, stack, offset);
 
         logReport(uniqueCsvFrames, stack, offset, missing, suggested);
-        logPerTrack(perTrack, offset);
+        logPerTrack(perTrack, stack, offset, suggested);
 
         return new AlignmentReport(offset, missing, uniqueCsvFrames.size(), suggested, perTrack);
     }
 
+    /** Max number of off-stack tracks to name in the compact confirm-box summary. */
+    private static final int MAX_BOX_TRACKS_SHOWN = 4;
+
     /**
-     * Builds a short alignment preview string for display in the GUI: a few sample
-     * frame mappings, a per-track coverage summary (with any problem tracks called
-     * out), and the overall pass/fail line.
+     * Builds the compact, decision-focused verdict shown in the step-4 confirmation
+     * box: a one-line coverage verdict, the off-stack tracks named (capped), and a
+     * pointer to the Log for the full per-track table. Does NOT log — safe to call
+     * repeatedly as the user edits the offset (live preview).
      *
-     * @param track  track data
-     * @param stack  loaded TIFF stack
-     * @param offset offset to preview
-     * @return multi-line preview string
+     * @param perTrack per-track alignment (from {@link #perTrackAlignment})
+     * @return multi-line summary string
      */
-    public static String buildPreview(TrackData track, LoadedStack stack, int offset) {
-        Set<Integer> available = stack.frameToIdx.keySet();
+    public static String buildBoxSummary(List<TrackAlignment> perTrack) {
+        int total = perTrack.size();
+        if (total == 0) return "No tracks loaded.";
 
-        // Pick first, middle, last unique CSV frames
-        SortedSet<Integer> unique = new TreeSet<>();
-        for (int f : track.frame) unique.add(f);
-        List<Integer> sample = pickPreviewFrames(new ArrayList<>(unique));
-
-        List<TrackAlignment> perTrack = perTrackAlignment(track, stack, offset);
+        int fully = 0;
+        for (TrackAlignment ta : perTrack) if (ta.fullyMapped()) fully++;
 
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("TIFF files: frames %d – %d%n",
-                stack.firstFrame(), stack.lastFrame()));
-        sb.append(String.format("CSV frames: %d – %d (offset = %+d)%n",
-                unique.first(), unique.last(), offset));
-        sb.append(String.format("Checked across ALL %d track(s) / %d detection(s)%n",
-                perTrack.size(), track.frame.length));
-        sb.append(String.format("─────────────────────────────────%n"));
-        sb.append(String.format("Sample frames (global first / middle / last):%n"));
-
-        for (int csvF : sample) {
-            int tiffF  = csvF + offset;
-            String tag = available.contains(tiffF) ? "✓" : "✗ MISSING";
-            sb.append(String.format("  CSV %5d  →  TIFF %5d   %s%n", csvF, tiffF, tag));
-        }
-
-        appendPerTrackSummary(sb, perTrack, offset);
-
-        int missing = 0;
-        for (int f : unique) if (!available.contains(f + offset)) missing++;
-
-        if (missing > 0) {
-            sb.append(String.format("%n  ⚠ %d / %d CSV frames map to a missing TIFF%n",
-                    missing, unique.size()));
+        if (fully == total) {
+            sb.append(String.format("OK — all %d track(s) map fully to the TIFF stack.", total));
         } else {
-            sb.append(String.format("%n  ✓ All %d CSV frames map to an existing TIFF%n",
-                    unique.size()));
+            sb.append(String.format("WARNING — %d of %d track(s) map fully to the TIFF stack.%n",
+                    fully, total));
+            sb.append("Off-stack: ");
+            int shown = 0;
+            for (TrackAlignment ta : perTrack) {
+                if (ta.fullyMapped()) continue;
+                if (shown >= MAX_BOX_TRACKS_SHOWN) {
+                    sb.append(String.format(", +%d more", (total - fully) - shown));
+                    break;
+                }
+                if (shown > 0) sb.append(", ");
+                sb.append(String.format("Track %s (%d/%d det.)",
+                        ta.trackId, ta.missingCount, ta.detectionCount));
+                shown++;
+            }
         }
+        sb.append(String.format("%nFull per-track table is in the Log window."));
         return sb.toString();
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
-
-    /** Max number of problem tracks to enumerate in the GUI preview. */
-    private static final int MAX_PROBLEM_TRACKS_SHOWN = 5;
-
-    private static void appendPerTrackSummary(StringBuilder sb, List<TrackAlignment> perTrack, int offset) {
-        if (perTrack.isEmpty()) return;
-
-        int fully = 0;
-        int minSpan = Integer.MAX_VALUE, maxSpan = Integer.MIN_VALUE;
-        for (TrackAlignment ta : perTrack) {
-            if (ta.fullyMapped()) fully++;
-            int span = ta.lastFrame - ta.firstFrame + 1;
-            if (span < minSpan) minSpan = span;
-            if (span > maxSpan) maxSpan = span;
-        }
-        int withMissing = perTrack.size() - fully;
-
-        sb.append(String.format("%n─────────────────────────────────%n"));
-        sb.append(String.format("Per-track (offset %+d): %d tracks | %d fully mapped, %d with missing frames%n",
-                offset, perTrack.size(), fully, withMissing));
-        sb.append(String.format("Track spans: %d – %d frames (shorter tracks are normal, not a bad offset)%n",
-                minSpan, maxSpan));
-
-        if (withMissing > 0) {
-            int shown = 0;
-            for (TrackAlignment ta : perTrack) {
-                if (ta.fullyMapped()) continue;
-                if (shown++ >= MAX_PROBLEM_TRACKS_SHOWN) break;
-                sb.append(String.format("  ⚠ Track %s: frames %d–%d (%d det.), %d map to missing TIFF%n",
-                        ta.trackId, ta.firstFrame, ta.lastFrame, ta.detectionCount, ta.missingCount));
-            }
-            int remaining = withMissing - Math.min(withMissing, MAX_PROBLEM_TRACKS_SHOWN);
-            if (remaining > 0) {
-                sb.append(String.format("  … and %d more track(s) with missing frames (see Fiji log)%n", remaining));
-            }
-        }
-    }
-
-    private static List<Integer> pickPreviewFrames(List<Integer> sorted) {
-        if (sorted.size() <= 3) return sorted;
-        return Arrays.asList(
-                sorted.get(0),
-                sorted.get(sorted.size() / 2),
-                sorted.get(sorted.size() - 1));
-    }
 
     private static void logReport(SortedSet<Integer> uniqueCsv, LoadedStack stack,
                                    int offset, int missing, int suggested) {
@@ -295,17 +242,52 @@ public class FrameAligner {
         }
     }
 
-    private static void logPerTrack(List<TrackAlignment> perTrack, int offset) {
-        int withMissing = 0;
-        for (TrackAlignment ta : perTrack) if (!ta.fullyMapped()) withMissing++;
+    /** Max number of per-track rows written to the log (keeps huge CSVs readable). */
+    private static final int MAX_TRACKS_LOGGED = 50;
 
-        IJ.log(String.format("[FrameAligner] per-track (offset %+d): %d tracks, %d with missing frames",
-                offset, perTrack.size(), withMissing));
+    /**
+     * Logs a full per-track table so the user can verify the offset: every track's
+     * span, detection count, and how its FIRST and LAST frames map under the offset
+     * (with a ✓/✗ per endpoint), plus the missing count. Capped at
+     * {@link #MAX_TRACKS_LOGGED} rows.
+     */
+    private static void logPerTrack(List<TrackAlignment> perTrack, LoadedStack stack,
+                                    int offset, int suggested) {
+        Set<Integer> avail = stack.frameToIdx.keySet();
+        int fully = 0;
+        for (TrackAlignment ta : perTrack) if (ta.fullyMapped()) fully++;
 
+        IJ.log(String.format(
+                "[FrameAligner] ── Per-track alignment (offset %+d, suggested %+d) ──",
+                offset, suggested));
+        IJ.log("[FrameAligner]   track            span        det   first→TIFF     last→TIFF     missing");
+
+        int shown = 0;
         for (TrackAlignment ta : perTrack) {
-            if (ta.fullyMapped()) continue;
-            IJ.log(String.format("[FrameAligner]   ⚠ track %s: frames %d–%d (%d det.), %d missing",
-                    ta.trackId, ta.firstFrame, ta.lastFrame, ta.detectionCount, ta.missingCount));
+            if (shown++ >= MAX_TRACKS_LOGGED) break;
+            int firstMap = ta.firstFrame + offset;
+            int lastMap  = ta.lastFrame  + offset;
+            String fTag  = avail.contains(firstMap) ? "✓" : "✗";
+            String lTag  = avail.contains(lastMap)  ? "✓" : "✗";
+            IJ.log(String.format(
+                    "[FrameAligner]   %-14s %5d–%-5d %5d   %5d→%-5d %s   %5d→%-5d %s   %d",
+                    truncate(ta.trackId, 14),
+                    ta.firstFrame, ta.lastFrame, ta.detectionCount,
+                    ta.firstFrame, firstMap, fTag,
+                    ta.lastFrame,  lastMap,  lTag,
+                    ta.missingCount));
         }
+
+        int remaining = perTrack.size() - Math.min(perTrack.size(), MAX_TRACKS_LOGGED);
+        if (remaining > 0) {
+            IJ.log(String.format("[FrameAligner]   … %d more track(s) not shown (log cap %d)",
+                    remaining, MAX_TRACKS_LOGGED));
+        }
+        IJ.log(String.format("[FrameAligner]   %d/%d tracks fully mapped under offset %+d",
+                fully, perTrack.size(), offset));
+    }
+
+    private static String truncate(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max - 1) + "…";
     }
 }

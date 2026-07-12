@@ -14,6 +14,7 @@ import ztracker.model.TrackData;
 
 import java.awt.BorderLayout;
 import java.awt.Button;
+import java.awt.Checkbox;
 import java.awt.Color;
 import java.awt.Dialog;
 import java.awt.FileDialog;
@@ -25,6 +26,8 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Label;
 import java.awt.Panel;
+import java.awt.TextArea;
+import java.awt.TextField;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
@@ -311,8 +314,13 @@ public class ZTrackerDialog {
     }
 
     /**
-     * Step 4: Frame offset — shows alignment preview, lets user confirm or re-enter.
-     * Requires {@link #setLoadedData(TrackData, LoadedStack)} to have been called.
+     * Step 4: Frame offset — a single custom dialog that lets the user enter the
+     * CSV-to-TIFF offset and see a live per-track verdict update as they type, then
+     * confirm. Requires {@link #setLoadedData(TrackData, LoadedStack)} first.
+     *
+     * <p>The live preview uses non-logging {@code perTrackAlignment}/{@code buildBoxSummary};
+     * the authoritative {@link FrameAligner#validate} (which logs the full per-track
+     * table) runs once when the user confirms.
      */
     private boolean step4_frameOffset() {
         if (loadedTrack == null || loadedStack == null) {
@@ -320,44 +328,124 @@ public class ZTrackerDialog {
             return false;
         }
 
-        int suggested = FrameAligner.suggestOffset(loadedTrack, loadedStack);
+        final int suggested = FrameAligner.suggestOffset(loadedTrack, loadedStack);
 
-        while (true) {
-            GenericDialog gd = new GenericDialog("ZTracker — Step 4: Frame Alignment");
-            gd.addMessage(
-                    "The offset is ADDED to each CSV frame to find the matching TIFF.\n"
-                    + "Example: offset=+1 means CSV frame 0 → TIFF file 1.\n"
-                    + "Suggested offset: " + (suggested >= 0 ? "+" : "") + suggested);
-            gd.addNumericField("CSV-to-TIFF frame offset:", suggested, 0);
-            gd.showDialog();
+        Frame parent = IJ.getInstance();
+        final Dialog dlg = new Dialog(
+                parent != null ? parent : new Frame(),
+                "ZTracker — Step 4: Frame Alignment", true);
+        dlg.setLayout(new BorderLayout(8, 8));
 
-            if (gd.wasCanceled()) return false;
+        // Header
+        Panel header = new Panel(new FlowLayout(FlowLayout.LEFT, 12, 8));
+        header.add(new Label(
+                "The offset is ADDED to each CSV frame to find the matching TIFF file."));
 
-            int offset    = (int) gd.getNextNumber();
-            FrameAligner.AlignmentReport report =
-                    FrameAligner.validate(loadedTrack, loadedStack, offset);
-            String preview = FrameAligner.buildPreview(loadedTrack, loadedStack, offset);
+        // Offset input row
+        Panel inputRow = new Panel(new FlowLayout(FlowLayout.LEFT, 8, 8));
+        inputRow.add(new Label("CSV-to-TIFF offset:"));
+        final TextField offsetField = new TextField(String.valueOf(suggested), 6);
+        inputRow.add(offsetField);
+        inputRow.add(new Label("(suggested " + signed(suggested) + ")"));
 
-            // The offset is "clean" only when every detection in every track maps to
-            // an existing TIFF. When it isn't, the confirmation must be a deliberate
-            // act — so default the checkbox OFF and relabel it.
-            boolean clean = !report.hasWarning() && report.problemTracks().isEmpty();
-            String confirmLabel = clean
-                    ? "Alignment looks correct — continue"
-                    : "I have reviewed the warnings above — continue anyway";
+        // Live verdict area (monospace so the summary lines read cleanly)
+        final TextArea verdict = new TextArea("", 4, 58,
+                TextArea.SCROLLBARS_VERTICAL_ONLY);
+        verdict.setEditable(false);
+        verdict.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 
-            // Confirmation dialog with alignment preview
-            GenericDialog confirm = new GenericDialog("ZTracker — Step 4: Confirm Alignment");
-            confirm.addMessage(preview);
-            confirm.addCheckbox(confirmLabel, clean);
-            confirm.showDialog();
+        // Confirmation checkbox (label + default state recomputed live)
+        final Checkbox confirmBox = new Checkbox("", false);
+        Panel confirmPanel = new Panel(new FlowLayout(FlowLayout.LEFT, 12, 4));
+        confirmPanel.add(confirmBox);
 
-            if (confirm.wasCanceled()) return false;
-            if (confirm.getNextBoolean()) {
-                frameOffset = offset;
-                return true;
+        // Live refresh: recompute verdict + checkbox for the entered offset.
+        // A blank/invalid field falls back to the suggested offset for the preview.
+        final Runnable refresh = () -> {
+            Integer parsed = parseOffset(offsetField.getText());
+            int off = parsed != null ? parsed : suggested;
+
+            java.util.List<FrameAligner.TrackAlignment> perTrack =
+                    FrameAligner.perTrackAlignment(loadedTrack, loadedStack, off);
+            boolean clean = true;
+            for (FrameAligner.TrackAlignment ta : perTrack) {
+                if (!ta.fullyMapped()) { clean = false; break; }
             }
-            // User unchecked — loop to re-enter offset
+
+            String header2 = parsed == null
+                    ? "(enter a whole-number offset)\n\n"
+                    : "";
+            verdict.setText(header2 + FrameAligner.buildBoxSummary(perTrack));
+            confirmBox.setLabel(clean
+                    ? "Alignment looks correct — continue"
+                    : "I have reviewed the warnings above — continue anyway");
+            confirmBox.setState(clean);
+        };
+        offsetField.addTextListener(e -> refresh.run());
+        refresh.run(); // initial paint
+
+        // OK / Cancel
+        final boolean[] confirmed = {false};
+        final int[]     chosen    = {suggested};
+        Button okBtn     = new Button("OK");
+        Button cancelBtn = new Button("Cancel");
+        Panel  btnPanel  = new Panel(new FlowLayout(FlowLayout.RIGHT));
+        btnPanel.add(cancelBtn);
+        btnPanel.add(okBtn);
+
+        okBtn.addActionListener(e -> {
+            Integer parsed = parseOffset(offsetField.getText());
+            if (parsed == null) {
+                IJ.error("ZTracker", "Enter a whole-number offset (e.g. 0, 1, -1).");
+                return; // keep dialog open
+            }
+            if (!confirmBox.getState()) {
+                IJ.error("ZTracker",
+                        "Tick the confirmation box to continue, or press Cancel.");
+                return; // keep dialog open
+            }
+            chosen[0]    = parsed;
+            confirmed[0] = true;
+            dlg.setVisible(false);
+        });
+        cancelBtn.addActionListener(e -> dlg.setVisible(false));
+        dlg.addWindowListener(new WindowAdapter() {
+            public void windowClosing(WindowEvent e) { dlg.setVisible(false); }
+        });
+
+        Panel center = new Panel(new BorderLayout(6, 6));
+        center.add(inputRow,     BorderLayout.NORTH);
+        center.add(verdict,      BorderLayout.CENTER);
+        center.add(confirmPanel, BorderLayout.SOUTH);
+
+        dlg.add(header,    BorderLayout.NORTH);
+        dlg.add(center,    BorderLayout.CENTER);
+        dlg.add(btnPanel,  BorderLayout.SOUTH);
+        dlg.pack();
+        dlg.setMinimumSize(dlg.getSize());
+        if (parent != null) dlg.setLocationRelativeTo(parent);
+        dlg.setVisible(true); // blocks until hidden
+        dlg.dispose();
+
+        if (!confirmed[0]) return false;
+
+        frameOffset = chosen[0];
+        // Authoritative validation for the confirmed offset — logs the full per-track table.
+        FrameAligner.validate(loadedTrack, loadedStack, frameOffset);
+        return true;
+    }
+
+    private static String signed(int n) { return (n >= 0 ? "+" : "") + n; }
+
+    /** Parses a whole-number offset; returns null if blank or not an integer. */
+    private static Integer parseOffset(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+        if (t.isEmpty()) return null;
+        try {
+            return Integer.valueOf(t);
+        } catch (NumberFormatException ex) {
+            return null;
         }
     }
 
