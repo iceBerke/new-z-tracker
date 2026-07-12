@@ -190,5 +190,11 @@ public class ZTrackerPlugin implements PlugIn {
                     + "(check the detection's X/Y against the TIFF dimensions)",
                     result.missingFrameCount, result.outOfBoundsCount));
         }
+        if (result.invalidXYCount > 0) {
+            IJ.log(String.format(
+                    "[ZTrackerPlugin] %d detection(s) had a missing/unparseable X or Y "
+                    + "and were never sampled (check the tracking CSV)",
+                    result.invalidXYCount));
+        }
     }
 }

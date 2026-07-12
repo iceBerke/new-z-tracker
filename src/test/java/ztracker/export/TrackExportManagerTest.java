@@ -41,7 +41,7 @@ class TrackExportManagerTest {
                 new int[]{5, 5, 5},
                 new int[]{0, 0, 0},
                 new String[]{ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0);
+                "Radius-based", "Median", 0, 0, 0);
     }
 
     @Test
@@ -79,7 +79,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 1, 0);
+                "Radius-based", "Median", 1, 0, 0);
     }
 
     @Test
@@ -125,7 +125,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_MISSING_FRAME},
-                "Radius-based", "Median", 3, 0);
+                "Radius-based", "Median", 3, 0, 0);
     }
 
     @Test
@@ -171,7 +171,7 @@ class TrackExportManagerTest {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0);
+                "Radius-based", "Median", 0, 0, 0);
         ExportConfig config = new ExportConfig(3, null, true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -219,7 +219,7 @@ class TrackExportManagerTest {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_MISSING_FRAME, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 1, 0);
+                "Radius-based", "Median", 1, 0, 0);
         ExportConfig config = new ExportConfig(1, null, true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -266,7 +266,7 @@ class TrackExportManagerTest {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0);
+                "Radius-based", "Median", 0, 0, 0);
         ExportConfig config = new ExportConfig(3, null, true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -299,7 +299,7 @@ class TrackExportManagerTest {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 1, 0);
+                "Radius-based", "Median", 1, 0, 0);
         ExportConfig config = new ExportConfig(3, null, true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");

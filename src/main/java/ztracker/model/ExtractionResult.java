@@ -15,6 +15,9 @@ public class ExtractionResult {
     public static final String STATUS_OUT_OF_BOUNDS = "out of bounds";
     /** {@link #sampleStatus} value: pixels were sampled, but none had a Z-mapping entry. */
     public static final String STATUS_UNMAPPED_INDEX = "unmapped index";
+    /** {@link #sampleStatus} value: the detection's X or Y itself is missing/unparseable
+     *  (NaN) — sampling is never attempted for these (see {@link #invalidXYCount}). */
+    public static final String STATUS_INVALID_XY = "invalid X/Y";
 
     /** Extracted Z value in physical units (µm). NaN if extraction failed. */
     public final double[] z;
@@ -48,6 +51,10 @@ public class ExtractionResult {
      *  vs. a bad detection coordinate. */
     public final int outOfBoundsCount;
 
+    /** Detections whose X or Y itself is NaN — sampling was never attempted for these
+     *  (rather than silently sampling pixel 0 via {@code Math.round(NaN) == 0}). */
+    public final int invalidXYCount;
+
     public ExtractionResult(
             double[] z,
             double[] zStd,
@@ -57,7 +64,8 @@ public class ExtractionResult {
             String   samplingMethod,
             String   aggregationMethod,
             int      missingFrameCount,
-            int      outOfBoundsCount) {
+            int      outOfBoundsCount,
+            int      invalidXYCount) {
 
         this.z                 = z;
         this.zStd              = zStd;
@@ -68,6 +76,7 @@ public class ExtractionResult {
         this.aggregationMethod = aggregationMethod;
         this.missingFrameCount = missingFrameCount;
         this.outOfBoundsCount  = outOfBoundsCount;
+        this.invalidXYCount    = invalidXYCount;
     }
 
     /** Number of detections with a valid (non-NaN) Z value. */

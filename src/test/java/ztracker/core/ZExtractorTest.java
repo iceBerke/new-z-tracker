@@ -144,6 +144,44 @@ class ZExtractorTest {
     }
 
     @Test
+    void extract_nanX_isNeverSampled_notTreatedAsPixelZero() {
+        // Regression test: Math.round(Double.NaN) == 0 in Java, so a naive implementation
+        // that doesn't check for NaN X/Y before sampling would silently treat x=NaN as
+        // x=0 and sample pixel (0, round(y)) -- producing a bogus "valid" Z instead of
+        // failing. Plant a distinctive, otherwise-unreachable marker value at column 0
+        // to prove that pixel is never read.
+        int[][] frame = {
+            { 1,  1,  1},
+            {999,  5,  1},  // column 0 has a marker value that must never be sampled
+            { 1,  1,  1}
+        };
+        Map<Integer, Integer> frameToIdx = new HashMap<>();
+        frameToIdx.put(0, 0);
+        LoadedStack stack = new LoadedStack(new int[][][]{frame}, frameToIdx,
+                new ArrayList<>(Arrays.asList(0)), 3, 3);
+
+        Map<Integer, Double> mapping = new HashMap<>();
+        mapping.put(999, 42.0); // if the marker pixel were ever sampled, z would be 42.0
+        mapping.put(5, 12.5);
+
+        TrackData track = new TrackData(
+                new double[]{Double.NaN}, new double[]{1.0}, new int[]{0},
+                new double[]{1.0}, new String[]{"1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+
+        ExtractionResult result = ZExtractor.extract(
+                track, stack, mapping, 0,
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+
+        assertTrue(Double.isNaN(result.z[0]), "must be NaN, not 42.0 from the marker pixel");
+        assertEquals(0, result.numSamples[0], "sampling must never be attempted");
+        assertEquals(0, result.missingFrameCount);
+        assertEquals(0, result.outOfBoundsCount);
+        assertEquals(1, result.invalidXYCount);
+        assertEquals(ExtractionResult.STATUS_INVALID_XY, result.sampleStatus[0]);
+    }
+
+    @Test
     void extractAll_matchesIndividualExtractCallsPerCombo() {
         TrackData track = twoDetectionTrack();
         LoadedStack stack = singleFrameStack();
@@ -169,6 +207,7 @@ class ZExtractorTest {
             assertEquals(expected.aggregationMethod, combo.result.aggregationMethod);
             assertEquals(expected.missingFrameCount, combo.result.missingFrameCount);
             assertEquals(expected.outOfBoundsCount, combo.result.outOfBoundsCount);
+            assertEquals(expected.invalidXYCount, combo.result.invalidXYCount);
         }
     }
 }

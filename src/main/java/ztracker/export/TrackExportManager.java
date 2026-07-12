@@ -67,10 +67,6 @@ public class TrackExportManager {
     /** Max number of per-track report lines logged (keeps huge CSVs readable). */
     private static final int MAX_TRACKS_LOGGED = 50;
 
-    /** Drop-reason label for a point whose X or Y is missing/unparseable (TrackData-level,
-     *  so unlike the {@code ExtractionResult.STATUS_*} constants it has no home there). */
-    private static final String REASON_INVALID_XY = "invalid X/Y";
-
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
@@ -156,8 +152,8 @@ public class TrackExportManager {
                 boolean validXY = !Double.isNaN(track.x[i]) && !Double.isNaN(track.y[i]);
                 if (!validXY) {
                     droppedInvalidXY++;
-                    dropReasons2D.merge(REASON_INVALID_XY, 1, Integer::sum);
-                    dropReasons3D.merge(REASON_INVALID_XY, 1, Integer::sum);
+                    dropReasons2D.merge(ExtractionResult.STATUS_INVALID_XY, 1, Integer::sum);
+                    dropReasons3D.merge(ExtractionResult.STATUS_INVALID_XY, 1, Integer::sum);
                     continue;
                 }
                 valid2D.add(i);

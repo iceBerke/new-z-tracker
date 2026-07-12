@@ -267,7 +267,7 @@ public class Step5MethodsDemo {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_MISSING_FRAME},
-                "Radius-based", "Median", 1, 0);
+                "Radius-based", "Median", 1, 0, 0);
 
         Path tmp = Files.createTempDirectory("ztracker-step5-demo-xy");
         ExportConfig config = new ExportConfig(1, null, true, false, false);

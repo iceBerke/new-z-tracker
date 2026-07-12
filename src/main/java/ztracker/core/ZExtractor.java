@@ -53,6 +53,7 @@ public class ZExtractor {
 
         int missingFrames = 0;
         int outOfBounds   = 0;
+        int invalidXY     = 0;
 
         IJ.log(String.format(
                 "[ZExtractor] Starting extraction: %d detections | %s + %s | offset=%+d",
@@ -60,6 +61,19 @@ public class ZExtractor {
 
         for (int i = 0; i < n; i++) {
             if (i % 500 == 0) IJ.showProgress(i, n);
+
+            // A NaN X or Y is never sampled — Math.round(NaN) == 0 in Java, so without this
+            // check ZSampler would silently sample a phantom pixel at index 0 instead of
+            // failing, producing a bogus "valid" Z for a detection with no real position.
+            if (Double.isNaN(track.x[i]) || Double.isNaN(track.y[i])) {
+                z[i]            = Double.NaN;
+                zStd[i]         = Double.NaN;
+                numSamples[i]   = 0;
+                numUnmapped[i]  = 0;
+                sampleStatus[i] = ExtractionResult.STATUS_INVALID_XY;
+                invalidXY++;
+                continue;
+            }
 
             double radius = track.radius[i];
 
@@ -114,11 +128,12 @@ public class ZExtractor {
         for (double v : z) if (!Double.isNaN(v)) validCount++;
 
         IJ.log(String.format(
-                "[ZExtractor] Done: %d / %d valid Z values | %d missing frames | %d out-of-bounds positions",
-                validCount, n, missingFrames, outOfBounds));
+                "[ZExtractor] Done: %d / %d valid Z values | %d missing frames | "
+                + "%d out-of-bounds positions | %d invalid X/Y",
+                validCount, n, missingFrames, outOfBounds, invalidXY));
 
         return new ExtractionResult(z, zStd, numSamples, numUnmapped, sampleStatus,
-                sampling.label, aggregation.label, missingFrames, outOfBounds);
+                sampling.label, aggregation.label, missingFrames, outOfBounds, invalidXY);
     }
 
     /**
