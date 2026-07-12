@@ -32,10 +32,15 @@ public class Step4AlignmentDemo {
     }
 
     private static TrackData track(int... f) {
-        double[] x = new double[f.length], y = new double[f.length], r = new double[f.length];
         String[] id = new String[f.length];
-        for (int i = 0; i < f.length; i++) { r[i] = Double.NaN; id[i] = "1"; }
-        return new TrackData(x, y, f, r, id, "X", "Y", "Frame", "Track_ID", null, 3.5);
+        for (int i = 0; i < f.length; i++) id[i] = "1";
+        return track(f, id);
+    }
+
+    private static TrackData track(int[] f, String[] ids) {
+        double[] x = new double[f.length], y = new double[f.length], r = new double[f.length];
+        for (int i = 0; i < f.length; i++) r[i] = Double.NaN;
+        return new TrackData(x, y, f, r, ids, "X", "Y", "Frame", "Track_ID", null, 3.5);
     }
 
     private static String signed(int n) { return (n >= 0 ? "+" : "") + n; }
@@ -58,25 +63,41 @@ public class Step4AlignmentDemo {
         TrackData t = track(csv);
         LoadedStack s = stack(tiff);
 
+        scenario(title, csv, tiff, singleIds(csv.length), chosenOffset);
+    }
+
+    private static String[] singleIds(int n) {
+        String[] ids = new String[n];
+        for (int i = 0; i < n; i++) ids[i] = "1";
+        return ids;
+    }
+
+    private static void scenario(String title, int[] csv, int[] tiff, String[] ids, int chosenOffset) {
+        TrackData t = track(csv, ids);
+        LoadedStack s = stack(tiff);
+
         int suggested = FrameAligner.suggestOffset(t, s);
         AlignmentReport rep = FrameAligner.validate(t, s, chosenOffset);
 
         System.out.println("\n============================================================");
         System.out.println(title);
         System.out.println("  CSV frames : " + Arrays.toString(csv));
+        System.out.println("  Track IDs  : " + Arrays.toString(ids));
         System.out.println("  TIFF frames: " + Arrays.toString(tiff));
         System.out.println("  ----");
         System.out.println("  suggestOffset()  -> " + signed(suggested)
                 + "   (start-anchored guess the dialog pre-fills)");
-        System.out.println("  suggestOffsetFromEnd() -> " + signed(rep.suggestedOffsetFromEnd)
-                + "   (end-anchored cross-check)");
-        System.out.println("  ranges consistent? = " + rep.rangesConsistent
-                + (rep.rangesConsistent ? "" : "   <-- spans differ, suggestion is a guess"));
         System.out.println("  validate(offset=" + signed(chosenOffset) + "):");
         System.out.println("     mapping: " + mapping(csv, tiff, chosenOffset));
         System.out.println("     missing frames   = " + rep.missingFrameCount + " / " + rep.totalUniqueFrames);
         System.out.printf("     missing fraction = %.0f%%%n", rep.missingFraction() * 100);
         System.out.println("     warning shown?   = " + rep.hasWarning());
+        System.out.println("     per-track:");
+        for (FrameAligner.TrackAlignment ta : rep.perTrack) {
+            System.out.printf("        Track %-4s frames %d-%d (%d det.)  %s%n",
+                    ta.trackId, ta.firstFrame, ta.lastFrame, ta.detectionCount,
+                    ta.fullyMapped() ? "all OK" : (ta.missingCount + " MISSING"));
+        }
     }
 
     public static void main(String[] args) {
@@ -95,7 +116,21 @@ public class Step4AlignmentDemo {
         scenario("E) Correct offset +1, but one CSV frame (9) runs past the TIFF range",
                 new int[]{0, 1, 2, 9}, new int[]{1, 2, 3, 4}, 1);
 
-        scenario("F) Range mismatch: CSV spans 0-3 (+1 at start) but TIFF spans 1-6 (+3 at end)",
-                new int[]{0, 1, 2, 3}, new int[]{1, 2, 3, 4, 5, 6}, 1);
+        scenario("F) Short track in a long recording: offset +1 is CORRECT even though the\n"
+                + "    track (frames 5-7) covers only a sliver of the 1-100 TIFF stack",
+                new int[]{5, 6, 7}, range(1, 100), 1);
+
+        scenario("G) Two tracks, per-track breakdown: Track A maps cleanly, Track B (frames\n"
+                + "    8-9) runs past the TIFF end under offset +1 — reported per track",
+                new int[]{0, 1, 2, 8, 9},
+                new int[]{1, 2, 3, 4},
+                new String[]{"A", "A", "A", "B", "B"},
+                1);
+    }
+
+    private static int[] range(int firstInclusive, int lastInclusive) {
+        int[] r = new int[lastInclusive - firstInclusive + 1];
+        for (int i = 0; i < r.length; i++) r[i] = firstInclusive + i;
+        return r;
     }
 }

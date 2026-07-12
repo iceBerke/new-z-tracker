@@ -2,6 +2,7 @@ package ztracker.core;
 
 import org.junit.jupiter.api.Test;
 import ztracker.core.FrameAligner.AlignmentReport;
+import ztracker.core.FrameAligner.TrackAlignment;
 import ztracker.io.TiffStackLoader.LoadedStack;
 import ztracker.model.TrackData;
 
@@ -140,52 +141,90 @@ class FrameAlignerTest {
         assertEquals(0, report.missingFrameCount);
     }
 
-    // ── suggestOffsetFromEnd & range consistency ─────────────────────────────────
+    // ── per-track alignment ───────────────────────────────────────────────────────
 
-    @Test
-    void suggestOffsetFromEnd_cleanShift_matchesStartOffset() {
-        // CSV 0..3, TIFF 1..4: start says +1, end says +1 — consistent.
-        TrackData track = trackWithFrames(0, 1, 2, 3);
-        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
-
-        assertEquals(1, FrameAligner.suggestOffsetFromEnd(track, stack));
-        assertEquals(FrameAligner.suggestOffset(track, stack),
-                FrameAligner.suggestOffsetFromEnd(track, stack));
+    /** Builds multi-track data: frames[] paired with a parallel trackIds[]. */
+    private static TrackData trackWithIds(int[] frames, String[] ids) {
+        double[] x = new double[frames.length];
+        double[] y = new double[frames.length];
+        double[] radius = new double[frames.length];
+        for (int i = 0; i < frames.length; i++) radius[i] = Double.NaN;
+        return new TrackData(x, y, frames, radius, ids,
+                "X", "Y", "Frame", "Track_ID", null, 3.5);
     }
 
     @Test
-    void validate_consistentRanges_flagsRangesConsistentTrue() {
-        TrackData track = trackWithFrames(0, 1, 2, 3);
-        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+    void perTrack_shortTrackFullyInsideRange_notFlagged() {
+        // A track covering frames 5-7 of a 1-100 recording is normal: offset +1
+        // maps 5->6, 6->7, 7->8 — all present. It must NOT be reported as a problem.
+        int[] tiff = new int[100];
+        for (int i = 0; i < 100; i++) tiff[i] = i + 1; // TIFF frames 1..100
+        LoadedStack stack = stackWithFrames(tiff);
+        TrackData track = trackWithIds(new int[]{5, 6, 7}, new String[]{"A", "A", "A"});
 
         AlignmentReport report = FrameAligner.validate(track, stack, 1);
 
-        assertTrue(report.rangesConsistent);
-        assertEquals(report.suggestedOffset, report.suggestedOffsetFromEnd);
+        assertEquals(0, report.missingFrameCount);
+        assertTrue(report.problemTracks().isEmpty());
+        assertEquals(1, report.perTrack.size());
+        TrackAlignment a = report.perTrack.get(0);
+        assertEquals(5, a.firstFrame);
+        assertEquals(7, a.lastFrame);
+        assertEquals(3, a.detectionCount);
+        assertTrue(a.fullyMapped());
     }
 
     @Test
-    void validate_differentSpanLengths_flagsRangesInconsistent() {
-        // CSV spans 0..3 (start offset +1), but TIFF spans 1..6 (end offset 6-3=+3).
-        // The ranges are different lengths — no single constant shift fits.
-        TrackData track = trackWithFrames(0, 1, 2, 3);
-        LoadedStack stack = stackWithFrames(1, 2, 3, 4, 5, 6);
+    void perTrack_separatesTracksAndCountsPerTrackMissing() {
+        // Track A: frames 0-2 (offset +1 -> 1,2,3 all present).
+        // Track B: frames 8-9 (offset +1 -> 9,10; TIFF only goes to 4, so both missing).
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+        TrackData track = trackWithIds(
+                new int[]{0, 1, 2, 8, 9},
+                new String[]{"A", "A", "A", "B", "B"});
 
         AlignmentReport report = FrameAligner.validate(track, stack, 1);
 
-        assertEquals(1, report.suggestedOffset);
-        assertEquals(3, report.suggestedOffsetFromEnd);
-        assertFalse(report.rangesConsistent);
+        assertEquals(2, report.perTrack.size());
+        // Ordered by first frame: A (0) before B (8).
+        TrackAlignment a = report.perTrack.get(0);
+        TrackAlignment b = report.perTrack.get(1);
+        assertEquals("A", a.trackId);
+        assertTrue(a.fullyMapped());
+        assertEquals("B", b.trackId);
+        assertEquals(2, b.detectionCount);
+        assertEquals(2, b.missingCount);
+        assertFalse(b.fullyMapped());
+
+        assertEquals(1, report.problemTracks().size());
+        assertEquals("B", report.problemTracks().get(0).trackId);
     }
 
     @Test
-    void buildPreview_rangeMismatch_warnsAboutDifferingSpans() {
-        TrackData track = trackWithFrames(0, 1, 2, 3);
-        LoadedStack stack = stackWithFrames(1, 2, 3, 4, 5, 6);
+    void perTrack_orderedByFirstFrame() {
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        TrackData track = trackWithIds(
+                new int[]{7, 1, 4},
+                new String[]{"late", "early", "mid"});
+
+        AlignmentReport report = FrameAligner.validate(track, stack, 0);
+
+        assertEquals("early", report.perTrack.get(0).trackId);
+        assertEquals("mid",   report.perTrack.get(1).trackId);
+        assertEquals("late",  report.perTrack.get(2).trackId);
+    }
+
+    @Test
+    void buildPreview_perTrackProblem_callsOutTheOffendingTrack() {
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+        TrackData track = trackWithIds(
+                new int[]{0, 1, 2, 8, 9},
+                new String[]{"A", "A", "A", "B", "B"});
 
         String preview = FrameAligner.buildPreview(track, stack, 1);
 
-        assertTrue(preview.contains("Start implies offset +1 but end implies +3"), preview);
+        assertTrue(preview.contains("Per-track"), preview);
+        assertTrue(preview.contains("Track B"), preview);
     }
 
     // ── buildPreview ─────────────────────────────────────────────────────────────

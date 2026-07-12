@@ -13,10 +13,41 @@ import java.util.*;
  * <p>The offset is ADDED to each CSV frame: {@code tiffFrame = csvFrame + offset}.
  *
  * <p>Example: if the CSV uses 0-based indexing but TIFFs start at 1, offset = +1.
+ *
+ * <p>The offset is a single constant that applies to every detection, so the
+ * correctness test is simply: does {@code frame + offset} land on an existing
+ * TIFF for every detection? A track that only covers part of the recording is
+ * perfectly normal and does NOT indicate a bad offset — so validation reports
+ * alignment <b>per track</b> (span + how many detections map to a missing TIFF)
+ * and leaves the final call to the user, alongside the suggested offset.
  */
 public class FrameAligner {
 
-    // ── Public result ─────────────────────────────────────────────────────────
+    // ── Public results ────────────────────────────────────────────────────────
+
+    /** Alignment summary for a single track under a given offset. */
+    public static class TrackAlignment {
+        public final String trackId;
+        /** Track's first/last CSV frame (its span within the recording). */
+        public final int firstFrame;
+        public final int lastFrame;
+        /** Number of detections in this track. */
+        public final int detectionCount;
+        /** Detections whose {@code frame + offset} has no TIFF. */
+        public final int missingCount;
+
+        TrackAlignment(String trackId, int firstFrame, int lastFrame,
+                       int detectionCount, int missingCount) {
+            this.trackId        = trackId;
+            this.firstFrame     = firstFrame;
+            this.lastFrame      = lastFrame;
+            this.detectionCount = detectionCount;
+            this.missingCount   = missingCount;
+        }
+
+        /** True when every detection in this track maps to an existing TIFF. */
+        public boolean fullyMapped() { return missingCount == 0; }
+    }
 
     public static class AlignmentReport {
         /** The validated offset to use for extraction. */
@@ -27,24 +58,16 @@ public class FrameAligner {
         public final int totalUniqueFrames;
         /** Suggested offset detected from indexing mismatch (may be 0 if no hint). */
         public final int suggestedOffset;
-        /** Offset implied by the LAST frames (tiffLast - csvLast). */
-        public final int suggestedOffsetFromEnd;
-        /**
-         * True when the start-anchored and end-anchored offsets agree, i.e. the CSV
-         * and TIFF spans line up as a single constant shift. When false, the ranges
-         * have different lengths and any single suggested offset is only a guess.
-         */
-        public final boolean rangesConsistent;
+        /** Per-track alignment, ordered by first frame then track id. */
+        public final List<TrackAlignment> perTrack;
 
-        AlignmentReport(int offset, int missingFrameCount,
-                        int totalUniqueFrames, int suggestedOffset,
-                        int suggestedOffsetFromEnd, boolean rangesConsistent) {
-            this.offset                 = offset;
-            this.missingFrameCount      = missingFrameCount;
-            this.totalUniqueFrames      = totalUniqueFrames;
-            this.suggestedOffset        = suggestedOffset;
-            this.suggestedOffsetFromEnd = suggestedOffsetFromEnd;
-            this.rangesConsistent       = rangesConsistent;
+        AlignmentReport(int offset, int missingFrameCount, int totalUniqueFrames,
+                        int suggestedOffset, List<TrackAlignment> perTrack) {
+            this.offset            = offset;
+            this.missingFrameCount = missingFrameCount;
+            this.totalUniqueFrames = totalUniqueFrames;
+            this.suggestedOffset   = suggestedOffset;
+            this.perTrack          = perTrack;
         }
 
         /** Fraction of CSV frames that are unmapped after applying offset (0–1). */
@@ -55,6 +78,13 @@ public class FrameAligner {
 
         public boolean hasWarning() {
             return missingFrameCount > 0;
+        }
+
+        /** Tracks that have at least one detection mapping to a missing TIFF. */
+        public List<TrackAlignment> problemTracks() {
+            List<TrackAlignment> out = new ArrayList<>();
+            for (TrackAlignment ta : perTrack) if (!ta.fullyMapped()) out.add(ta);
+            return out;
         }
     }
 
@@ -80,24 +110,50 @@ public class FrameAligner {
     }
 
     /**
-     * Offset implied by aligning the LAST CSV frame with the LAST TIFF frame:
-     * {@code tiffLast - csvLast}. Compared against {@link #suggestOffset} this
-     * detects whether the CSV and TIFF spans have the same length (a clean
-     * constant shift) or diverge (dropped/extra frames, truncated stack).
+     * Computes per-track alignment under {@code offset}: each track's frame span
+     * and how many of its detections map to a missing TIFF. Tracks are ordered by
+     * first frame, then track id.
      *
-     * @param track track data (used for its frame array)
-     * @param stack loaded TIFF stack
-     * @return end-anchored offset
+     * @param track  track data
+     * @param stack  loaded TIFF stack
+     * @param offset offset to evaluate
+     * @return per-track alignment summaries
      */
-    public static int suggestOffsetFromEnd(TrackData track, LoadedStack stack) {
-        int csvLast  = Arrays.stream(track.frame).max().orElse(0);
-        int tiffLast = stack.lastFrame();
-        return tiffLast - csvLast;
+    public static List<TrackAlignment> perTrackAlignment(TrackData track, LoadedStack stack, int offset) {
+        Set<Integer> available = stack.frameToIdx.keySet();
+
+        // Group detection indices by track id, preserving first-seen order isn't
+        // needed — we sort at the end.
+        Map<String, int[]> agg = new HashMap<>(); // trackId -> {first, last, count, missing}
+        for (int i = 0; i < track.frame.length; i++) {
+            String id = track.trackId[i];
+            int f     = track.frame[i];
+            boolean missing = !available.contains(f + offset);
+
+            int[] a = agg.get(id);
+            if (a == null) {
+                agg.put(id, new int[]{f, f, 1, missing ? 1 : 0});
+            } else {
+                if (f < a[0]) a[0] = f;
+                if (f > a[1]) a[1] = f;
+                a[2]++;
+                if (missing) a[3]++;
+            }
+        }
+
+        List<TrackAlignment> out = new ArrayList<>(agg.size());
+        for (Map.Entry<String, int[]> e : agg.entrySet()) {
+            int[] a = e.getValue();
+            out.add(new TrackAlignment(e.getKey(), a[0], a[1], a[2], a[3]));
+        }
+        out.sort(Comparator.comparingInt((TrackAlignment t) -> t.firstFrame)
+                .thenComparing(t -> t.trackId));
+        return out;
     }
 
     /**
      * Validates the given offset and returns a full alignment report.
-     * Logs a summary to the Fiji log window.
+     * Logs a summary plus a per-track breakdown to the Fiji log window.
      *
      * @param track  track data
      * @param stack  loaded TIFF stack
@@ -116,24 +172,19 @@ public class FrameAligner {
             if (!availableFrames.contains(csvFrame + offset)) missing++;
         }
 
-        int suggested        = suggestOffset(track, stack);
-        int suggestedFromEnd = suggestOffsetFromEnd(track, stack);
-        boolean consistent   = suggested == suggestedFromEnd;
+        int suggested = suggestOffset(track, stack);
+        List<TrackAlignment> perTrack = perTrackAlignment(track, stack, offset);
 
         logReport(uniqueCsvFrames, stack, offset, missing, suggested);
-        if (!consistent) {
-            IJ.log(String.format(
-                    "[FrameAligner] ⚠ Range mismatch: start implies offset %+d but end implies %+d. "
-                    + "CSV and TIFF spans differ in length — verify alignment.",
-                    suggested, suggestedFromEnd));
-        }
+        logPerTrack(perTrack, offset);
 
-        return new AlignmentReport(offset, missing, uniqueCsvFrames.size(),
-                suggested, suggestedFromEnd, consistent);
+        return new AlignmentReport(offset, missing, uniqueCsvFrames.size(), suggested, perTrack);
     }
 
     /**
-     * Builds a short alignment preview string (3 sample frames) for display in the GUI.
+     * Builds a short alignment preview string for display in the GUI: a few sample
+     * frame mappings, a per-track coverage summary (with any problem tracks called
+     * out), and the overall pass/fail line.
      *
      * @param track  track data
      * @param stack  loaded TIFF stack
@@ -161,14 +212,7 @@ public class FrameAligner {
             sb.append(String.format("  CSV %5d  →  TIFF %5d   %s%n", csvF, tiffF, tag));
         }
 
-        int startOffset = suggestOffset(track, stack);
-        int endOffset   = suggestOffsetFromEnd(track, stack);
-        if (startOffset != endOffset) {
-            sb.append(String.format(
-                    "%n  ⚠ Start implies offset %+d but end implies %+d —%n"
-                    + "    CSV and TIFF spans differ in length; verify alignment.%n",
-                    startOffset, endOffset));
-        }
+        appendPerTrackSummary(sb, perTrackAlignment(track, stack, offset), offset);
 
         int missing = 0;
         for (int f : unique) if (!available.contains(f + offset)) missing++;
@@ -184,6 +228,43 @@ public class FrameAligner {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /** Max number of problem tracks to enumerate in the GUI preview. */
+    private static final int MAX_PROBLEM_TRACKS_SHOWN = 5;
+
+    private static void appendPerTrackSummary(StringBuilder sb, List<TrackAlignment> perTrack, int offset) {
+        if (perTrack.isEmpty()) return;
+
+        int fully = 0;
+        int minSpan = Integer.MAX_VALUE, maxSpan = Integer.MIN_VALUE;
+        for (TrackAlignment ta : perTrack) {
+            if (ta.fullyMapped()) fully++;
+            int span = ta.lastFrame - ta.firstFrame + 1;
+            if (span < minSpan) minSpan = span;
+            if (span > maxSpan) maxSpan = span;
+        }
+        int withMissing = perTrack.size() - fully;
+
+        sb.append(String.format("%n─────────────────────────────────%n"));
+        sb.append(String.format("Per-track (offset %+d): %d tracks | %d fully mapped, %d with missing frames%n",
+                offset, perTrack.size(), fully, withMissing));
+        sb.append(String.format("Track spans: %d – %d frames (shorter tracks are normal, not a bad offset)%n",
+                minSpan, maxSpan));
+
+        if (withMissing > 0) {
+            int shown = 0;
+            for (TrackAlignment ta : perTrack) {
+                if (ta.fullyMapped()) continue;
+                if (shown++ >= MAX_PROBLEM_TRACKS_SHOWN) break;
+                sb.append(String.format("  ⚠ Track %s: frames %d–%d (%d det.), %d map to missing TIFF%n",
+                        ta.trackId, ta.firstFrame, ta.lastFrame, ta.detectionCount, ta.missingCount));
+            }
+            int remaining = withMissing - Math.min(withMissing, MAX_PROBLEM_TRACKS_SHOWN);
+            if (remaining > 0) {
+                sb.append(String.format("  … and %d more track(s) with missing frames (see Fiji log)%n", remaining));
+            }
+        }
+    }
 
     private static List<Integer> pickPreviewFrames(List<Integer> sorted) {
         if (sorted.size() <= 3) return sorted;
@@ -206,6 +287,20 @@ public class FrameAligner {
             IJ.log(String.format(
                     "[FrameAligner] ⚠ %.1f%% of CSV frames unmapped. Suggested offset: %+d",
                     100.0 * missing / uniqueCsv.size(), suggested));
+        }
+    }
+
+    private static void logPerTrack(List<TrackAlignment> perTrack, int offset) {
+        int withMissing = 0;
+        for (TrackAlignment ta : perTrack) if (!ta.fullyMapped()) withMissing++;
+
+        IJ.log(String.format("[FrameAligner] per-track (offset %+d): %d tracks, %d with missing frames",
+                offset, perTrack.size(), withMissing));
+
+        for (TrackAlignment ta : perTrack) {
+            if (ta.fullyMapped()) continue;
+            IJ.log(String.format("[FrameAligner]   ⚠ track %s: frames %d–%d (%d det.), %d missing",
+                    ta.trackId, ta.firstFrame, ta.lastFrame, ta.detectionCount, ta.missingCount));
         }
     }
 }
