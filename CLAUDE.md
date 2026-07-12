@@ -47,7 +47,10 @@ exports two combinations via `TrackExportManager` into a temp dir to print the r
 `<sampling>/<aggregation>/...` folder tree plus the full contents of the `export_report.txt`
 file written alongside the .npy output, and finally builds a track with both an invalid-X/Y
 detection and a separate invalid-Z detection to print the asymmetry side by side (X/Y drops
-from both 2D and 3D; Z drops from 3D only). Run instructions are in the class javadoc.
+from both 2D and 3D; Z drops from 3D only), plants a marker pixel to prove `ZExtractor` never
+samples a NaN X/Y (rather than `Math.round(Double.NaN) == 0` silently treating it as `x=0`), and
+exports a track with `.npy` off but Results Table CSV on to show the report's trailing
+`"Results Table: N/M pt"` segment. Run instructions are in the class javadoc.
 
 ## Critical Constraints
 

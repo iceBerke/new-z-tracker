@@ -53,6 +53,15 @@ import java.util.stream.Stream;
  *       position, can't be placed in either), while the invalid-Z point is dropped from 3D
  *       only — printed straight from {@code export_report.txt} so the two distinct drop
  *       reasons can be seen side by side in the same per-track line.</li>
+ *   <li>Plants a distinctive marker pixel at column 0 and runs {@link ZExtractor#extract} on a
+ *       detection with a NaN X, proving {@code ZSampler} is never even called for it (rather
+ *       than {@code Math.round(Double.NaN) == 0} silently treating it as {@code x=0} and
+ *       sampling the marker) — {@link ExtractionResult#invalidXYCount} and
+ *       {@link ExtractionResult#STATUS_INVALID_XY} confirm the short-circuit.</li>
+ *   <li>Exports a fully-valid track with {@code .npy} unchecked but Results Table CSV checked,
+ *       and prints {@code export_report.txt} to show the report's new trailing segment — the
+ *       2D/3D verdict reads "npy export off" either way, but the added segment makes clear the
+ *       track's points still landed in the CSV rather than reading as a total export failure.</li>
  * </ol>
  *
  * <p>Run it manually (from the project root, after {@code mvn test-compile}):
@@ -281,6 +290,84 @@ public class Step5MethodsDemo {
         System.out.println("  (temp directory cleaned up after printing)");
     }
 
+    private static void nanXIsNeverSampledComparison() {
+        System.out.println("\n--- 8) A NaN X/Y is never sampled -- not silently treated as pixel 0 ---");
+        System.out.println("  Math.round(Double.NaN) == 0 in Java. Without an explicit check, a NaN X"
+                + " would be silently rounded to 0 and a REAL pixel at column 0 would get sampled,"
+                + " producing a bogus \"valid\" Z instead of failing. A distinctive marker value (999,"
+                + " mapped to Z=42.0) is planted at column 0 to prove it's never read.");
+
+        int[][] frame = {
+            { 1,  1,  1},
+            {999,  5,  1},   // column 0 -- must never be sampled, even though round(NaN)==0
+            { 1,  1,  1}
+        };
+        Map<Integer, Integer> frameToIdx = new HashMap<>();
+        frameToIdx.put(0, 0);
+        LoadedStack s = new LoadedStack(new int[][][]{frame}, frameToIdx,
+                new ArrayList<>(Collections.singletonList(0)), 3, 3);
+
+        Map<Integer, Double> zMap = new HashMap<>();
+        zMap.put(999, 42.0); // if the marker pixel were ever sampled, z would come out as 42.0
+        zMap.put(5, 12.5);
+
+        TrackData track = new TrackData(
+                new double[]{Double.NaN}, new double[]{1.0}, new int[]{0},
+                new double[]{1.0}, new String[]{"C"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+
+        ExtractionResult result = ZExtractor.extract(
+                track, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+
+        System.out.printf("  Detection: x=NaN, y=1.0, frame=0 (exists)%n");
+        System.out.printf("     -> z=%s (NOT 42.0) | numSamples=%d | invalidXYCount=%d | sampleStatus=\"%s\"%n",
+                result.z[0], result.numSamples[0], result.invalidXYCount, result.sampleStatus[0]);
+        System.out.println("  (numSamples=0 proves ZSampler was never even called for this detection)");
+    }
+
+    private static void reportNotesOtherFormatsComparison() throws IOException {
+        System.out.println("\n--- 9) Per-track report notes Results Table/ROI, even with .npy off ---");
+        System.out.println("  Track \"D\" has 3 fully-valid detections. Exporting with .npy UNCHECKED but"
+                + " Results Table CSV checked: the 2D/3D verdict is specifically about .npy, so both read"
+                + " \"npy export off\" -- but the report now adds a trailing segment so this doesn't read"
+                + " as a total export failure when the CSV actually succeeded.");
+
+        TrackData track = new TrackData(
+                new double[]{1.0, 2.0, 3.0},
+                new double[]{1.0, 2.0, 3.0},
+                new int[]{0, 1, 2},
+                new double[]{1.0, 1.0, 1.0},
+                new String[]{"D", "D", "D"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult result = new ExtractionResult(
+                new double[]{5.0, 6.0, 7.0},
+                new double[]{0.1, 0.1, 0.1},
+                new int[]{5, 5, 5},
+                new int[]{0, 0, 0},
+                new String[]{
+                        ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
+                "Radius-based", "Median", 0, 0, 0);
+
+        Path tmp = Files.createTempDirectory("ztracker-step5-demo-formats");
+        // npy OFF, Results Table CSV ON
+        ExportConfig config = new ExportConfig(1, null, false, true, false);
+        TrackExportManager.export(track, result, config, tmp, "");
+
+        System.out.println("  Files written: ");
+        try (Stream<Path> walk = Files.walk(tmp)) {
+            walk.filter(Files::isRegularFile)
+                    .map(tmp::relativize)
+                    .sorted()
+                    .forEach(p -> System.out.println("    " + p));
+        }
+        System.out.println("  Contents of export_report.txt:");
+        for (String line : Files.readAllLines(tmp.resolve("export_report.txt"))) {
+            System.out.println("    " + line);
+        }
+        deleteRecursively(tmp);
+        System.out.println("  (temp directory cleaned up after printing)");
+    }
+
     private static void deleteRecursively(Path root) throws IOException {
         try (Stream<Path> walk = Files.walk(root)) {
             for (Path p : walk.sorted(Comparator.reverseOrder()).collect(Collectors.toList())) {
@@ -305,5 +392,7 @@ public class Step5MethodsDemo {
         outOfBoundsVsMissingFrameComparison(s, zMap);
         exportFolderDemo(t, s, zMap);
         invalidXYVsInvalidZComparison();
+        nanXIsNeverSampledComparison();
+        reportNotesOtherFormatsComparison();
     }
 }
