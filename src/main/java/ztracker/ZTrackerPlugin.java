@@ -2,7 +2,6 @@ package ztracker;
 
 import ij.IJ;
 import ij.plugin.PlugIn;
-import ztracker.core.FrameAligner;
 import ztracker.core.ZAggregator;
 import ztracker.core.ZExtractor;
 import ztracker.core.ZSampler;
@@ -98,11 +97,10 @@ public class ZTrackerPlugin implements PlugIn {
         }
 
         // ── Steps 4–6: Frame offset, methods, export config ───────────────────
+        // Step 4 validates + logs the alignment for the confirmed offset, so no
+        // separate FrameAligner.validate() call is needed here.
         dialog.setLoadedData(trackData, stack);
         if (!dialog.runSteps4To6()) return;
-
-        // ── Validate alignment (for log only; offset already confirmed by user) ─
-        FrameAligner.validate(trackData, stack, dialog.frameOffset);
 
         // ── Extract Z coordinates ─────────────────────────────────────────────
         IJ.showStatus("Extracting Z coordinates…");

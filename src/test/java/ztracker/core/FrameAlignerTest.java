@@ -215,6 +215,19 @@ class FrameAlignerTest {
     }
 
     @Test
+    void buildPreview_headerStatesScopeAcrossAllTracks() {
+        // Two tracks, five detections — the header must state it checks ALL of them.
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+        TrackData track = trackWithIds(
+                new int[]{0, 1, 2, 3, 3},
+                new String[]{"A", "A", "B", "B", "B"});
+
+        String preview = FrameAligner.buildPreview(track, stack, 1);
+
+        assertTrue(preview.contains("ALL 2 track(s) / 5 detection(s)"), preview);
+    }
+
+    @Test
     void buildPreview_perTrackProblem_callsOutTheOffendingTrack() {
         LoadedStack stack = stackWithFrames(1, 2, 3, 4);
         TrackData track = trackWithIds(

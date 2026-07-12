@@ -334,12 +334,22 @@ public class ZTrackerDialog {
             if (gd.wasCanceled()) return false;
 
             int offset    = (int) gd.getNextNumber();
+            FrameAligner.AlignmentReport report =
+                    FrameAligner.validate(loadedTrack, loadedStack, offset);
             String preview = FrameAligner.buildPreview(loadedTrack, loadedStack, offset);
+
+            // The offset is "clean" only when every detection in every track maps to
+            // an existing TIFF. When it isn't, the confirmation must be a deliberate
+            // act — so default the checkbox OFF and relabel it.
+            boolean clean = !report.hasWarning() && report.problemTracks().isEmpty();
+            String confirmLabel = clean
+                    ? "Alignment looks correct — continue"
+                    : "I have reviewed the warnings above — continue anyway";
 
             // Confirmation dialog with alignment preview
             GenericDialog confirm = new GenericDialog("ZTracker — Step 4: Confirm Alignment");
             confirm.addMessage(preview);
-            confirm.addCheckbox("Alignment looks correct — continue", true);
+            confirm.addCheckbox(confirmLabel, clean);
             confirm.showDialog();
 
             if (confirm.wasCanceled()) return false;

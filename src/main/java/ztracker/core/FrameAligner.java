@@ -199,12 +199,17 @@ public class FrameAligner {
         for (int f : track.frame) unique.add(f);
         List<Integer> sample = pickPreviewFrames(new ArrayList<>(unique));
 
+        List<TrackAlignment> perTrack = perTrackAlignment(track, stack, offset);
+
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("TIFF files: frames %d – %d%n",
                 stack.firstFrame(), stack.lastFrame()));
         sb.append(String.format("CSV frames: %d – %d (offset = %+d)%n",
                 unique.first(), unique.last(), offset));
+        sb.append(String.format("Checked across ALL %d track(s) / %d detection(s)%n",
+                perTrack.size(), track.frame.length));
         sb.append(String.format("─────────────────────────────────%n"));
+        sb.append(String.format("Sample frames (global first / middle / last):%n"));
 
         for (int csvF : sample) {
             int tiffF  = csvF + offset;
@@ -212,7 +217,7 @@ public class FrameAligner {
             sb.append(String.format("  CSV %5d  →  TIFF %5d   %s%n", csvF, tiffF, tag));
         }
 
-        appendPerTrackSummary(sb, perTrackAlignment(track, stack, offset), offset);
+        appendPerTrackSummary(sb, perTrack, offset);
 
         int missing = 0;
         for (int f : unique) if (!available.contains(f + offset)) missing++;
