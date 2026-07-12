@@ -103,8 +103,8 @@ class FrameAlignerTest {
     }
 
     @Test
-    void validate_wrongOffset_countsAllMissing() {
-        // Applying offset 0 to a 0-based CSV leaves every frame unmapped (TIFF starts at 1).
+    void validate_wrongOffset_flagsMissingAndKeepsSuggestion() {
+        // Applying offset 0 to a 0-based CSV leaves frame 0 unmapped (TIFF starts at 1).
         TrackData track = trackWithFrames(0, 1, 2, 3);
         LoadedStack stack = stackWithFrames(1, 2, 3, 4);
 

@@ -60,9 +60,6 @@ public class Step4AlignmentDemo {
     }
 
     private static void scenario(String title, int[] csv, int[] tiff, int chosenOffset) {
-        TrackData t = track(csv);
-        LoadedStack s = stack(tiff);
-
         scenario(title, csv, tiff, singleIds(csv.length), chosenOffset);
     }
 
@@ -98,6 +95,13 @@ public class Step4AlignmentDemo {
                     ta.trackId, ta.firstFrame, ta.lastFrame, ta.detectionCount,
                     ta.fullyMapped() ? "all OK" : (ta.missingCount + " MISSING"));
         }
+        // Step-4 confirm box: the checkbox defaults ON only when the offset is clean
+        // (every detection in every track maps); otherwise it defaults OFF and asks
+        // for a deliberate "continue anyway".
+        boolean clean = !rep.hasWarning() && rep.problemTracks().isEmpty();
+        System.out.println("  confirm checkbox -> " + (clean
+                ? "CHECKED   \"Alignment looks correct - continue\""
+                : "UNCHECKED \"I have reviewed the warnings above - continue anyway\""));
     }
 
     public static void main(String[] args) {
@@ -126,6 +130,16 @@ public class Step4AlignmentDemo {
                 new int[]{1, 2, 3, 4},
                 new String[]{"A", "A", "A", "B", "B"},
                 1);
+
+        // Show the exact multi-line text the step-4 confirmation box renders (using
+        // scenario G): note the "Checked across ALL N track(s) / M detection(s)"
+        // header that makes the all-track scope explicit.
+        System.out.println("\n============================================================");
+        System.out.println("Step-4 confirm box text (scenario G, offset +1):");
+        System.out.println("------------------------------------------------------------");
+        System.out.print(FrameAligner.buildPreview(
+                track(new int[]{0, 1, 2, 8, 9}, new String[]{"A", "A", "A", "B", "B"}),
+                stack(1, 2, 3, 4), 1));
     }
 
     private static int[] range(int firstInclusive, int lastInclusive) {
