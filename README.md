@@ -142,10 +142,20 @@ point is dropped, and only from the export(s) it actually breaks:
   genuine gap in the sequence (e.g. `0,1,3` if frame 2 was dropped) — never a shift or
   compaction (never `0,1,2`). This is intentional: it distinguishes "this cell wasn't
   trackable here" from "the recording only ran this long."
-- A per-track report is logged to the Fiji Log on **every** export run (capped at 50 rows
-  for on-screen readability) and written in full, uncapped, to `export_report.txt`
-  alongside the `.npy` output — one line per track, showing 2D and 3D independently, e.g.:
+- A per-track report is logged to the Fiji Log on **every** export run — regardless of
+  which Step-6 formats you actually chose — (capped at 50 rows for on-screen readability)
+  and written in full, uncapped, to `export_report.txt` alongside the `.npy` output — one
+  line per track, showing 2D and 3D independently, e.g.:
   `Track A  2D ✓ (2/3 pt) — dropped 1: 1 invalid X/Y | 3D ✓ (1/3 pt) — dropped 2: 1 invalid X/Y, 1 missing frame`
+- **The 2D/3D verdict is specifically about the `.npy` output.** If you leave the `.npy`
+  checkbox unchecked in Step 6, every track's line reads
+  `2D ✗ (npy export off) | 3D ✗ (npy export off)` — that's *not* a sign nothing was
+  exported, it's just that this report has nothing to say about `.npy` since it never ran.
+  Results Table CSV and ROI zip are tracked independently: whenever either is enabled, the
+  line gets a trailing segment naming which format(s) and how many points made it in, e.g.
+  `Track A  2D ✗ (npy export off) | 3D ✗ (npy export off) | Results Table: 3/3 pt` — so a
+  track that only went into the CSV/ROI (with npy off) doesn't misleadingly look like a
+  total export failure.
 - A missing TIFF frame and an out-of-bounds position produce the identical symptom (NaN
   Z, zero samples) but need different fixes — a bad detection X/Y (check the CSV) vs. a
   frame-offset problem (revisit Step 4) — so they're counted and reported separately
@@ -202,3 +212,4 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p4.4 | Applied the same keep-track/drop-point treatment to invalid X/Y (previously excluded the whole track); `TrackCsvLoader` now counts and logs unparseable/blank/NaN X or Y rows instead of silently dropping them |
 | p4.5 | Fixed a misleading `3D(insufficientValidZ)` summary label (a 3D shortfall can come from X/Y drops alone, not just Z) to `3D(insufficientValidPoints)`; closed test gaps confirming invalid-X/Y and invalid-Z drop reasons don't conflate when both occur in the same track |
 | p4.6 | Fixed a latent bug: `ZExtractor` never checked for NaN X/Y before sampling, and `Math.round(Double.NaN) == 0` in Java meant a NaN X was silently treated as `x=0`, producing a bogus "valid" Z at a phantom pixel instead of failing (final `.npy` output was unaffected — `TrackExportManager` already caught it downstream — but `ZExtractor`'s own log/counts overcounted). Now checked up front with a new `ExtractionResult.STATUS_INVALID_XY`/`invalidXYCount`, shared with `TrackExportManager` instead of a separate local constant |
+| p4.7 | Per-track report now notes when Results Table CSV / ROI zip are enabled, even with `.npy` off — previously a track's line read `2D ✗ (npy export off) \| 3D ✗ (npy export off)` regardless of whether its points landed fine in another format, misleadingly reading as a total export failure |

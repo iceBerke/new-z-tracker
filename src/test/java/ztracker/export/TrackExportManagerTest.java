@@ -333,6 +333,42 @@ class TrackExportManagerTest {
         assertTrue(content.contains("Exported 2D=1, 3D=1"), "should include the summary line");
     }
 
+    @Test
+    void export_reportNotesFijiFormats_evenWithNpyOff(@TempDir Path outDir) throws IOException {
+        TrackData track = threeDetectionTrack();
+        ExtractionResult result = validResult();
+        // npy off, Results Table CSV on -- the per-track report must still note the track's
+        // points landed in the CSV rather than just saying "npy off" for both dimensions,
+        // which would misleadingly read as if nothing at all was exported for this track.
+        ExportConfig config = new ExportConfig(3, null, false, true, false);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        assertFalse(Files.exists(outDir.resolve("tracks_2D")));
+        assertTrue(Files.exists(outDir.resolve("fiji").resolve("results_table.csv")));
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains(
+                "2D ✗ (npy export off) | 3D ✗ (npy export off) | Results Table: 3/3 pt"),
+                "should note the track's points still landed in the Results Table despite npy being off");
+    }
+
+    @Test
+    void export_noFijiFormatsSegment_whenNeitherResultsTableNorRoiEnabled(
+            @TempDir Path outDir) throws IOException {
+        TrackData track = threeDetectionTrack();
+        ExtractionResult result = validResult();
+        ExportConfig config = new ExportConfig(3, null, true, false, false);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertFalse(content.contains("Results Table"),
+                "no Fiji-format segment should appear when neither format is enabled");
+    }
+
     /** Reads the row count out of a .npy file's header (e.g. "'shape': (3, 4), "). */
     private static int npyRowCount(Path npyFile) throws IOException {
         byte[] bytes = Files.readAllBytes(npyFile);

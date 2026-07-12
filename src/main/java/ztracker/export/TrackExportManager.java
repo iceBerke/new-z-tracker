@@ -206,7 +206,8 @@ public class TrackExportManager {
             reportLines.add(buildTrackReportLine(trackId, n, config.exportNpy,
                     did2D, valid2D.size(), dropReasons2D,
                     did3D, valid3D.size(), dropReasons3D,
-                    config.minTrackLength));
+                    config.minTrackLength,
+                    config.exportResultsTable, config.exportRoiSet));
 
             // ── Accumulate for Fiji export — only points with a real position (invalid-XY
             //    points can't be placed on the image at all); NaN-Z points are still included
@@ -264,19 +265,39 @@ public class TrackExportManager {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /** Builds one report line for a track that made it past the whole-track filters,
-     *  covering 2D and 3D independently since each is now gated on its own valid-point count. */
+     *  covering 2D and 3D independently since each is now gated on its own valid-point count,
+     *  plus a trailing note when Results Table CSV and/or ROI export are active — those
+     *  formats aren't split into 2D/3D (a single flat table with an optional Z column), so
+     *  they'd otherwise go unmentioned whenever npy itself is off, reading as if nothing at
+     *  all was exported for the track even though it may have landed in those formats fine. */
     private static String buildTrackReportLine(
             String trackId, int totalPoints, boolean npyEnabled,
             boolean did2D, int valid2DCount, Map<String, Integer> dropReasons2D,
             boolean did3D, int valid3DCount, Map<String, Integer> dropReasons3D,
-            int minTrackLength) {
+            int minTrackLength,
+            boolean resultsTableEnabled, boolean roiSetEnabled) {
 
         String twoDPart = buildDimensionPart(
                 "2D", npyEnabled, did2D, valid2DCount, totalPoints, minTrackLength, dropReasons2D);
         String threeDPart = buildDimensionPart(
                 "3D", npyEnabled, did3D, valid3DCount, totalPoints, minTrackLength, dropReasons3D);
 
-        return String.format("Track %-10s %s | %s", trackId, twoDPart, threeDPart);
+        String line = String.format("Track %-10s %s | %s", trackId, twoDPart, threeDPart);
+
+        if (resultsTableEnabled || roiSetEnabled) {
+            StringBuilder formats = new StringBuilder();
+            if (resultsTableEnabled) formats.append("Results Table");
+            if (roiSetEnabled) {
+                if (formats.length() > 0) formats.append("+");
+                formats.append("ROI");
+            }
+            // Results Table/ROI use the same valid-X/Y point set as 2D npy (they never
+            // needed Z), so valid2DCount is the accurate "how many points made it in" count
+            // regardless of whether npy itself is enabled.
+            line += String.format(" | %s: %d/%d pt", formats, valid2DCount, totalPoints);
+        }
+
+        return line;
     }
 
     private static String buildDimensionPart(
