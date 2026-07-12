@@ -67,6 +67,9 @@ class ZExtractorTest {
 
         assertEquals(1, result.missingFrameCount);
         assertEquals(0, result.outOfBoundsCount);
+
+        assertEquals(ExtractionResult.STATUS_OK, result.sampleStatus[0]);
+        assertEquals(ExtractionResult.STATUS_MISSING_FRAME, result.sampleStatus[1]);
     }
 
     @Test
@@ -88,6 +91,7 @@ class ZExtractorTest {
         assertEquals(0, result.numSamples[0]);
         assertEquals(0, result.missingFrameCount);
         assertEquals(1, result.outOfBoundsCount);
+        assertEquals(ExtractionResult.STATUS_OUT_OF_BOUNDS, result.sampleStatus[0]);
     }
 
     @Test
@@ -111,6 +115,32 @@ class ZExtractorTest {
         // neighbours (all index 1, unmapped) -> median of the single mapped value.
         assertEquals(12.5, result.z[0], 1e-9);
         assertTrue(result.numUnmapped[0] > 0);
+        // Aggregate still succeeded (partial unmapped), so this is NOT flagged as an issue.
+        assertEquals(ExtractionResult.STATUS_OK, result.sampleStatus[0]);
+    }
+
+    @Test
+    void extract_everySampledIndexUnmapped_producesUnmappedIndexStatus() {
+        // zMapping is completely empty -> every sampled index (however many) fails to
+        // resolve, so the aggregate is NaN. Unlike the partial-unmapped case above,
+        // this must be flagged as an issue (STATUS_UNMAPPED_INDEX), not STATUS_OK.
+        Map<Integer, Double> emptyMapping = new HashMap<>();
+
+        TrackData track = new TrackData(
+                new double[]{1.0}, new double[]{1.0}, new int[]{0},
+                new double[]{1.0}, new String[]{"1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+
+        ExtractionResult result = ZExtractor.extract(
+                track, singleFrameStack(), emptyMapping, 0,
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+
+        assertTrue(Double.isNaN(result.z[0]));
+        assertEquals(1, result.numSamples[0]);   // a pixel WAS sampled...
+        assertEquals(1, result.numUnmapped[0]);  // ...it just had no Z-mapping entry
+        assertEquals(0, result.missingFrameCount);
+        assertEquals(0, result.outOfBoundsCount);
+        assertEquals(ExtractionResult.STATUS_UNMAPPED_INDEX, result.sampleStatus[0]);
     }
 
     @Test

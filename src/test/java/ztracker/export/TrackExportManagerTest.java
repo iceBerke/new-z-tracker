@@ -114,6 +114,42 @@ class TrackExportManagerTest {
         assertFalse(Files.exists(outDir.resolve("tracks_3D").resolve("track_00001.npy")));
     }
 
+    /** A track where every detection has a NaN Z (all missing frames). */
+    private static ExtractionResult allNaNResult() {
+        return new ExtractionResult(
+                new double[]{Double.NaN, Double.NaN, Double.NaN},
+                new double[]{Double.NaN, Double.NaN, Double.NaN},
+                new int[]{0, 0, 0},
+                new int[]{0, 0, 0},
+                new String[]{
+                        ExtractionResult.STATUS_MISSING_FRAME,
+                        ExtractionResult.STATUS_MISSING_FRAME,
+                        ExtractionResult.STATUS_MISSING_FRAME},
+                "Radius-based", "Median", 3, 0);
+    }
+
+    @Test
+    void export_allPointsBad_keeps2DButSkips3DEntirely(@TempDir Path outDir) throws IOException {
+        TrackData track = threeDetectionTrack();
+        ExtractionResult result = allNaNResult();
+        ExportConfig config = new ExportConfig(3, null, true, false, false);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        // 2D is unaffected by Z at all -> still exported with all 3 points.
+        Path npy2D = outDir.resolve("tracks_2D").resolve("track_00001.npy");
+        assertTrue(Files.exists(npy2D));
+        assertEquals(3, npyRowCount(npy2D));
+
+        // 0 valid-Z points < minTrackLength -> 3D skipped entirely, not written at all.
+        assertFalse(Files.exists(outDir.resolve("tracks_3D").resolve("track_00001.npy")));
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains("dropped 3: 3 missing frame"),
+                "report should attribute all 3 drops to missing frame");
+    }
+
     @Test
     void export_droppedPointFromMidTrack_leavesGenuineGapInFrameNumbers_notRenumbered(
             @TempDir Path outDir) throws IOException {
