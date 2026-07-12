@@ -67,7 +67,11 @@ public class Step4AlignmentDemo {
         System.out.println("  TIFF frames: " + Arrays.toString(tiff));
         System.out.println("  ----");
         System.out.println("  suggestOffset()  -> " + signed(suggested)
-                + "   (auto guess the dialog pre-fills)");
+                + "   (start-anchored guess the dialog pre-fills)");
+        System.out.println("  suggestOffsetFromEnd() -> " + signed(rep.suggestedOffsetFromEnd)
+                + "   (end-anchored cross-check)");
+        System.out.println("  ranges consistent? = " + rep.rangesConsistent
+                + (rep.rangesConsistent ? "" : "   <-- spans differ, suggestion is a guess"));
         System.out.println("  validate(offset=" + signed(chosenOffset) + "):");
         System.out.println("     mapping: " + mapping(csv, tiff, chosenOffset));
         System.out.println("     missing frames   = " + rep.missingFrameCount + " / " + rep.totalUniqueFrames);
@@ -90,5 +94,8 @@ public class Step4AlignmentDemo {
 
         scenario("E) Correct offset +1, but one CSV frame (9) runs past the TIFF range",
                 new int[]{0, 1, 2, 9}, new int[]{1, 2, 3, 4}, 1);
+
+        scenario("F) Range mismatch: CSV spans 0-3 (+1 at start) but TIFF spans 1-6 (+3 at end)",
+                new int[]{0, 1, 2, 3}, new int[]{1, 2, 3, 4, 5, 6}, 1);
     }
 }

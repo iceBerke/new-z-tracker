@@ -30,6 +30,12 @@ requires a live display and has no testable business logic. Core algorithmic log
 `src/test/java` (test-scoped dependency only — this does not violate the no-runtime-deps rule
 below). Run with `mvn test`.
 
+`src/test/java/ztracker/core/Step4AlignmentDemo.java` is a **runnable walkthrough** (not a test —
+it has a `main`, no `@Test`, so Surefire ignores it but it stays compiled against the real
+`FrameAligner`). It prints `suggestOffset` / `suggestOffsetFromEnd` / `validate` results over
+several CSV-vs-TIFF alignment scenarios so the step-4 suggest-and-correct behaviour can be
+eyeballed. Run instructions are in the class javadoc.
+
 ## Critical Constraints
 
 - **Must compile to Java 8 bytecode (class file version 52).** Fiji bundles a Java 8 JVM, so a higher target causes `UnsupportedClassVersionError` at plugin load time. `pom.xml` uses `maven-compiler-plugin` with `<release>8</release>` — **never raise this target.**
@@ -100,7 +106,7 @@ To add a sampling or aggregation strategy, extend the relevant enum and its disp
 ## Known Gotchas (real bugs we've already hit)
 
 - **AWT Label.getFont() returns null before peer creation.** Calling `getFont().deriveFont(...)` on a freshly constructed `Label` that hasn't been added to a visible container will NPE. Always null-check and fall back to `new Font(Font.DIALOG, Font.PLAIN, 12)` before deriving a style.
-- **Frame indexing mismatch.** Tracking CSVs are often 0-indexed while TIFF files start at frame 1. `FrameAligner` handles a configurable offset; the most common correct value is **+1**. **Always preserve the offset confirmation/preview step** in the dialog — silent misalignment corrupts results.
+- **Frame indexing mismatch.** Tracking CSVs are often 0-indexed while TIFF files start at frame 1. `FrameAligner` handles a configurable offset; the most common correct value is **+1**. **Always preserve the offset confirmation/preview step** in the dialog — silent misalignment corrupts results. The offset *suggestion* is start-anchored (`suggestOffset` = firstTiff − minCsvFrame), but `FrameAligner` also cross-checks the **end** (`suggestOffsetFromEnd` = lastTiff − maxCsvFrame): when the two disagree the CSV and TIFF spans differ in length, so `AlignmentReport.rangesConsistent` is false and the preview warns. This catches the case where a start-anchored offset maps every CSV frame successfully (missing=0) yet the ranges still don't line up.
 - **16-bit and 32-bit indexed TIFFs.** `TiffStackLoader` stores pixels as `int[][][]`. 16-bit frames read via `ImageProcessor.getPixel(x, y)`, which already returns the correct unsigned `0–65535` value. 32-bit frames are backed by a `FloatProcessor`, so indices are read via `getf(x, y)` and rounded with `Math.round()` — using `getPixel` on a float processor truncates toward zero and can be off-by-one. Mixed bit depths within one folder are rejected with a clear error; only 16-bit and 32-bit are supported (8-bit and 24-bit RGB are rejected).
 - **CSV variety.** TrackMate CSVs have a header row followed by **3 metadata rows that must be skipped**. But not all inputs are TrackMate — some come from other trackers (e.g. columns `Track n°`, `Slice n°`, 1-based frames, latin-1 encoding, no metadata rows). Keep column detection **alias-based and tolerant**, not hard-coded to TrackMate.
 - **Frame-number extraction uses the LAST digit run in the filename, not the first.** `TiffStackLoader.extractFrameNumber` must not just take the first regex match — filenames can contain incidental numbers before the real frame index (e.g. `z_origin_32bit_0007.tif`, where "32" from "32bit" is not the frame number). Taking the first match collapses every file to the same detected frame.

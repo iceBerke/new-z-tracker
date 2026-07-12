@@ -140,6 +140,54 @@ class FrameAlignerTest {
         assertEquals(0, report.missingFrameCount);
     }
 
+    // ── suggestOffsetFromEnd & range consistency ─────────────────────────────────
+
+    @Test
+    void suggestOffsetFromEnd_cleanShift_matchesStartOffset() {
+        // CSV 0..3, TIFF 1..4: start says +1, end says +1 — consistent.
+        TrackData track = trackWithFrames(0, 1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+
+        assertEquals(1, FrameAligner.suggestOffsetFromEnd(track, stack));
+        assertEquals(FrameAligner.suggestOffset(track, stack),
+                FrameAligner.suggestOffsetFromEnd(track, stack));
+    }
+
+    @Test
+    void validate_consistentRanges_flagsRangesConsistentTrue() {
+        TrackData track = trackWithFrames(0, 1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+
+        AlignmentReport report = FrameAligner.validate(track, stack, 1);
+
+        assertTrue(report.rangesConsistent);
+        assertEquals(report.suggestedOffset, report.suggestedOffsetFromEnd);
+    }
+
+    @Test
+    void validate_differentSpanLengths_flagsRangesInconsistent() {
+        // CSV spans 0..3 (start offset +1), but TIFF spans 1..6 (end offset 6-3=+3).
+        // The ranges are different lengths — no single constant shift fits.
+        TrackData track = trackWithFrames(0, 1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4, 5, 6);
+
+        AlignmentReport report = FrameAligner.validate(track, stack, 1);
+
+        assertEquals(1, report.suggestedOffset);
+        assertEquals(3, report.suggestedOffsetFromEnd);
+        assertFalse(report.rangesConsistent);
+    }
+
+    @Test
+    void buildPreview_rangeMismatch_warnsAboutDifferingSpans() {
+        TrackData track = trackWithFrames(0, 1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4, 5, 6);
+
+        String preview = FrameAligner.buildPreview(track, stack, 1);
+
+        assertTrue(preview.contains("Start implies offset +1 but end implies +3"), preview);
+    }
+
     // ── buildPreview ─────────────────────────────────────────────────────────────
 
     @Test

@@ -27,13 +27,24 @@ public class FrameAligner {
         public final int totalUniqueFrames;
         /** Suggested offset detected from indexing mismatch (may be 0 if no hint). */
         public final int suggestedOffset;
+        /** Offset implied by the LAST frames (tiffLast - csvLast). */
+        public final int suggestedOffsetFromEnd;
+        /**
+         * True when the start-anchored and end-anchored offsets agree, i.e. the CSV
+         * and TIFF spans line up as a single constant shift. When false, the ranges
+         * have different lengths and any single suggested offset is only a guess.
+         */
+        public final boolean rangesConsistent;
 
         AlignmentReport(int offset, int missingFrameCount,
-                        int totalUniqueFrames, int suggestedOffset) {
-            this.offset             = offset;
-            this.missingFrameCount  = missingFrameCount;
-            this.totalUniqueFrames  = totalUniqueFrames;
-            this.suggestedOffset    = suggestedOffset;
+                        int totalUniqueFrames, int suggestedOffset,
+                        int suggestedOffsetFromEnd, boolean rangesConsistent) {
+            this.offset                 = offset;
+            this.missingFrameCount      = missingFrameCount;
+            this.totalUniqueFrames      = totalUniqueFrames;
+            this.suggestedOffset        = suggestedOffset;
+            this.suggestedOffsetFromEnd = suggestedOffsetFromEnd;
+            this.rangesConsistent       = rangesConsistent;
         }
 
         /** Fraction of CSV frames that are unmapped after applying offset (0–1). */
@@ -69,6 +80,22 @@ public class FrameAligner {
     }
 
     /**
+     * Offset implied by aligning the LAST CSV frame with the LAST TIFF frame:
+     * {@code tiffLast - csvLast}. Compared against {@link #suggestOffset} this
+     * detects whether the CSV and TIFF spans have the same length (a clean
+     * constant shift) or diverge (dropped/extra frames, truncated stack).
+     *
+     * @param track track data (used for its frame array)
+     * @param stack loaded TIFF stack
+     * @return end-anchored offset
+     */
+    public static int suggestOffsetFromEnd(TrackData track, LoadedStack stack) {
+        int csvLast  = Arrays.stream(track.frame).max().orElse(0);
+        int tiffLast = stack.lastFrame();
+        return tiffLast - csvLast;
+    }
+
+    /**
      * Validates the given offset and returns a full alignment report.
      * Logs a summary to the Fiji log window.
      *
@@ -89,11 +116,20 @@ public class FrameAligner {
             if (!availableFrames.contains(csvFrame + offset)) missing++;
         }
 
-        int suggested = suggestOffset(track, stack);
+        int suggested        = suggestOffset(track, stack);
+        int suggestedFromEnd = suggestOffsetFromEnd(track, stack);
+        boolean consistent   = suggested == suggestedFromEnd;
 
         logReport(uniqueCsvFrames, stack, offset, missing, suggested);
+        if (!consistent) {
+            IJ.log(String.format(
+                    "[FrameAligner] ⚠ Range mismatch: start implies offset %+d but end implies %+d. "
+                    + "CSV and TIFF spans differ in length — verify alignment.",
+                    suggested, suggestedFromEnd));
+        }
 
-        return new AlignmentReport(offset, missing, uniqueCsvFrames.size(), suggested);
+        return new AlignmentReport(offset, missing, uniqueCsvFrames.size(),
+                suggested, suggestedFromEnd, consistent);
     }
 
     /**
@@ -123,6 +159,15 @@ public class FrameAligner {
             int tiffF  = csvF + offset;
             String tag = available.contains(tiffF) ? "✓" : "✗ MISSING";
             sb.append(String.format("  CSV %5d  →  TIFF %5d   %s%n", csvF, tiffF, tag));
+        }
+
+        int startOffset = suggestOffset(track, stack);
+        int endOffset   = suggestOffsetFromEnd(track, stack);
+        if (startOffset != endOffset) {
+            sb.append(String.format(
+                    "%n  ⚠ Start implies offset %+d but end implies %+d —%n"
+                    + "    CSV and TIFF spans differ in length; verify alignment.%n",
+                    startOffset, endOffset));
         }
 
         int missing = 0;
