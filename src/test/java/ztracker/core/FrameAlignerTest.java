@@ -1,0 +1,165 @@
+package ztracker.core;
+
+import org.junit.jupiter.api.Test;
+import ztracker.core.FrameAligner.AlignmentReport;
+import ztracker.io.TiffStackLoader.LoadedStack;
+import ztracker.model.TrackData;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Tests the step-4 offset detection and validation logic.
+ *
+ * <p>The contract under test: {@code tiffFrame = csvFrame + offset}. The aligner
+ * must suggest the classic 0-vs-1 correction, count how many CSV frames fail to
+ * map after a candidate offset, and report a clean run when everything aligns.
+ */
+class FrameAlignerTest {
+
+    // ── Fixtures ──────────────────────────────────────────────────────────────
+
+    /** Builds a stack whose only meaningful content is the set of frame numbers present. */
+    private static LoadedStack stackWithFrames(int... frames) {
+        Map<Integer, Integer> frameToIdx = new HashMap<>();
+        List<Integer> frameNumbers = new ArrayList<>();
+        int[][][] pixels = new int[frames.length][1][1];
+        for (int i = 0; i < frames.length; i++) {
+            frameToIdx.put(frames[i], i);
+            frameNumbers.add(frames[i]);
+        }
+        return new LoadedStack(pixels, frameToIdx, frameNumbers, 1, 1);
+    }
+
+    /** Builds track data whose only meaningful content is the per-detection frame numbers. */
+    private static TrackData trackWithFrames(int... frames) {
+        double[] x = new double[frames.length];
+        double[] y = new double[frames.length];
+        double[] radius = new double[frames.length];
+        String[] trackId = new String[frames.length];
+        for (int i = 0; i < frames.length; i++) {
+            radius[i] = Double.NaN;
+            trackId[i] = "1";
+        }
+        return new TrackData(x, y, frames, radius, trackId,
+                "X", "Y", "Frame", "Track_ID", null, 3.5);
+    }
+
+    // ── suggestOffset ───────────────────────────────────────────────────────────
+
+    @Test
+    void suggestOffset_zeroBasedCsvOneBasedTiff_suggestsPlusOne() {
+        // CSV frames start at 0, TIFF files start at 1 — the classic mismatch.
+        TrackData track = trackWithFrames(0, 1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+
+        assertEquals(1, FrameAligner.suggestOffset(track, stack));
+    }
+
+    @Test
+    void suggestOffset_alreadyAligned_suggestsZero() {
+        TrackData track = trackWithFrames(1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3);
+
+        assertEquals(0, FrameAligner.suggestOffset(track, stack));
+    }
+
+    @Test
+    void suggestOffset_oneBasedCsvZeroBasedTiff_suggestsMinusOne() {
+        TrackData track = trackWithFrames(1, 2, 3);
+        LoadedStack stack = stackWithFrames(0, 1, 2);
+
+        assertEquals(-1, FrameAligner.suggestOffset(track, stack));
+    }
+
+    @Test
+    void suggestOffset_usesMinimumFrameNotFirstRow() {
+        // Detections are unordered; the suggestion must key off the minimum CSV frame.
+        TrackData track = trackWithFrames(5, 2, 8, 0);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4, 5, 6, 7, 8, 9);
+
+        assertEquals(1, FrameAligner.suggestOffset(track, stack));
+    }
+
+    // ── validate ────────────────────────────────────────────────────────────────
+
+    @Test
+    void validate_correctOffset_reportsNoMissingFrames() {
+        TrackData track = trackWithFrames(0, 1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+
+        AlignmentReport report = FrameAligner.validate(track, stack, 1);
+
+        assertEquals(1, report.offset);
+        assertEquals(0, report.missingFrameCount);
+        assertEquals(4, report.totalUniqueFrames);
+        assertEquals(0.0, report.missingFraction());
+        assertFalse(report.hasWarning());
+    }
+
+    @Test
+    void validate_wrongOffset_countsAllMissing() {
+        // Applying offset 0 to a 0-based CSV leaves every frame unmapped (TIFF starts at 1).
+        TrackData track = trackWithFrames(0, 1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+
+        AlignmentReport report = FrameAligner.validate(track, stack, 0);
+
+        assertEquals(1, report.missingFrameCount); // only CSV frame 0 lacks a TIFF; 1,2,3 exist
+        assertTrue(report.hasWarning());
+        assertEquals(1, report.suggestedOffset); // still recommends the correct fix
+    }
+
+    @Test
+    void validate_partialMismatch_countsOnlyUnmappedFrames() {
+        // Offset 1 maps CSV {0,1,2,9} → TIFF {1,2,3,10}; frame 10 is absent.
+        TrackData track = trackWithFrames(0, 1, 2, 9);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+
+        AlignmentReport report = FrameAligner.validate(track, stack, 1);
+
+        assertEquals(1, report.missingFrameCount);
+        assertEquals(4, report.totalUniqueFrames);
+        assertEquals(0.25, report.missingFraction());
+        assertTrue(report.hasWarning());
+    }
+
+    @Test
+    void validate_duplicateFrames_countUniqueOnly() {
+        // Many detections share frames; the report must be over UNIQUE frames.
+        TrackData track = trackWithFrames(0, 0, 1, 1, 1, 2);
+        LoadedStack stack = stackWithFrames(1, 2, 3);
+
+        AlignmentReport report = FrameAligner.validate(track, stack, 1);
+
+        assertEquals(3, report.totalUniqueFrames);
+        assertEquals(0, report.missingFrameCount);
+    }
+
+    // ── buildPreview ─────────────────────────────────────────────────────────────
+
+    @Test
+    void buildPreview_allAligned_reportsSuccess() {
+        TrackData track = trackWithFrames(0, 1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+
+        String preview = FrameAligner.buildPreview(track, stack, 1);
+
+        assertTrue(preview.contains("offset = +1"), preview);
+        assertTrue(preview.contains("All 4 CSV frames map"), preview);
+    }
+
+    @Test
+    void buildPreview_missingFrames_flagsWarning() {
+        TrackData track = trackWithFrames(0, 1, 2, 3);
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+
+        String preview = FrameAligner.buildPreview(track, stack, 0);
+
+        assertTrue(preview.contains("MISSING"), preview);
+    }
+}
