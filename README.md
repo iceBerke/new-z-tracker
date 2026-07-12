@@ -14,13 +14,13 @@ ZTracker_Fiji/
 └── src/main/
     ├── java/ztracker/
     │   ├── ZTrackerPlugin.java          ← plugin entry point
-    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard (Step 1: custom AWT; Steps 2–6: GenericDialog)
+    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard (Steps 1 & 4: custom AWT; Steps 2, 3, 5, 6: GenericDialog)
     │   ├── io/
     │   │   ├── ZMappingLoader.java      ← JSON index→Z parsing (no external lib)
     │   │   ├── TiffStackLoader.java     ← TIFF folder loader with frame→index map
     │   │   └── TrackCsvLoader.java      ← TrackMate CSV parser + column auto-detect
     │   ├── core/
-    │   │   ├── FrameAligner.java        ← CSV-to-TIFF offset detection + preview
+    │   │   ├── FrameAligner.java        ← CSV-to-TIFF offset suggestion + per-track alignment reporting
     │   │   ├── ZSampler.java            ← radius / 4-neighbor / single-pixel sampling
     │   │   ├── ZAggregator.java         ← median / mean / mode aggregation
     │   │   └── ZExtractor.java          ← orchestrates sampling + mapping + aggregation
@@ -86,7 +86,7 @@ The plugin runs as a 6-step dialog wizard:
 | 1 | Z-mapping JSON, TIFF projection folder, tracking CSV (TrackMate and other formats) |
 | 2 | CSV format (header row, skip rows, default radius) |
 | 3 | Column names (auto-detected, editable) |
-| 4 | CSV-to-TIFF frame offset (with alignment preview) |
+| 4 | CSV-to-TIFF frame offset — a live-updating box shows a per-track verdict as you type; a suggested offset is pre-filled, and the full per-track table (each track's span + how its first/last frame maps) is written to the Log for verification |
 | 5 | Sampling method (Radius / 4-Neighbor / Single Pixel) + aggregation (Median / Mean / Mode) |
 | 6 | Output directory, track length filter, Z-std filter, export formats |
 
@@ -106,7 +106,7 @@ Same as the Python pipeline:
 
 - **JSON mapping**: `{"0": -600.0, "1": -599.0, ...}` (string keys, float values)
 - **TIFF stack**: 16-bit unsigned integer or 32-bit indexed, one file per timepoint, numeric filenames (all frames must share the same bit depth)
-- **CSV**: TrackMate format; required columns: X, Y, Frame, Track_ID
+- **CSV**: TrackMate or other tracker formats (alias-based column auto-detection); required columns: X, Y, Frame, Track_ID
 
 ---
 
@@ -135,3 +135,9 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p3.0 | Step 1 label/description tweaks: renamed "TIFF projection folder" to "Z-origin TIFF projection folder"; trimmed JSON description |
 | p3.1 | Added 32-bit indexed TIFF support (`TiffStackLoader` now stores `int[][][]` pixels); fixed frame-number extraction to use the trailing digit run instead of the first (was misdetecting filenames like `z_origin_32bit_0007.tif`); introduced JUnit 5 test suite (`ZSamplerTest`, `TiffStackLoaderTest`) |
 | p3.2 | Reworded Step 2 header text; fixed `TrackCsvLoader` alias lists to actually include `Track n°`/`Slice n°` as documented; added `TrackCsvLoaderTest` |
+| p3.3 | Added a start/end range-consistency cross-check to frame alignment (superseded in p3.4); added `FrameAlignerTest` |
+| p3.4 | Replaced the range-consistency heuristic (it false-alarmed on tracks that cover only part of the recording) with **per-track** alignment reporting (`AlignmentReport.perTrack`); correctness stays per-frame (`missingFrameCount`) |
+| p3.5 | Step-4 confirmation reflects validation across **all** tracks: scope line + a checkbox that defaults off (and relabels) when any track has missing frames |
+| p3.6 | Reworked Step 4 into a single **live-updating custom AWT dialog** (verdict + checkbox update as you type); compact `buildBoxSummary` verdict; full per-track table logged |
+| p3.7 | Log the full per-track table **before** confirm too (once per distinct offset evaluated, deduped), not only on OK; `CONFIRMED` header on the final record |
+| p3.8 | Made the Step-4 dialog **modeless** (blocks the plugin thread with a latch, not by AWT modality) so the Log stays interactive/resizable; order per-track rows by **track id** (numeric-aware, so `10` sorts after `2`). Later follow-up: extracted `buildPerTrackTable` for direct test coverage (no runtime change) |
