@@ -24,13 +24,24 @@ public class ExtractionResult {
     /** Aggregation method label used. */
     public final String aggregationMethod;
 
+    /** Detections whose TIFF frame doesn't exist in the loaded stack at all. */
+    public final int missingFrameCount;
+
+    /** Detections whose frame exists, but the sampled position (or its whole
+     *  radius/corner footprint) fell outside the image bounds. Distinct from
+     *  {@link #missingFrameCount} because the fix differs: a frame-offset problem
+     *  vs. a bad detection coordinate. */
+    public final int outOfBoundsCount;
+
     public ExtractionResult(
             double[] z,
             double[] zStd,
             int[]    numSamples,
             int[]    numUnmapped,
             String   samplingMethod,
-            String   aggregationMethod) {
+            String   aggregationMethod,
+            int      missingFrameCount,
+            int      outOfBoundsCount) {
 
         this.z                 = z;
         this.zStd              = zStd;
@@ -38,6 +49,8 @@ public class ExtractionResult {
         this.numUnmapped       = numUnmapped;
         this.samplingMethod    = samplingMethod;
         this.aggregationMethod = aggregationMethod;
+        this.missingFrameCount = missingFrameCount;
+        this.outOfBoundsCount  = outOfBoundsCount;
     }
 
     /** Number of detections with a valid (non-NaN) Z value. */

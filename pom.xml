@@ -15,7 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <patch.version>p4.0</patch.version>
+        <patch.version>p4.1</patch.version>
     </properties>
 
     <repositories>

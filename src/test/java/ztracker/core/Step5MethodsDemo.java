@@ -30,6 +30,14 @@ import java.util.stream.Stream;
  *   <li>Runs {@link ZExtractor#extractAll} over the full 3x2 sampling x aggregation
  *       cross product (what Step 5's "All" / "All" selection triggers) and prints one
  *       row per combination.</li>
+ *   <li>Places a detection right at the image edge — still in-bounds for SINGLE_PIXEL,
+ *       but far enough out that RADIUS's disk and FOUR_NEIGHBOR's corners get clipped by
+ *       the frame boundary — and prints the reduced sample counts.</li>
+ *   <li>Places a detection far outside the frame entirely (frame exists, position doesn't)
+ *       and shows that {@link ExtractionResult#outOfBoundsCount} is incremented instead of
+ *       {@link ExtractionResult#missingFrameCount} — the two are genuinely different root
+ *       causes (bad detection coordinates vs. a frame-offset problem) and are now reported
+ *       to the user separately rather than both being logged as "missing frames".</li>
  *   <li>Actually exports two of those combinations via {@link TrackExportManager} into a
  *       temp directory and prints the resulting file tree, so the
  *       {@code outputDir/<sampling>/<aggregation>/...} subfolder layout can be verified
@@ -138,8 +146,58 @@ public class Step5MethodsDemo {
                 + " independent of method)");
     }
 
+    private static void edgeOfImageComparison(LoadedStack s, Map<Integer, Double> zMap) {
+        System.out.println("\n--- 4) Edge-of-image detection: x=4.4, y=2.4 (col 4 is the last valid "
+                + "column in a 5-wide frame) ---");
+        System.out.println("  SINGLE_PIXEL's nearest pixel (4,2) is still in-bounds, so it samples "
+                + "normally. RADIUS's disk and FOUR_NEIGHBOR's corners both reach past column 4 into "
+                + "column 5, which doesn't exist — those out-of-frame samples are silently dropped, "
+                + "not clamped, so their sample counts shrink instead of erroring.");
+        for (ZSampler.Method method : ZSampler.Method.values()) {
+            double[] indices = ZSampler.sample(s, 4.4, 2.4, 0, 0, 1.0, method);
+            double[] zValues = Arrays.stream(indices)
+                    .map(idx -> zMap.get((int) Math.round(idx)))
+                    .toArray();
+            System.out.printf("  %-14s samples=%d  indices=%-20s z=%s%n",
+                    method.label, indices.length, Arrays.toString(indices), Arrays.toString(zValues));
+        }
+    }
+
+    private static void outOfBoundsVsMissingFrameComparison(LoadedStack s, Map<Integer, Double> zMap) {
+        System.out.println("\n--- 5) Out-of-bounds position vs. genuinely missing frame ---");
+        System.out.println("  Two failure detections that both end up with 0 samples / NaN Z, but for "
+                + "different reasons — ZExtractor now counts and reports them separately instead of "
+                + "lumping both into \"missing frames\":");
+
+        // Detection A: frame 0 exists, but (50, 50) is nowhere near the 5x5 grid.
+        TrackData outOfBoundsTrack = new TrackData(
+                new double[]{50.0}, new double[]{50.0}, new int[]{0},
+                new double[]{1.0}, new String[]{"OOB"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult oobResult = ZExtractor.extract(
+                outOfBoundsTrack, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+        System.out.printf("  Detection A: frame=0 (exists), position=(50,50) (way off-grid)%n");
+        System.out.printf("     -> z=%s | missingFrameCount=%d | outOfBoundsCount=%d%n",
+                oobResult.z[0], oobResult.missingFrameCount, oobResult.outOfBoundsCount);
+
+        // Detection B: position is fine, but frame 99 was never loaded from the TIFF folder.
+        TrackData missingFrameTrack = new TrackData(
+                new double[]{2.0}, new double[]{2.0}, new int[]{99},
+                new double[]{1.0}, new String[]{"MF"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult mfResult = ZExtractor.extract(
+                missingFrameTrack, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+        System.out.printf("  Detection B: frame=99 (no such TIFF), position=(2,2) (fine)%n");
+        System.out.printf("     -> z=%s | missingFrameCount=%d | outOfBoundsCount=%d%n",
+                mfResult.z[0], mfResult.missingFrameCount, mfResult.outOfBoundsCount);
+
+        System.out.println("  Same symptom (NaN, 0 samples), different root cause and different fix:");
+        System.out.println("    A -> bad detection X/Y (or wrong radius) — check the tracking CSV");
+        System.out.println("    B -> frame-offset / TIFF folder problem — check Step 4's alignment");
+    }
+
     private static void exportFolderDemo(TrackData t, LoadedStack s, Map<Integer, Double> zMap) throws IOException {
-        System.out.println("\n--- 4) Exporting two combinations to see the folder layout ---");
+        System.out.println("\n--- 6) Exporting two combinations to see the folder layout ---");
         Path tmp = Files.createTempDirectory("ztracker-step5-demo");
         ExportConfig config = new ExportConfig(1, null, true, false, false); // minTrackLength=1 for this tiny demo track
 
@@ -185,6 +243,8 @@ public class Step5MethodsDemo {
         samplingComparison(s, zMap);
         aggregationComparison(s, zMap);
         extractAllComparison(t, s, zMap);
+        edgeOfImageComparison(s, zMap);
+        outOfBoundsVsMissingFrameComparison(s, zMap);
         exportFolderDemo(t, s, zMap);
     }
 }

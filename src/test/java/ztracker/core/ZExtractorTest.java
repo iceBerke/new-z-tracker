@@ -64,6 +64,30 @@ class ZExtractorTest {
 
         assertEquals("Single Pixel", result.samplingMethod);
         assertEquals("Mean", result.aggregationMethod);
+
+        assertEquals(1, result.missingFrameCount);
+        assertEquals(0, result.outOfBoundsCount);
+    }
+
+    @Test
+    void extract_outOfBoundsPosition_isCountedSeparatelyFromMissingFrame() {
+        // Frame 0 exists in the stack, but the detection's position (50, 50) is far
+        // outside the 3x3 grid -> every sampling method returns zero samples even
+        // though the frame itself was found. This must be counted as "out of bounds",
+        // not lumped in with genuinely missing frames.
+        TrackData track = new TrackData(
+                new double[]{50.0}, new double[]{50.0}, new int[]{0},
+                new double[]{1.0}, new String[]{"1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+
+        ExtractionResult result = ZExtractor.extract(
+                track, singleFrameStack(), zMapping(), 0,
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+
+        assertTrue(Double.isNaN(result.z[0]));
+        assertEquals(0, result.numSamples[0]);
+        assertEquals(0, result.missingFrameCount);
+        assertEquals(1, result.outOfBoundsCount);
     }
 
     @Test
@@ -113,6 +137,8 @@ class ZExtractorTest {
                     () -> "mismatch for " + combo.sampling + "/" + combo.aggregation);
             assertEquals(expected.samplingMethod, combo.result.samplingMethod);
             assertEquals(expected.aggregationMethod, combo.result.aggregationMethod);
+            assertEquals(expected.missingFrameCount, combo.result.missingFrameCount);
+            assertEquals(expected.outOfBoundsCount, combo.result.outOfBoundsCount);
         }
     }
 }

@@ -32,7 +32,7 @@ class TrackExportManagerTest {
                 new double[]{0.1, 0.1, 0.1},
                 new int[]{5, 5, 5},
                 new int[]{0, 0, 0},
-                "Radius-based", "Median");
+                "Radius-based", "Median", 0, 0);
     }
 
     @Test

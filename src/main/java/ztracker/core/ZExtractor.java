@@ -51,6 +51,7 @@ public class ZExtractor {
         int[]    numUnmapped= new int[n];
 
         int missingFrames = 0;
+        int outOfBounds   = 0;
 
         IJ.log(String.format(
                 "[ZExtractor] Starting extraction: %d detections | %s + %s | offset=%+d",
@@ -72,7 +73,16 @@ public class ZExtractor {
                 zStd[i]        = Double.NaN;
                 numSamples[i]  = 0;
                 numUnmapped[i] = 0;
-                missingFrames++;
+                // An empty sample array means either the TIFF frame itself is missing,
+                // or the frame exists but the detection's (x,y) — or its whole radius/
+                // corner footprint — falls outside the image bounds. These are distinct
+                // causes with different fixes (frame offset vs. bad detection coordinates),
+                // so they're counted and logged separately rather than lumped together.
+                if (stack.frameToIdx.containsKey(track.frame[i] + frameOffset)) {
+                    outOfBounds++;
+                } else {
+                    missingFrames++;
+                }
                 continue;
             }
 
@@ -96,11 +106,11 @@ public class ZExtractor {
         for (double v : z) if (!Double.isNaN(v)) validCount++;
 
         IJ.log(String.format(
-                "[ZExtractor] Done: %d / %d valid Z values | %d missing frames",
-                validCount, n, missingFrames));
+                "[ZExtractor] Done: %d / %d valid Z values | %d missing frames | %d out-of-bounds positions",
+                validCount, n, missingFrames, outOfBounds));
 
         return new ExtractionResult(z, zStd, numSamples, numUnmapped,
-                sampling.label, aggregation.label);
+                sampling.label, aggregation.label, missingFrames, outOfBounds);
     }
 
     /**

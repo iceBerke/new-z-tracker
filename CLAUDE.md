@@ -39,7 +39,10 @@ eyeballed. Run instructions are in the class javadoc.
 `src/test/java/ztracker/core/Step5MethodsDemo.java` is the same kind of runnable walkthrough for
 step 5. It samples a synthetic TIFF frame (with a planted outlier pixel) using every
 `ZSampler.Method`, aggregates with every `ZAggregator.Method` to show MEDIAN's outlier robustness
-vs MEAN, runs `ZExtractor.extractAll`'s full sampling × aggregation cross product, and actually
+vs MEAN, runs `ZExtractor.extractAll`'s full sampling × aggregation cross product, places a
+detection at the image edge to show RADIUS/FOUR_NEIGHBOR getting clipped while SINGLE_PIXEL stays
+in-bounds, contrasts a genuinely out-of-bounds detection against a genuinely missing frame to show
+`ExtractionResult.outOfBoundsCount` vs `missingFrameCount` being reported separately, and actually
 exports two combinations via `TrackExportManager` into a temp dir to print the resulting
 `<sampling>/<aggregation>/...` folder tree. Run instructions are in the class javadoc.
 
@@ -124,6 +127,7 @@ one combination was run — a single chosen method still exports flat into `outp
 - **16-bit and 32-bit indexed TIFFs.** `TiffStackLoader` stores pixels as `int[][][]`. 16-bit frames read via `ImageProcessor.getPixel(x, y)`, which already returns the correct unsigned `0–65535` value. 32-bit frames are backed by a `FloatProcessor`, so indices are read via `getf(x, y)` and rounded with `Math.round()` — using `getPixel` on a float processor truncates toward zero and can be off-by-one. Mixed bit depths within one folder are rejected with a clear error; only 16-bit and 32-bit are supported (8-bit and 24-bit RGB are rejected).
 - **CSV variety.** TrackMate CSVs have a header row followed by **3 metadata rows that must be skipped**. But not all inputs are TrackMate — some come from other trackers (e.g. columns `Track n°`, `Slice n°`, 1-based frames, latin-1 encoding, no metadata rows). Keep column detection **alias-based and tolerant**, not hard-coded to TrackMate.
 - **Frame-number extraction uses the LAST digit run in the filename, not the first.** `TiffStackLoader.extractFrameNumber` must not just take the first regex match — filenames can contain incidental numbers before the real frame index (e.g. `z_origin_32bit_0007.tif`, where "32" from "32bit" is not the frame number). Taking the first match collapses every file to the same detected frame.
+- **Out-of-bounds position vs. missing frame are different root causes — don't conflate them.** `ZSampler` silently drops any sampled pixel outside `[0,width) x [0,height)` rather than clamping or erroring; near an image edge, RADIUS's disk and FOUR_NEIGHBOR's corners can get **clipped** (fewer samples than usual), and a detection whose (x,y) is far off-grid returns **zero** samples from every method, exactly like a genuinely missing TIFF frame does. `ZExtractor.extract` disambiguates the zero-sample case by checking `stack.frameToIdx.containsKey(csvFrame+frameOffset)`: if the frame exists but sampling still failed, it's counted in `ExtractionResult.outOfBoundsCount`; if the frame itself isn't in the stack, it's `missingFrameCount`. Both `ZExtractor`'s per-run log line and `ZTrackerPlugin.logExtractionSummary` report them separately — a bad detection X/Y (fix: check the CSV) and a frame-offset problem (fix: revisit Step 4) look identical as a symptom (NaN Z) but need different fixes, so don't re-merge these into one counter.
 
 ### Format parsing details
 

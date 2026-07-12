@@ -183,5 +183,12 @@ public class ZTrackerPlugin implements PlugIn {
                     "[ZTrackerPlugin] Z range: %.2f – %.2f µm (mean %.2f µm)",
                     minZ, maxZ, meanZ));
         }
+        if (result.missingFrameCount > 0 || result.outOfBoundsCount > 0) {
+            IJ.log(String.format(
+                    "[ZTrackerPlugin] %d detection(s) had no TIFF frame to sample; "
+                    + "%d detection(s) had a frame but fell outside its image bounds "
+                    + "(check the detection's X/Y against the TIFF dimensions)",
+                    result.missingFrameCount, result.outOfBoundsCount));
+        }
     }
 }
