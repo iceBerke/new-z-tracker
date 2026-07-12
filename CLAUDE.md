@@ -78,7 +78,7 @@ The entry point is `ZTrackerPlugin` (implements ImageJ's `PlugIn`). It is a **th
 Keep the package layout clean — `model` / `io` / `core` / `export` / `ui`, each with a **single responsibility**. Prefer small, focused classes over large ones. Keep business logic out of `ZTrackerPlugin`.
 
 - `ztracker` — `ZTrackerPlugin` entry point (orchestration only).
-- `ztracker.ui` — `ZTrackerDialog`, the 6-step dialog wizard (Steps 1 and 4 use custom AWT `Dialog`s — Step 1 for the resizable file picker, Step 4 for the live-updating frame-alignment box; Steps 2, 3, 5, 6 use `GenericDialog`).
+- `ztracker.ui` — `ZTrackerDialog`, the 6-step dialog wizard. **All steps are non-modal** so the ImageJ Log window stays interactive/resizable while any step is open (the Step-4 per-track table lives in the Log). Steps 1 and 4 are custom AWT `Dialog`s created modeless (`new Dialog(..., false)`) and block the plugin thread with a `CountDownLatch` counted down on OK/Cancel/close — Step 1 is the resizable file picker, Step 4 the live-updating frame-alignment box. Steps 2, 3, 5, 6 use `NonBlockingGenericDialog` (ImageJ's non-modal `GenericDialog`, whose `showDialog()` still blocks the caller so the existing `wasCanceled()`/`getNext*()` usage is unchanged). Plugins run off the EDT, so blocking the plugin thread doesn't freeze the UI.
 - `ztracker.io` — input loaders (`ZMappingLoader`, `TiffStackLoader`, `TrackCsvLoader`).
 - `ztracker.core` — extraction logic (`FrameAligner`, `ZSampler`, `ZAggregator`, `ZExtractor`).
 - `ztracker.export` — output writers (`NpyExporter`, `FijiPointsExporter`, `TrackExportManager`).

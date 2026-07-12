@@ -2,6 +2,7 @@ package ztracker.ui;
 
 import ij.IJ;
 import ij.gui.GenericDialog;
+import ij.gui.NonBlockingGenericDialog;
 import ij.io.DirectoryChooser;
 import ztracker.core.FrameAligner;
 import ztracker.core.ZAggregator;
@@ -31,6 +32,7 @@ import java.awt.TextField;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Collects all plugin parameters via a sequence of {@link GenericDialog} panels.
@@ -96,10 +98,13 @@ public class ZTrackerDialog {
     /** Step 1: Select JSON, TIFF folder, and CSV. */
     private boolean step1_files() {
         Frame parent = IJ.getInstance();
+        // Modeless (not modal) so other ImageJ windows (e.g. the Log) stay interactive
+        // while this box is open; the plugin thread is blocked below with a latch.
         final Dialog dlg = new Dialog(
                 parent != null ? parent : new Frame(),
-                "ZTracker — Step 1: Input Files", true);
+                "ZTracker — Step 1: Input Files", false);
         dlg.setLayout(new BorderLayout(8, 8));
+        final CountDownLatch closeLatch = new CountDownLatch(1);
 
         // Header
         Panel headerPanel = new Panel(new FlowLayout(FlowLayout.LEFT, 12, 8));
@@ -178,10 +183,10 @@ public class ZTrackerDialog {
         btnPanel.add(cancelBtn);
         btnPanel.add(okBtn);
 
-        okBtn.addActionListener(e     -> { confirmed[0] = true; dlg.setVisible(false); });
-        cancelBtn.addActionListener(e -> dlg.setVisible(false));
+        okBtn.addActionListener(e     -> { confirmed[0] = true; dlg.setVisible(false); closeLatch.countDown(); });
+        cancelBtn.addActionListener(e -> { dlg.setVisible(false); closeLatch.countDown(); });
         dlg.addWindowListener(new WindowAdapter() {
-            public void windowClosing(WindowEvent e) { dlg.setVisible(false); }
+            public void windowClosing(WindowEvent e) { dlg.setVisible(false); closeLatch.countDown(); }
         });
 
         dlg.add(headerPanel, BorderLayout.NORTH);
@@ -190,7 +195,14 @@ public class ZTrackerDialog {
         dlg.pack();
         dlg.setMinimumSize(dlg.getSize());
         if (parent != null) dlg.setLocationRelativeTo(parent);
-        dlg.setVisible(true); // blocks until hidden
+        dlg.setVisible(true); // modeless — returns immediately; block the plugin thread below
+        try {
+            closeLatch.await(); // wait for OK / Cancel / window close
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            dlg.dispose();
+            return false;
+        }
         dlg.dispose();
 
         if (!confirmed[0]) return false;
@@ -261,7 +273,7 @@ public class ZTrackerDialog {
 
     /** Step 2: Configure CSV parsing (header row, skip rows, default radius). */
     private boolean step2_csvFormat() {
-        GenericDialog gd = new GenericDialog("ZTracker — Step 2: CSV Format");
+        GenericDialog gd = new NonBlockingGenericDialog("ZTracker — Step 2: CSV Format");
         gd.addMessage("Specify the CSV header format and pixel size default.");
         gd.addMessage("e.g., TrackMate default: header=0, skip 3 metadata rows.");
         gd.addNumericField("Header row index:", 0, 0);
@@ -288,7 +300,7 @@ public class ZTrackerDialog {
             return false;
         }
 
-        GenericDialog gd = new GenericDialog("ZTracker — Step 3: CSV Columns");
+        GenericDialog gd = new NonBlockingGenericDialog("ZTracker — Step 3: CSV Columns");
         gd.addMessage("Auto-detected columns are shown below.\nEdit any that are incorrect.");
         gd.addStringField("X column name:", orEmpty(columnConfig.xCol), 20);
         gd.addStringField("Y column name:", orEmpty(columnConfig.yCol), 20);
@@ -338,8 +350,7 @@ public class ZTrackerDialog {
                 parent != null ? parent : new Frame(),
                 "ZTracker — Step 4: Frame Alignment", false);
         dlg.setLayout(new BorderLayout(8, 8));
-        final java.util.concurrent.CountDownLatch closeLatch =
-                new java.util.concurrent.CountDownLatch(1);
+        final CountDownLatch closeLatch = new CountDownLatch(1);
 
         // Header
         Panel header = new Panel(new FlowLayout(FlowLayout.LEFT, 12, 8));
@@ -487,7 +498,7 @@ public class ZTrackerDialog {
             ZAggregator.Method.MODE.label
         };
 
-        GenericDialog gd = new GenericDialog("ZTracker — Step 5: Extraction Methods");
+        GenericDialog gd = new NonBlockingGenericDialog("ZTracker — Step 5: Extraction Methods");
         gd.addMessage("How pixels are collected around each detection:");
         gd.addChoice("Sampling method:", samplingLabels, samplingLabels[0]);
         gd.addMessage("\nHow sampled Z values are combined into one:");
@@ -503,7 +514,7 @@ public class ZTrackerDialog {
 
     /** Step 6: Output directory, quality filters, and export format selection. */
     private boolean step6_export() {
-        GenericDialog gd = new GenericDialog("ZTracker — Step 6: Output & Export");
+        GenericDialog gd = new NonBlockingGenericDialog("ZTracker — Step 6: Output & Export");
         gd.addDirectoryField("Output directory:", "", 40);
         gd.addMessage("── Track quality filters ────────────────────");
         gd.addNumericField("Minimum track length (frames):", 3, 0);

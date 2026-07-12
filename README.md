@@ -14,7 +14,7 @@ ZTracker_Fiji/
 └── src/main/
     ├── java/ztracker/
     │   ├── ZTrackerPlugin.java          ← plugin entry point
-    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard (Steps 1 & 4: custom AWT; Steps 2, 3, 5, 6: GenericDialog)
+    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard, all non-modal (Steps 1 & 4: custom AWT; Steps 2, 3, 5, 6: NonBlockingGenericDialog) so the Log stays usable
     │   ├── io/
     │   │   ├── ZMappingLoader.java      ← JSON index→Z parsing (no external lib)
     │   │   ├── TiffStackLoader.java     ← TIFF folder loader with frame→index map
@@ -141,3 +141,4 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p3.6 | Reworked Step 4 into a single **live-updating custom AWT dialog** (verdict + checkbox update as you type); compact `buildBoxSummary` verdict; full per-track table logged |
 | p3.7 | Log the full per-track table **before** confirm too (once per distinct offset evaluated, deduped), not only on OK; `CONFIRMED` header on the final record |
 | p3.8 | Made the Step-4 dialog **modeless** (blocks the plugin thread with a latch, not by AWT modality) so the Log stays interactive/resizable; order per-track rows by **track id** (numeric-aware, so `10` sorts after `2`). Later follow-up: extracted `buildPerTrackTable` for direct test coverage (no runtime change) |
+| p3.9 | Made **all** dialog steps non-modal so the Log stays interactive/resizable throughout: Step 1 converted to a modeless custom dialog (latch-blocked like Step 4); Steps 2, 3, 5, 6 switched to `NonBlockingGenericDialog` |
