@@ -13,8 +13,7 @@ public class ZAggregator {
 
     public enum Method {
         MEDIAN("Median"),
-        MEAN("Mean"),
-        MODE("Mode");
+        MEAN("Mean");
 
         public final String label;
         Method(String label) { this.label = label; }
@@ -35,7 +34,6 @@ public class ZAggregator {
 
         if (method == Method.MEDIAN) return median(valid);
         if (method == Method.MEAN)   return mean(valid);
-        if (method == Method.MODE)   return mode(valid);
         throw new IllegalArgumentException("Unknown aggregation method: " + method);
     }
 
@@ -64,16 +62,6 @@ public class ZAggregator {
         double sum = 0.0;
         for (double v : values) sum += v;
         return sum / values.length;
-    }
-
-    /** Returns the most frequently occurring value (exact match on doubles). */
-    private static double mode(double[] values) {
-        Map<Double, Integer> freq = new LinkedHashMap<>();
-        for (double v : values) freq.merge(v, 1, Integer::sum);
-        return freq.entrySet().stream()
-                .max(Map.Entry.comparingByValue())
-                .map(Map.Entry::getKey)
-                .orElse(Double.NaN);
     }
 
     private static double[] filterNaN(double[] values) {

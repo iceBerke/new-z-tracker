@@ -5,6 +5,8 @@ import ztracker.io.TiffStackLoader.LoadedStack;
 import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -99,6 +101,44 @@ public class ZExtractor {
 
         return new ExtractionResult(z, zStd, numSamples, numUnmapped,
                 sampling.label, aggregation.label);
+    }
+
+    /**
+     * Runs {@link #extract} once per combination of {@code samplingMethods} x
+     * {@code aggregationMethods} (in that nesting order), e.g. for a Step-5 "All"
+     * selection on either or both axes.
+     */
+    public static List<MethodCombo> extractAll(
+            TrackData track,
+            LoadedStack stack,
+            Map<Integer, Double> zMapping,
+            int frameOffset,
+            List<ZSampler.Method> samplingMethods,
+            List<ZAggregator.Method> aggregationMethods) {
+
+        List<MethodCombo> results = new ArrayList<>();
+        for (ZSampler.Method sampling : samplingMethods) {
+            for (ZAggregator.Method aggregation : aggregationMethods) {
+                ExtractionResult result = extract(
+                        track, stack, zMapping, frameOffset, sampling, aggregation);
+                results.add(new MethodCombo(sampling, aggregation, result));
+            }
+        }
+        return results;
+    }
+
+    /** One (sampling, aggregation) combination paired with its extraction result. */
+    public static class MethodCombo {
+        public final ZSampler.Method    sampling;
+        public final ZAggregator.Method aggregation;
+        public final ExtractionResult   result;
+
+        public MethodCombo(ZSampler.Method sampling, ZAggregator.Method aggregation,
+                            ExtractionResult result) {
+            this.sampling    = sampling;
+            this.aggregation = aggregation;
+            this.result      = result;
+        }
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

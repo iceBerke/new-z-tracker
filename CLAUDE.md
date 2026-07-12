@@ -99,9 +99,16 @@ When editing extraction or export code, preserve the array-parallelism invariant
 ### Pluggable methods (enum-dispatched)
 
 - `ZSampler.Method` — `RADIUS` (circular disk), `FOUR_NEIGHBOR` (bilinear corners), `SINGLE_PIXEL`.
-- `ZAggregator.Method` — `MEDIAN`, `MEAN`, `MODE`. Standard deviation uses the **population** divisor (n, not n−1).
+- `ZAggregator.Method` — `MEDIAN`, `MEAN` (no `MODE` — removed as an option). Standard deviation uses the **population** divisor (n, not n−1).
 
 To add a sampling or aggregation strategy, extend the relevant enum and its dispatch.
+
+Step 5 of the dialog lets either axis (sampling method, aggregation method) be set to **"All"**
+instead of a single choice — `ZExtractor.extractAll` runs every requested combination (the full
+sampling × aggregation cross product when both axes are "All") and returns a
+`List<ZExtractor.MethodCombo>`. `ZTrackerPlugin` exports each combo to its own subfolder,
+`outputDir/<sampling>/<aggregation>/...` (e.g. `outputDir/radius/median/`), only when more than
+one combination was run — a single chosen method still exports flat into `outputDir` as before.
 
 ## Known Gotchas (real bugs we've already hit)
 

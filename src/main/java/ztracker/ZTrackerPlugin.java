@@ -13,6 +13,9 @@ import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
 import ztracker.ui.ZTrackerDialog;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -106,26 +109,41 @@ public class ZTrackerPlugin implements PlugIn {
         IJ.showStatus("Extracting Z coordinates…");
         IJ.log("\n[ZTrackerPlugin] Starting Z extraction…");
 
-        ExtractionResult result = ZExtractor.extract(
-                trackData,
-                stack,
-                zMapping,
-                dialog.frameOffset,
-                dialog.samplingMethod,
-                dialog.aggregationMethod);
+        boolean multiMethod = dialog.sampleAllMethods || dialog.aggregateAllMethods;
 
-        logExtractionSummary(result);
+        List<ZSampler.Method> samplingMethods = dialog.sampleAllMethods
+                ? Arrays.asList(ZSampler.Method.values())
+                : Collections.singletonList(dialog.samplingMethod);
+        List<ZAggregator.Method> aggregationMethods = dialog.aggregateAllMethods
+                ? Arrays.asList(ZAggregator.Method.values())
+                : Collections.singletonList(dialog.aggregationMethod);
+
+        List<ZExtractor.MethodCombo> combos = ZExtractor.extractAll(
+                trackData, stack, zMapping, dialog.frameOffset,
+                samplingMethods, aggregationMethods);
+
+        for (ZExtractor.MethodCombo combo : combos) {
+            logExtractionSummary(combo.result);
+        }
 
         // ── Export ────────────────────────────────────────────────────────────
         IJ.showStatus("Exporting tracks…");
         try {
-            TrackExportManager.export(
-                    trackData,
-                    result,
-                    dialog.exportConfig,
-                    dialog.outputDir.toPath(),
-                    "" // no method tag (single method run)
-            );
+            for (ZExtractor.MethodCombo combo : combos) {
+                java.nio.file.Path outDir = multiMethod
+                        ? dialog.outputDir.toPath()
+                                .resolve(combo.sampling.name().toLowerCase())
+                                .resolve(combo.aggregation.name().toLowerCase())
+                        : dialog.outputDir.toPath();
+
+                TrackExportManager.export(
+                        trackData,
+                        combo.result,
+                        dialog.exportConfig,
+                        outDir,
+                        "" // no method tag — method identity is encoded in the folder path
+                );
+            }
         } catch (Exception e) {
             IJ.error("ZTracker", "Export failed:\n" + e.getMessage());
             return;

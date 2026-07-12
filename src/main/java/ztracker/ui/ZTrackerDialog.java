@@ -59,8 +59,10 @@ public class ZTrackerDialog {
     public ColumnConfig columnConfig;   // set by plugin after auto-detection, then confirmed here
 
     public int                frameOffset;
-    public ZSampler.Method    samplingMethod;
-    public ZAggregator.Method aggregationMethod;
+    public ZSampler.Method    samplingMethod;      // ignored when sampleAllMethods is true
+    public ZAggregator.Method aggregationMethod;   // ignored when aggregateAllMethods is true
+    public boolean            sampleAllMethods;
+    public boolean            aggregateAllMethods;
 
     public ExportConfig exportConfig;
     public File         outputDir;
@@ -485,17 +487,22 @@ public class ZTrackerDialog {
         }
     }
 
-    /** Step 5: Sampling and aggregation method selection. */
+    private static final String ALL_LABEL = "All (run every method)";
+
+    /** Step 5: Sampling and aggregation method selection. Either axis may be set to
+     *  "All", in which case every method on that axis is run (and exported to its
+     *  own subfolder) instead of a single chosen one. */
     private boolean step5_methods() {
         String[] samplingLabels = {
             ZSampler.Method.RADIUS.label,
             ZSampler.Method.FOUR_NEIGHBOR.label,
-            ZSampler.Method.SINGLE_PIXEL.label
+            ZSampler.Method.SINGLE_PIXEL.label,
+            ALL_LABEL
         };
         String[] aggregationLabels = {
             ZAggregator.Method.MEDIAN.label,
             ZAggregator.Method.MEAN.label,
-            ZAggregator.Method.MODE.label
+            ALL_LABEL
         };
 
         GenericDialog gd = new NonBlockingGenericDialog("ZTracker — Step 5: Extraction Methods");
@@ -507,8 +514,18 @@ public class ZTrackerDialog {
 
         if (gd.wasCanceled()) return false;
 
-        samplingMethod    = labelToEnum(ZSampler.Method.values(),    gd.getNextChoice(), ZSampler.Method.RADIUS);
-        aggregationMethod = labelToEnum(ZAggregator.Method.values(), gd.getNextChoice(), ZAggregator.Method.MEDIAN);
+        String samplingChoice    = gd.getNextChoice();
+        String aggregationChoice = gd.getNextChoice();
+
+        sampleAllMethods    = ALL_LABEL.equals(samplingChoice);
+        aggregateAllMethods = ALL_LABEL.equals(aggregationChoice);
+
+        samplingMethod    = sampleAllMethods
+                ? ZSampler.Method.RADIUS
+                : labelToEnum(ZSampler.Method.values(), samplingChoice, ZSampler.Method.RADIUS);
+        aggregationMethod = aggregateAllMethods
+                ? ZAggregator.Method.MEDIAN
+                : labelToEnum(ZAggregator.Method.values(), aggregationChoice, ZAggregator.Method.MEDIAN);
         return true;
     }
 
