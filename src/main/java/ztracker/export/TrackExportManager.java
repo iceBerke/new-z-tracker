@@ -5,6 +5,8 @@ import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -23,8 +25,15 @@ import java.util.*;
  *       valid-Z points remain (fewer than {@code minTrackLength})</li>
  * </ul>
  *
+ * <p>Dropping a point from 3D never renumbers the surviving points' frame numbers — the
+ * {@code T} column always holds each detection's original {@code track.frame[i]}, so a
+ * dropped point shows up as a genuine gap in the frame sequence (e.g. {@code 0,1,3} if frame
+ * 2 was dropped), never a shift or compaction (never {@code 0,1,2}).
+ *
  * <p>A per-track report is logged for every export run (not just when something goes wrong),
- * so the user can see exactly what happened to each track at a glance.
+ * so the user can see exactly what happened to each track at a glance. The same report — in
+ * full, uncapped — is also written to {@code export_report.txt} in {@code outDir}, since the
+ * Fiji Log view caps at {@link #MAX_TRACKS_LOGGED} rows for readability.
  */
 public class TrackExportManager {
 
@@ -221,16 +230,20 @@ public class TrackExportManager {
             }
         }
 
-        // ── Per-track report (always logged, capped for readability)
-        logPerTrackReport(reportLines);
-
-        // ── Summary
-        IJ.log(String.format(
-                "[TrackExportManager] Exported 2D=%d, 3D=%d | Filtered tracks: short=%d, "
+        String summaryLine = String.format(
+                "Exported 2D=%d, 3D=%d | Filtered tracks: short=%d, "
                 + "noisy=%d, invalidXY=%d, 3Dskipped(insufficientValidZ)=%d | "
                 + "Dropped 3D points: missingFrame=%d, outOfBounds=%d, unmappedIndex=%d",
                 exported2D, exported3D, filteredShort, filteredNoisy, filteredInvalidXY,
-                skipped3DInsufficient, droppedMissingFrame, droppedOutOfBounds, droppedUnmapped));
+                skipped3DInsufficient, droppedMissingFrame, droppedOutOfBounds, droppedUnmapped);
+
+        // ── Per-track report (Fiji Log view is capped for readability)
+        logPerTrackReport(reportLines);
+        IJ.log("[TrackExportManager] " + summaryLine);
+
+        // ── Full, uncapped report written to disk (methods/labels included since the
+        //    file lives under this method combo's own output folder)
+        writeReportFile(outDir, result, reportLines, summaryLine);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -269,6 +282,30 @@ public class TrackExportManager {
             sb.append(e.getValue()).append(' ').append(e.getKey());
         }
         return sb.toString();
+    }
+
+    /**
+     * Writes the full, uncapped per-track report (plus method labels and the summary
+     * line) to {@code export_report.txt} in {@code outDir} — the same content logged
+     * to the Fiji Log, but without the {@link #MAX_TRACKS_LOGGED} cap, so every track
+     * is on record for large datasets.
+     */
+    private static void writeReportFile(Path outDir, ExtractionResult result,
+                                        List<String> reportLines, String summaryLine)
+            throws IOException {
+        Files.createDirectories(outDir);
+
+        List<String> lines = new ArrayList<>();
+        lines.add("ZTracker export report");
+        lines.add("Sampling method:    " + result.samplingMethod);
+        lines.add("Aggregation method: " + result.aggregationMethod);
+        lines.add("");
+        lines.add(String.format("Per-track report (%d track(s)):", reportLines.size()));
+        lines.addAll(reportLines);
+        lines.add("");
+        lines.add(summaryLine);
+
+        Files.write(outDir.resolve("export_report.txt"), lines, StandardCharsets.UTF_8);
     }
 
     private static void logPerTrackReport(List<String> reportLines) {

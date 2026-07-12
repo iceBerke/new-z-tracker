@@ -44,7 +44,9 @@ import java.util.stream.Stream;
  *       by eye — including {@code TrackExportManager}'s per-track report line, which shows
  *       a track with one NaN-Z detection keeping its full 2D export while only that one
  *       point is dropped from 3D (the track itself is never discarded for a single bad
- *       point).</li>
+ *       point), and prints the full contents of the {@code export_report.txt} file written
+ *       alongside the .npy output (the same report, uncapped, since the Fiji Log view caps
+ *       at 50 tracks).</li>
  * </ol>
  *
  * <p>Run it manually (from the project root, after {@code mvn test-compile}):
@@ -224,6 +226,13 @@ public class Step5MethodsDemo {
                     .map(tmp::relativize)
                     .sorted()
                     .forEach(p -> System.out.println("    " + p));
+        }
+
+        System.out.println("\n  Contents of radius/median/export_report.txt (full, uncapped -- the"
+                + " Fiji Log view caps at 50 tracks, this file never does):");
+        for (String line : Files.readAllLines(tmp.resolve("radius").resolve("median")
+                .resolve("export_report.txt"))) {
+            System.out.println("    " + line);
         }
 
         deleteRecursively(tmp);
