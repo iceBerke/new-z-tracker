@@ -131,14 +131,22 @@ public class Step4AlignmentDemo {
                 new String[]{"A", "A", "A", "B", "B"},
                 1);
 
-        // Show the compact verdict the live step-4 confirmation box renders (scenario
-        // G, offset +1) — the decision-focused summary; full detail goes to the Log.
+        // Scenario G at offset +1, showing both outputs the plugin produces:
+        //  1) the compact decision verdict shown live in the step-4 confirm box, and
+        //  2) the full per-track verification table written to the Fiji Log.
+        TrackData gT = track(new int[]{0, 1, 2, 8, 9}, new String[]{"A", "A", "A", "B", "B"});
+        LoadedStack gS = stack(1, 2, 3, 4);
+        java.util.List<FrameAligner.TrackAlignment> gPer =
+                FrameAligner.perTrackAlignment(gT, gS, 1);
+
         System.out.println("\n============================================================");
         System.out.println("Step-4 confirm box verdict (scenario G, offset +1):");
         System.out.println("------------------------------------------------------------");
-        System.out.println(FrameAligner.buildBoxSummary(FrameAligner.perTrackAlignment(
-                track(new int[]{0, 1, 2, 8, 9}, new String[]{"A", "A", "A", "B", "B"}),
-                stack(1, 2, 3, 4), 1)));
+        System.out.println(FrameAligner.buildBoxSummary(gPer));
+
+        System.out.println("\nFull per-track table logged to Fiji (scenario G, offset +1):");
+        System.out.println("------------------------------------------------------------");
+        System.out.println(FrameAligner.buildPerTrackTable(gPer, gS, 1));
     }
 
     private static int[] range(int firstInclusive, int lastInclusive) {
