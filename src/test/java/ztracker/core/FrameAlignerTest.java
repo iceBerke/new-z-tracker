@@ -201,7 +201,23 @@ class FrameAlignerTest {
     }
 
     @Test
-    void perTrack_orderedByFirstFrame() {
+    void perTrack_orderedByTrackIdNumerically() {
+        // Numeric track ids must sort numerically (1, 2, 10) — NOT lexicographically
+        // (which would give 1, 10, 2). Frame order is deliberately unrelated to id order.
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        TrackData track = trackWithIds(
+                new int[]{9, 1, 5},
+                new String[]{"10", "2", "1"});
+
+        AlignmentReport report = FrameAligner.validate(track, stack, 0);
+
+        assertEquals("1",  report.perTrack.get(0).trackId);
+        assertEquals("2",  report.perTrack.get(1).trackId);
+        assertEquals("10", report.perTrack.get(2).trackId);
+    }
+
+    @Test
+    void perTrack_orderedByTrackIdLexicographicallyWhenNonNumeric() {
         LoadedStack stack = stackWithFrames(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
         TrackData track = trackWithIds(
                 new int[]{7, 1, 4},
@@ -210,8 +226,8 @@ class FrameAlignerTest {
         AlignmentReport report = FrameAligner.validate(track, stack, 0);
 
         assertEquals("early", report.perTrack.get(0).trackId);
-        assertEquals("mid",   report.perTrack.get(1).trackId);
-        assertEquals("late",  report.perTrack.get(2).trackId);
+        assertEquals("late",  report.perTrack.get(1).trackId);
+        assertEquals("mid",   report.perTrack.get(2).trackId);
     }
 
     // ── buildBoxSummary (compact confirm-box verdict) ─────────────────────────────

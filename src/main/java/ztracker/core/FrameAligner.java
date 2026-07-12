@@ -146,9 +146,19 @@ public class FrameAligner {
             int[] a = e.getValue();
             out.add(new TrackAlignment(e.getKey(), a[0], a[1], a[2], a[3]));
         }
-        out.sort(Comparator.comparingInt((TrackAlignment t) -> t.firstFrame)
-                .thenComparing(t -> t.trackId));
+        // Order by track id, numerically when the ids are numbers (so "10" sorts
+        // after "2", not before), lexicographically otherwise.
+        out.sort((a, b) -> compareTrackIds(a.trackId, b.trackId));
         return out;
+    }
+
+    /** Compares track ids numerically when both parse as integers, else lexicographically. */
+    private static int compareTrackIds(String a, String b) {
+        try {
+            return Long.compare(Long.parseLong(a.trim()), Long.parseLong(b.trim()));
+        } catch (NumberFormatException e) {
+            return a.compareTo(b);
+        }
     }
 
     /**

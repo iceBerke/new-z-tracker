@@ -331,10 +331,15 @@ public class ZTrackerDialog {
         final int suggested = FrameAligner.suggestOffset(loadedTrack, loadedStack);
 
         Frame parent = IJ.getInstance();
+        // Modeless (not modal) so the ImageJ Log window stays interactive/resizable
+        // while this box is open — the per-track table is logged there for review.
+        // The plugin thread is blocked below with a latch instead of by modality.
         final Dialog dlg = new Dialog(
                 parent != null ? parent : new Frame(),
-                "ZTracker — Step 4: Frame Alignment", true);
+                "ZTracker — Step 4: Frame Alignment", false);
         dlg.setLayout(new BorderLayout(8, 8));
+        final java.util.concurrent.CountDownLatch closeLatch =
+                new java.util.concurrent.CountDownLatch(1);
 
         // Header
         Panel header = new Panel(new FlowLayout(FlowLayout.LEFT, 12, 8));
@@ -416,10 +421,11 @@ public class ZTrackerDialog {
             chosen[0]    = parsed;
             confirmed[0] = true;
             dlg.setVisible(false);
+            closeLatch.countDown();
         });
-        cancelBtn.addActionListener(e -> dlg.setVisible(false));
+        cancelBtn.addActionListener(e -> { dlg.setVisible(false); closeLatch.countDown(); });
         dlg.addWindowListener(new WindowAdapter() {
-            public void windowClosing(WindowEvent e) { dlg.setVisible(false); }
+            public void windowClosing(WindowEvent e) { dlg.setVisible(false); closeLatch.countDown(); }
         });
 
         Panel center = new Panel(new BorderLayout(6, 6));
@@ -433,7 +439,14 @@ public class ZTrackerDialog {
         dlg.pack();
         dlg.setMinimumSize(dlg.getSize());
         if (parent != null) dlg.setLocationRelativeTo(parent);
-        dlg.setVisible(true); // blocks until hidden
+        dlg.setVisible(true); // modeless — returns immediately; block the plugin thread below
+        try {
+            closeLatch.await(); // wait for OK / Cancel / window close
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            dlg.dispose();
+            return false;
+        }
         dlg.dispose();
 
         if (!confirmed[0]) return false;
