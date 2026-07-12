@@ -36,6 +36,13 @@ it has a `main`, no `@Test`, so Surefire ignores it but it stays compiled agains
 several CSV-vs-TIFF alignment scenarios so the step-4 suggest-and-correct behaviour can be
 eyeballed. Run instructions are in the class javadoc.
 
+`src/test/java/ztracker/core/Step5MethodsDemo.java` is the same kind of runnable walkthrough for
+step 5. It samples a synthetic TIFF frame (with a planted outlier pixel) using every
+`ZSampler.Method`, aggregates with every `ZAggregator.Method` to show MEDIAN's outlier robustness
+vs MEAN, runs `ZExtractor.extractAll`'s full sampling × aggregation cross product, and actually
+exports two combinations via `TrackExportManager` into a temp dir to print the resulting
+`<sampling>/<aggregation>/...` folder tree. Run instructions are in the class javadoc.
+
 ## Critical Constraints
 
 - **Must compile to Java 8 bytecode (class file version 52).** Fiji bundles a Java 8 JVM, so a higher target causes `UnsupportedClassVersionError` at plugin load time. `pom.xml` uses `maven-compiler-plugin` with `<release>8</release>` — **never raise this target.**
