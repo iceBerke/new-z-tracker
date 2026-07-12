@@ -359,8 +359,12 @@ public class ZTrackerDialog {
         Panel confirmPanel = new Panel(new FlowLayout(FlowLayout.LEFT, 12, 4));
         confirmPanel.add(confirmBox);
 
-        // Live refresh: recompute verdict + checkbox for the entered offset.
+        // Live refresh: recompute verdict + checkbox for the entered offset, and log
+        // the full per-track table to the Log so the user can verify the choice
+        // BEFORE confirming. To avoid spamming the log on every keystroke, the table
+        // is logged once per DISTINCT offset actually evaluated (deduped).
         // A blank/invalid field falls back to the suggested offset for the preview.
+        final Integer[] lastLogged = {null};
         final Runnable refresh = () -> {
             Integer parsed = parseOffset(offsetField.getText());
             int off = parsed != null ? parsed : suggested;
@@ -380,9 +384,14 @@ public class ZTrackerDialog {
                     ? "Alignment looks correct — continue"
                     : "I have reviewed the warnings above — continue anyway");
             confirmBox.setState(clean);
+
+            if (parsed != null && !parsed.equals(lastLogged[0])) {
+                FrameAligner.validate(loadedTrack, loadedStack, parsed);
+                lastLogged[0] = parsed;
+            }
         };
         offsetField.addTextListener(e -> refresh.run());
-        refresh.run(); // initial paint
+        refresh.run(); // initial paint — logs the suggested offset's table up front
 
         // OK / Cancel
         final boolean[] confirmed = {false};
@@ -430,7 +439,10 @@ public class ZTrackerDialog {
         if (!confirmed[0]) return false;
 
         frameOffset = chosen[0];
-        // Authoritative validation for the confirmed offset — logs the full per-track table.
+        // Authoritative final record for the confirmed offset — logs the full per-track
+        // table again under a clear header so the choice is unambiguous in the Log.
+        IJ.log("[FrameAligner] ═══ CONFIRMED — extracting with frame offset "
+                + signed(frameOffset) + " ═══");
         FrameAligner.validate(loadedTrack, loadedStack, frameOffset);
         return true;
     }
