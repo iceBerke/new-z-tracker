@@ -79,4 +79,29 @@ class TrackCsvLoaderTest {
         assertEquals(2, data.x.length);
         assertArrayEquals(new double[]{1.0, 4.0}, data.x);
     }
+
+    @Test
+    void rowsWithBlankOrNaNOrMalformedXY_areSkipped(@TempDir Path dir) throws IOException {
+        String csv = "X,Y,FRAME,TRACK_ID\n"
+                + "unit,unit,unit,unit\n"
+                + "0,0,0,0\n"
+                + "0,0,0,0\n"
+                + "1.0,1.0,0,1\n"
+                + ",5.0,1,1\n"        // blank X -> skipped
+                + "5.0,,2,1\n"        // blank Y -> skipped
+                + "NaN,5.0,3,1\n"     // literal "NaN" X -> skipped (parses but is NaN)
+                + "5.0,garbage,4,1\n" // unparseable Y -> skipped
+                + "6.0,6.0,5,1\n";
+        Path file = writeCsv(dir, "bad_xy.csv", csv);
+        CsvConfig config = CsvConfig.defaults();
+
+        ColumnConfig cols = TrackCsvLoader.detectColumns(file, config);
+        TrackData data = TrackCsvLoader.load(file, config, cols);
+
+        // Only the two rows with genuinely valid X and Y survive.
+        assertEquals(2, data.x.length);
+        assertArrayEquals(new double[]{1.0, 6.0}, data.x);
+        assertArrayEquals(new double[]{1.0, 6.0}, data.y);
+        assertArrayEquals(new int[]{0, 5}, data.frame);
+    }
 }

@@ -151,6 +151,53 @@ class TrackExportManagerTest {
     }
 
     @Test
+    void export_trackWithOneBadXYPoint_dropsFromBothDimensionsButKeepsTrack(
+            @TempDir Path outDir) throws IOException {
+        // Frames 0,1,2,3; detection at frame=1 has a NaN X (e.g. unparseable/missing in the
+        // source CSV) even though its Z extracted fine. A point with no position can't be
+        // placed in EITHER export, unlike a NaN-Z point which only breaks 3D.
+        TrackData track = new TrackData(
+                new double[]{1.0, Double.NaN, 3.0, 4.0},
+                new double[]{1.0, 2.0, 3.0, 4.0},
+                new int[]{0, 1, 2, 3},
+                new double[]{3.5, 3.5, 3.5, 3.5},
+                new String[]{"1", "1", "1", "1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult result = new ExtractionResult(
+                new double[]{10.0, 11.0, 12.0, 13.0},
+                new double[]{0.1, 0.1, 0.1, 0.1},
+                new int[]{5, 5, 5, 5},
+                new int[]{0, 0, 0, 0},
+                new String[]{
+                        ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
+                        ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
+                "Radius-based", "Median", 0, 0);
+        ExportConfig config = new ExportConfig(3, null, true, false, false);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        Path npy2D = outDir.resolve("tracks_2D").resolve("track_00001.npy");
+        Path npy3D = outDir.resolve("tracks_3D").resolve("track_00001.npy");
+        assertTrue(Files.exists(npy2D), "track kept — 2D still exports the 3 good points");
+        assertTrue(Files.exists(npy3D), "3D also drops the same bad point, not the whole track");
+
+        // Both dimensions keep 3 of the 4 points; the bad-X point is dropped from both.
+        assertEquals(3, npyRowCount(npy2D));
+        assertEquals(3, npyRowCount(npy3D));
+
+        double[][] data2D = readNpy(npy2D);
+        int tCol2D = data2D[0].length - 1;
+        double[] frames2D = {data2D[0][tCol2D], data2D[1][tCol2D], data2D[2][tCol2D]};
+        // Real frame gap (0,2,3), not renumbered (never 0,1,2) — same invariant as Z drops.
+        assertArrayEquals(new double[]{0.0, 2.0, 3.0}, frames2D, 1e-9);
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains("dropped 1: 1 invalid X/Y"),
+                "report should attribute the drop to invalid X/Y, not a Z-related reason");
+    }
+
+    @Test
     void export_droppedPointFromMidTrack_leavesGenuineGapInFrameNumbers_notRenumbered(
             @TempDir Path outDir) throws IOException {
         // Frames 0,1,2,3; detection at frame=1 (index 1) has a NaN Z (missing TIFF frame).

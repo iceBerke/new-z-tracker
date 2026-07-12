@@ -131,6 +131,8 @@ public class TrackCsvLoader {
 
         int dataStartLine = config.headerRow + 1 + config.skipRowsAfterHeader;
         int skippedNaN    = 0;
+        int skippedBadXY  = 0;
+        int skippedOther  = 0;
         int lineNum       = 0;
 
         try (BufferedReader reader = new BufferedReader(new FileReader(csvPath.toFile()))) {
@@ -149,9 +151,18 @@ public class TrackCsvLoader {
                     continue;
                 }
 
+                // Skip rows where X or Y is blank, malformed, or literally "NaN" text —
+                // counted and logged separately, same as the Frame/Track_ID skip above,
+                // rather than being silently absorbed by the catch-all below (which
+                // previously swallowed this case with no visibility at all).
+                Double x = parseCoordinate(safeGet(parts, xIdx));
+                Double y = parseCoordinate(safeGet(parts, yIdx));
+                if (x == null || y == null) {
+                    skippedBadXY++;
+                    continue;
+                }
+
                 try {
-                    double x     = Double.parseDouble(safeGet(parts, xIdx).trim());
-                    double y     = Double.parseDouble(safeGet(parts, yIdx).trim());
                     int    frame = (int) Double.parseDouble(safeGet(parts, frameIdx).trim());
                     String tid   = safeGet(parts, trackIdx).trim();
                     double rad   = (radiusIdx >= 0)
@@ -164,13 +175,19 @@ public class TrackCsvLoader {
                     radList.add(rad);
                     tidList.add(tid);
                 } catch (NumberFormatException ignored) {
-                    // Silently skip malformed rows
+                    skippedOther++;
                 }
             }
         }
 
         if (skippedNaN > 0) {
             IJ.log("[TrackCsvLoader] Skipped " + skippedNaN + " rows with empty Frame or Track_ID.");
+        }
+        if (skippedBadXY > 0) {
+            IJ.log("[TrackCsvLoader] Skipped " + skippedBadXY + " rows with missing/unparseable X or Y.");
+        }
+        if (skippedOther > 0) {
+            IJ.log("[TrackCsvLoader] Skipped " + skippedOther + " rows with other malformed data.");
         }
         IJ.log(String.format("[TrackCsvLoader] Loaded %d detections from %s",
                 xList.size(), csvPath.getFileName()));
@@ -241,6 +258,21 @@ public class TrackCsvLoader {
     private static double parseDoubleOrDefault(String s, double def) {
         try { return Double.parseDouble(s.trim()); }
         catch (NumberFormatException e) { return def; }
+    }
+
+    /** Parses an X/Y coordinate; returns null if blank, malformed, or literally "NaN"
+     *  ({@code Double.parseDouble("NaN")} succeeds in Java, so that case needs an
+     *  explicit check rather than relying on the parse to throw). */
+    private static Double parseCoordinate(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (t.isEmpty()) return null;
+        try {
+            double v = Double.parseDouble(t);
+            return Double.isNaN(v) ? null : v;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static double[] toDoubleArray(List<Double> list) {
