@@ -198,6 +198,89 @@ class TrackExportManagerTest {
     }
 
     @Test
+    void export_invalidXYAndInvalidZInSameTrack_dropReasonsDoNotConflate(
+            @TempDir Path outDir) throws IOException {
+        // 4 detections: frame 0 and 3 fully valid, frame 1 has invalid X (no Z problem),
+        // frame 2 has valid X/Y but a NaN Z (missing frame). The two failure reasons must
+        // stay distinct in both the per-point drop and the aggregate counters -- an
+        // invalid-XY point must not also get tallied as a missing-frame point (or vice versa).
+        TrackData track = new TrackData(
+                new double[]{1.0, Double.NaN, 3.0, 4.0},
+                new double[]{1.0, 2.0, 3.0, 4.0},
+                new int[]{0, 1, 2, 3},
+                new double[]{3.5, 3.5, 3.5, 3.5},
+                new String[]{"1", "1", "1", "1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult result = new ExtractionResult(
+                new double[]{10.0, 11.0, Double.NaN, 13.0},
+                new double[]{0.1, 0.1, Double.NaN, 0.1},
+                new int[]{5, 5, 0, 5},
+                new int[]{0, 0, 0, 0},
+                new String[]{
+                        ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
+                        ExtractionResult.STATUS_MISSING_FRAME, ExtractionResult.STATUS_OK},
+                "Radius-based", "Median", 1, 0);
+        ExportConfig config = new ExportConfig(1, null, true, false, false);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        // 2D drops only the invalid-XY point (frame 1) -> 3 of 4 remain.
+        Path npy2D = outDir.resolve("tracks_2D").resolve("track_00001.npy");
+        assertEquals(3, npyRowCount(npy2D));
+
+        // 3D drops BOTH the invalid-XY point and the invalid-Z point -> 2 of 4 remain.
+        Path npy3D = outDir.resolve("tracks_3D").resolve("track_00001.npy");
+        assertEquals(2, npyRowCount(npy3D));
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains("2D ✓ (3/4 pt) — dropped 1: 1 invalid X/Y"),
+                "2D should attribute its single drop to invalid X/Y only");
+        assertTrue(content.contains("3D ✓ (2/4 pt) — dropped 2: 1 invalid X/Y, 1 missing frame"),
+                "3D should list both distinct reasons, not conflate or double-count them");
+        assertTrue(content.contains(
+                "Dropped points: invalidXY=1, missingFrame=1, outOfBounds=0, unmappedIndex=0"),
+                "aggregate counters must keep the two reasons separate");
+    }
+
+    @Test
+    void export_summaryLine_reportsInsufficientSkipsSeparatelyFor2DAnd3D(
+            @TempDir Path outDir) throws IOException {
+        // 3 detections, min length 3: two have invalid X -> only 1 valid-XY point remains,
+        // which is short of minTrackLength for BOTH 2D and 3D. Since that one remaining
+        // point's Z is perfectly valid, 3D's shortfall here is caused entirely by the X/Y
+        // drops, not by Z -- exercising exactly the case the "insufficientValidPoints"
+        // (not "insufficientValidZ") label exists to describe accurately.
+        TrackData track = new TrackData(
+                new double[]{1.0, Double.NaN, Double.NaN},
+                new double[]{1.0, 2.0, 3.0},
+                new int[]{0, 1, 2},
+                new double[]{3.5, 3.5, 3.5},
+                new String[]{"1", "1", "1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult result = new ExtractionResult(
+                new double[]{10.0, 11.0, 12.0},
+                new double[]{0.1, 0.1, 0.1},
+                new int[]{5, 5, 5},
+                new int[]{0, 0, 0},
+                new String[]{
+                        ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
+                        ExtractionResult.STATUS_OK},
+                "Radius-based", "Median", 0, 0);
+        ExportConfig config = new ExportConfig(3, null, true, false, false);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        assertFalse(Files.exists(outDir.resolve("tracks_2D").resolve("track_00001.npy")));
+        assertFalse(Files.exists(outDir.resolve("tracks_3D").resolve("track_00001.npy")));
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains("Skipped: 2D(insufficientValidXY)=1, 3D(insufficientValidPoints)=1"),
+                "both dimensions' skip counters should reflect this one track");
+    }
+
+    @Test
     void export_droppedPointFromMidTrack_leavesGenuineGapInFrameNumbers_notRenumbered(
             @TempDir Path outDir) throws IOException {
         // Frames 0,1,2,3; detection at frame=1 (index 1) has a NaN Z (missing TIFF frame).

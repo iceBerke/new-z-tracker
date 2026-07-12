@@ -47,6 +47,12 @@ import java.util.stream.Stream;
  *       point), and prints the full contents of the {@code export_report.txt} file written
  *       alongside the .npy output (the same report, uncapped, since the Fiji Log view caps
  *       at 50 tracks).</li>
+ *   <li>Builds a track with an invalid-X/Y detection (unparseable coordinate — no position at
+ *       all) alongside a separate invalid-Z detection (missing TIFF frame), and exports it to
+ *       show the asymmetry: the invalid-X/Y point is dropped from <b>both</b> 2D and 3D (no
+ *       position, can't be placed in either), while the invalid-Z point is dropped from 3D
+ *       only — printed straight from {@code export_report.txt} so the two distinct drop
+ *       reasons can be seen side by side in the same per-track line.</li>
  * </ol>
  *
  * <p>Run it manually (from the project root, after {@code mvn test-compile}):
@@ -239,6 +245,42 @@ public class Step5MethodsDemo {
         System.out.println("  (temp directory cleaned up after printing)");
     }
 
+    private static void invalidXYVsInvalidZComparison() throws IOException {
+        System.out.println("\n--- 7) Invalid X/Y vs. invalid Z: dropped from different exports ---");
+        System.out.println("  Track \"B\" has 3 detections: frame 0 (fully valid), frame 1 (X is NaN --"
+                + " e.g. an unparseable coordinate from the CSV), frame 2 (valid X/Y but a NaN Z from a"
+                + " missing TIFF frame). A missing position can't be placed in EITHER export, so frame 1"
+                + " is dropped from both 2D and 3D; frame 2's bad Z only breaks 3D, so it survives in 2D.");
+
+        TrackData track = new TrackData(
+                new double[]{1.0, Double.NaN, 3.0},
+                new double[]{1.0, 2.0, 3.0},
+                new int[]{0, 1, 2},
+                new double[]{1.0, 1.0, 1.0},
+                new String[]{"B", "B", "B"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult result = new ExtractionResult(
+                new double[]{5.0, 10.0, Double.NaN},
+                new double[]{0.1, 0.1, Double.NaN},
+                new int[]{5, 5, 0},
+                new int[]{0, 0, 0},
+                new String[]{
+                        ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
+                        ExtractionResult.STATUS_MISSING_FRAME},
+                "Radius-based", "Median", 1, 0);
+
+        Path tmp = Files.createTempDirectory("ztracker-step5-demo-xy");
+        ExportConfig config = new ExportConfig(1, null, true, false, false);
+        TrackExportManager.export(track, result, config, tmp, "");
+
+        System.out.println("  Contents of export_report.txt:");
+        for (String line : Files.readAllLines(tmp.resolve("export_report.txt"))) {
+            System.out.println("    " + line);
+        }
+        deleteRecursively(tmp);
+        System.out.println("  (temp directory cleaned up after printing)");
+    }
+
     private static void deleteRecursively(Path root) throws IOException {
         try (Stream<Path> walk = Files.walk(root)) {
             for (Path p : walk.sorted(Comparator.reverseOrder()).collect(Collectors.toList())) {
@@ -262,5 +304,6 @@ public class Step5MethodsDemo {
         edgeOfImageComparison(s, zMap);
         outOfBoundsVsMissingFrameComparison(s, zMap);
         exportFolderDemo(t, s, zMap);
+        invalidXYVsInvalidZComparison();
     }
 }

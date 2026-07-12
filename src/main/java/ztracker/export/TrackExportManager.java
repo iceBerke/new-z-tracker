@@ -248,7 +248,9 @@ public class TrackExportManager {
 
         String summaryLine = String.format(
                 "Exported 2D=%d, 3D=%d | Filtered tracks: short=%d, noisy=%d | "
-                + "Skipped: 2D(insufficientValidXY)=%d, 3D(insufficientValidZ)=%d | "
+                // 3D's shortfall can come from invalid X/Y alone, Z alone, or both — a 3D point
+                // needs valid X/Y AND valid Z — so this is NOT specifically "insufficient Z".
+                + "Skipped: 2D(insufficientValidXY)=%d, 3D(insufficientValidPoints)=%d | "
                 + "Dropped points: invalidXY=%d, missingFrame=%d, outOfBounds=%d, unmappedIndex=%d",
                 exported2D, exported3D, filteredShort, filteredNoisy,
                 skipped2DInsufficient, skipped3DInsufficient,
