@@ -58,7 +58,7 @@ public class FrameAligner {
         public final int totalUniqueFrames;
         /** Suggested offset detected from indexing mismatch (may be 0 if no hint). */
         public final int suggestedOffset;
-        /** Per-track alignment, ordered by first frame then track id. */
+        /** Per-track alignment, ordered by track id (numeric-aware). */
         public final List<TrackAlignment> perTrack;
 
         AlignmentReport(int offset, int missingFrameCount, int totalUniqueFrames,
@@ -112,7 +112,7 @@ public class FrameAligner {
     /**
      * Computes per-track alignment under {@code offset}: each track's frame span
      * and how many of its detections map to a missing TIFF. Tracks are ordered by
-     * first frame, then track id.
+     * track id — numerically when the ids parse as integers, else lexicographically.
      *
      * @param track  track data
      * @param stack  loaded TIFF stack
@@ -252,25 +252,30 @@ public class FrameAligner {
         }
     }
 
-    /** Max number of per-track rows written to the log (keeps huge CSVs readable). */
+    /** Max number of per-track rows rendered in the table (keeps huge CSVs readable). */
     private static final int MAX_TRACKS_LOGGED = 50;
 
     /**
-     * Logs a full per-track table so the user can verify the offset: every track's
-     * span, detection count, and how its FIRST and LAST frames map under the offset
-     * (with a ✓/✗ per endpoint), plus the missing count. Capped at
-     * {@link #MAX_TRACKS_LOGGED} rows.
+     * Builds the full per-track verification table as a multi-line string: a header
+     * row, then one row per track (its span, detection count, and how its FIRST and
+     * LAST frames map under the offset with a ✓/✗ per endpoint, plus the missing
+     * count), a "…N more" line if capped at {@link #MAX_TRACKS_LOGGED}, and a
+     * "X/Y tracks fully mapped" footer. Lines are un-prefixed; {@link #logPerTrack}
+     * adds the log prefix. Non-logging.
+     *
+     * @param perTrack per-track alignment (from {@link #perTrackAlignment})
+     * @param stack    loaded TIFF stack (for the endpoint ✓/✗)
+     * @param offset   offset being evaluated
+     * @return multi-line table string (no trailing newline)
      */
-    private static void logPerTrack(List<TrackAlignment> perTrack, LoadedStack stack,
-                                    int offset, int suggested) {
+    public static String buildPerTrackTable(List<TrackAlignment> perTrack,
+                                            LoadedStack stack, int offset) {
         Set<Integer> avail = stack.frameToIdx.keySet();
         int fully = 0;
         for (TrackAlignment ta : perTrack) if (ta.fullyMapped()) fully++;
 
-        IJ.log(String.format(
-                "[FrameAligner] ── Per-track alignment (offset %+d, suggested %+d) ──",
-                offset, suggested));
-        IJ.log("[FrameAligner]   track            span        det   first→TIFF     last→TIFF     missing");
+        StringBuilder sb = new StringBuilder();
+        sb.append("track            span        det   first→TIFF     last→TIFF     missing");
 
         int shown = 0;
         for (TrackAlignment ta : perTrack) {
@@ -279,8 +284,8 @@ public class FrameAligner {
             int lastMap  = ta.lastFrame  + offset;
             String fTag  = avail.contains(firstMap) ? "✓" : "✗";
             String lTag  = avail.contains(lastMap)  ? "✓" : "✗";
-            IJ.log(String.format(
-                    "[FrameAligner]   %-14s %5d–%-5d %5d   %5d→%-5d %s   %5d→%-5d %s   %d",
+            sb.append('\n').append(String.format(
+                    "%-14s %5d–%-5d %5d   %5d→%-5d %s   %5d→%-5d %s   %d",
                     truncate(ta.trackId, 14),
                     ta.firstFrame, ta.lastFrame, ta.detectionCount,
                     ta.firstFrame, firstMap, fTag,
@@ -290,11 +295,26 @@ public class FrameAligner {
 
         int remaining = perTrack.size() - Math.min(perTrack.size(), MAX_TRACKS_LOGGED);
         if (remaining > 0) {
-            IJ.log(String.format("[FrameAligner]   … %d more track(s) not shown (log cap %d)",
+            sb.append('\n').append(String.format("… %d more track(s) not shown (log cap %d)",
                     remaining, MAX_TRACKS_LOGGED));
         }
-        IJ.log(String.format("[FrameAligner]   %d/%d tracks fully mapped under offset %+d",
+        sb.append('\n').append(String.format("%d/%d tracks fully mapped under offset %+d",
                 fully, perTrack.size(), offset));
+        return sb.toString();
+    }
+
+    /**
+     * Logs the full per-track table (see {@link #buildPerTrackTable}) so the user can
+     * verify the offset, one line per row under the {@code [FrameAligner]} prefix.
+     */
+    private static void logPerTrack(List<TrackAlignment> perTrack, LoadedStack stack,
+                                    int offset, int suggested) {
+        IJ.log(String.format(
+                "[FrameAligner] ── Per-track alignment (offset %+d, suggested %+d) ──",
+                offset, suggested));
+        for (String line : buildPerTrackTable(perTrack, stack, offset).split("\n")) {
+            IJ.log("[FrameAligner]   " + line);
+        }
     }
 
     private static String truncate(String s, int max) {

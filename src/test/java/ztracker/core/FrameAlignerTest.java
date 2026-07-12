@@ -186,7 +186,7 @@ class FrameAlignerTest {
         AlignmentReport report = FrameAligner.validate(track, stack, 1);
 
         assertEquals(2, report.perTrack.size());
-        // Ordered by first frame: A (0) before B (8).
+        // Ordered by track id: "A" before "B".
         TrackAlignment a = report.perTrack.get(0);
         TrackAlignment b = report.perTrack.get(1);
         assertEquals("A", a.trackId);
@@ -276,5 +276,48 @@ class FrameAlignerTest {
 
         assertTrue(summary.contains("WARNING"), summary);
         assertTrue(summary.contains("+2 more"), summary);
+    }
+
+    // ── buildPerTrackTable (full verification table, shown/logged) ────────────────
+
+    @Test
+    void buildPerTrackTable_rendersEndpointMappingsAndFooter() {
+        // Track A clean; Track B last frame off-stack (9->10, stack ends at 4).
+        LoadedStack stack = stackWithFrames(1, 2, 3, 4);
+        TrackData track = trackWithIds(
+                new int[]{0, 1, 2, 8, 9},
+                new String[]{"A", "A", "A", "B", "B"});
+
+        String table = FrameAligner.buildPerTrackTable(
+                FrameAligner.perTrackAlignment(track, stack, 1), stack, 1);
+
+        assertTrue(table.contains("first→TIFF"), table);   // header row present
+        assertTrue(table.contains("0→1"), table);          // A first frame maps to TIFF 1
+        assertTrue(table.contains("9→10"), table);         // B last frame maps past the stack
+        assertTrue(table.contains("✓"), table);            // at least one mapped endpoint
+        assertTrue(table.contains("✗"), table);            // at least one off-stack endpoint
+        assertTrue(table.contains("1/2 tracks fully mapped under offset +1"), table); // footer
+    }
+
+    @Test
+    void buildPerTrackTable_capsRowsWithMoreLine() {
+        // 60 single-detection tracks, all clean; table caps at 50 rows + a "…more" line.
+        int[] frames = new int[60];
+        String[] ids = new String[60];
+        for (int i = 0; i < 60; i++) { frames[i] = i; ids[i] = String.valueOf(i); }
+        LoadedStack stack = stackWithFrames(rangeArray(0, 59));
+        TrackData track = trackWithIds(frames, ids);
+
+        String table = FrameAligner.buildPerTrackTable(
+                FrameAligner.perTrackAlignment(track, stack, 0), stack, 0);
+
+        assertTrue(table.contains("10 more track(s) not shown"), table); // 60 - 50 cap
+        assertTrue(table.contains("60/60 tracks fully mapped"), table);   // footer counts all
+    }
+
+    private static int[] rangeArray(int firstInclusive, int lastInclusive) {
+        int[] r = new int[lastInclusive - firstInclusive + 1];
+        for (int i = 0; i < r.length; i++) r[i] = firstInclusive + i;
+        return r;
     }
 }
