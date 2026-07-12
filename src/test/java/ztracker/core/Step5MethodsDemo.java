@@ -41,7 +41,10 @@ import java.util.stream.Stream;
  *   <li>Actually exports two of those combinations via {@link TrackExportManager} into a
  *       temp directory and prints the resulting file tree, so the
  *       {@code outputDir/<sampling>/<aggregation>/...} subfolder layout can be verified
- *       by eye, not just by assertion.</li>
+ *       by eye — including {@code TrackExportManager}'s per-track report line, which shows
+ *       a track with one NaN-Z detection keeping its full 2D export while only that one
+ *       point is dropped from 3D (the track itself is never discarded for a single bad
+ *       point).</li>
  * </ol>
  *
  * <p>Run it manually (from the project root, after {@code mvn test-compile}):
@@ -198,6 +201,10 @@ public class Step5MethodsDemo {
 
     private static void exportFolderDemo(TrackData t, LoadedStack s, Map<Integer, Double> zMap) throws IOException {
         System.out.println("\n--- 6) Exporting two combinations to see the folder layout ---");
+        System.out.println("  Track \"A\" has 2 detections: frame 0 (valid) and frame 99 (missing TIFF,"
+                + " NaN Z). TrackExportManager now keeps the track and just drops that one bad point"
+                + " from the 3D export -- watch the per-track report line below: 2D still writes"
+                + " both points, 3D writes only the 1 valid one.");
         Path tmp = Files.createTempDirectory("ztracker-step5-demo");
         ExportConfig config = new ExportConfig(1, null, true, false, false); // minTrackLength=1 for this tiny demo track
 

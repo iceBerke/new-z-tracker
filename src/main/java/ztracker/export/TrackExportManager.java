@@ -14,11 +14,17 @@ import java.util.*;
  *
  * <p>Filter criteria (same as the Python pipeline):
  * <ul>
- *   <li>Minimum track length (default: 3 frames)</li>
- *   <li>Maximum average Z standard deviation (optional)</li>
- *   <li>Tracks with any NaN in X, Y, or T are excluded from 2D export</li>
- *   <li>Tracks with any NaN in Z are excluded from 3D export only</li>
+ *   <li>Minimum track length (default: 3 frames) — applied to the track as a whole</li>
+ *   <li>Maximum average Z standard deviation (optional) — applied to the track as a whole</li>
+ *   <li>Tracks with any NaN in X or Y are excluded entirely (would break 2D export)</li>
+ *   <li>Individual points with a NaN Z (missing TIFF frame, out-of-bounds position, or every
+ *       sampled pixel unmapped) are dropped from that track's <b>3D</b> export only — the
+ *       track itself is kept and still gets a full 2D export. 3D is skipped only if too few
+ *       valid-Z points remain (fewer than {@code minTrackLength})</li>
  * </ul>
+ *
+ * <p>A per-track report is logged for every export run (not just when something goes wrong),
+ * so the user can see exactly what happened to each track at a glance.
  */
 public class TrackExportManager {
 
@@ -47,6 +53,9 @@ public class TrackExportManager {
         }
     }
 
+    /** Max number of per-track report lines logged (keeps huge CSVs readable). */
+    private static final int MAX_TRACKS_LOGGED = 50;
+
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
@@ -72,11 +81,15 @@ public class TrackExportManager {
         Path dir3D   = outDir.resolve("tracks_3D" + suffix);
         Path dirFiji = outDir.resolve("fiji" + suffix);
 
-        // Group detections by track ID, preserving insertion order
+        // Group detections by track ID, ordered by track id (numeric-aware) for reporting
         Map<String, List<Integer>> byTrack = groupByTrack(track);
+        List<String> orderedTrackIds = new ArrayList<>(byTrack.keySet());
+        orderedTrackIds.sort(TrackExportManager::compareTrackIds);
 
         int exported2D = 0, exported3D = 0;
-        int filteredShort = 0, filteredNoisy = 0, filteredNaN = 0;
+        int filteredShort = 0, filteredNoisy = 0, filteredInvalidXY = 0, skipped3DInsufficient = 0;
+        int droppedMissingFrame = 0, droppedOutOfBounds = 0, droppedUnmapped = 0;
+        List<String> reportLines = new ArrayList<>();
 
         // Accumulate data for Fiji bulk export
         List<String> allTids   = new ArrayList<>();
@@ -85,15 +98,21 @@ public class TrackExportManager {
         List<Double>  allY     = new ArrayList<>();
         List<Double>  allZ     = new ArrayList<>();
 
-        for (Map.Entry<String, List<Integer>> entry : byTrack.entrySet()) {
-            String       trackId  = entry.getKey();
-            List<Integer> indices  = entry.getValue();
+        for (String trackId : orderedTrackIds) {
+            List<Integer> indices = byTrack.get(trackId);
 
             // Sort detections by frame
             indices.sort(Comparator.comparingInt(i -> track.frame[i]));
+            int n = indices.size();
 
             // ── Filter: minimum length
-            if (indices.size() < config.minTrackLength) { filteredShort++; continue; }
+            if (n < config.minTrackLength) {
+                filteredShort++;
+                reportLines.add(String.format(
+                        "Track %-10s SKIPPED — length %d < minimum %d",
+                        trackId, n, config.minTrackLength));
+                continue;
+            }
 
             // ── Filter: Z noise
             if (config.maxZStd != null) {
@@ -101,35 +120,76 @@ public class TrackExportManager {
                         .mapToDouble(i -> result.zStd[i])
                         .filter(v -> !Double.isNaN(v))
                         .average().orElse(0.0);
-                if (meanStd > config.maxZStd) { filteredNoisy++; continue; }
+                if (meanStd > config.maxZStd) {
+                    filteredNoisy++;
+                    reportLines.add(String.format(
+                            "Track %-10s SKIPPED — noisy (mean Z std %.2f > max %.2f)",
+                            trackId, meanStd, config.maxZStd));
+                    continue;
+                }
             }
 
-            // ── Extract arrays
+            // ── Extract arrays (full track)
             double[] xArr = indices.stream().mapToDouble(i -> track.x[i]).toArray();
             double[] yArr = indices.stream().mapToDouble(i -> track.y[i]).toArray();
-            double[] zArr = indices.stream().mapToDouble(i -> result.z[i]).toArray();
             int[]    tArr = indices.stream().mapToInt(i -> track.frame[i]).toArray();
 
-            // ── Filter: NaN in X, Y, T (would break 2D export)
-            if (hasNaN(xArr) || hasNaN(yArr)) { filteredNaN++; continue; }
+            // ── Filter: NaN in X, Y (would break 2D export)
+            if (hasNaN(xArr) || hasNaN(yArr)) {
+                filteredInvalidXY++;
+                reportLines.add(String.format(
+                        "Track %-10s SKIPPED — invalid X/Y in one or more detections",
+                        trackId));
+                continue;
+            }
+
+            // ── Split the track's points into valid-Z (kept for 3D) and dropped, tallying why
+            List<Integer> valid3D = new ArrayList<>(n);
+            Map<String, Integer> dropReasons = new LinkedHashMap<>();
+            for (int i : indices) {
+                if (!Double.isNaN(result.z[i])) {
+                    valid3D.add(i);
+                } else {
+                    String reason = result.sampleStatus[i];
+                    dropReasons.merge(reason, 1, Integer::sum);
+                    if (ExtractionResult.STATUS_MISSING_FRAME.equals(reason)) droppedMissingFrame++;
+                    else if (ExtractionResult.STATUS_OUT_OF_BOUNDS.equals(reason)) droppedOutOfBounds++;
+                    else if (ExtractionResult.STATUS_UNMAPPED_INDEX.equals(reason)) droppedUnmapped++;
+                }
+            }
+            int droppedCount = n - valid3D.size();
 
             // ── NPY export
+            boolean did2D = false, did3D = false;
             if (config.exportNpy) {
                 int trackIdInt = parseTrackId(trackId);
+
                 dir2D.toFile().mkdirs();
                 NpyExporter.write2DTrack(xArr, yArr, tArr,
                         dir2D.resolve(String.format("track_%05d.npy", trackIdInt)));
                 exported2D++;
+                did2D = true;
 
-                if (!hasNaN(zArr)) {
+                if (valid3D.size() >= config.minTrackLength) {
+                    double[] xArr3 = valid3D.stream().mapToDouble(i -> track.x[i]).toArray();
+                    double[] yArr3 = valid3D.stream().mapToDouble(i -> track.y[i]).toArray();
+                    double[] zArr3 = valid3D.stream().mapToDouble(i -> result.z[i]).toArray();
+                    int[]    tArr3 = valid3D.stream().mapToInt(i -> track.frame[i]).toArray();
+
                     dir3D.toFile().mkdirs();
-                    NpyExporter.write3DTrack(xArr, yArr, zArr, tArr,
+                    NpyExporter.write3DTrack(xArr3, yArr3, zArr3, tArr3,
                             dir3D.resolve(String.format("track_%05d.npy", trackIdInt)));
                     exported3D++;
+                    did3D = true;
+                } else if (droppedCount > 0) {
+                    skipped3DInsufficient++;
                 }
             }
 
-            // ── Accumulate for Fiji export
+            reportLines.add(buildTrackReportLine(
+                    trackId, n, did2D, did3D, valid3D.size(), config.minTrackLength, dropReasons));
+
+            // ── Accumulate for Fiji export (unfiltered — includes NaN-Z points as before)
             if (config.exportResultsTable || config.exportRoiSet) {
                 for (int i : indices) {
                     allTids.add(trackId);
@@ -161,14 +221,70 @@ public class TrackExportManager {
             }
         }
 
+        // ── Per-track report (always logged, capped for readability)
+        logPerTrackReport(reportLines);
+
         // ── Summary
         IJ.log(String.format(
-                "[TrackExportManager] Exported 2D=%d, 3D=%d | "
-                + "Filtered: short=%d, noisy=%d, NaN=%d",
-                exported2D, exported3D, filteredShort, filteredNoisy, filteredNaN));
+                "[TrackExportManager] Exported 2D=%d, 3D=%d | Filtered tracks: short=%d, "
+                + "noisy=%d, invalidXY=%d, 3Dskipped(insufficientValidZ)=%d | "
+                + "Dropped 3D points: missingFrame=%d, outOfBounds=%d, unmappedIndex=%d",
+                exported2D, exported3D, filteredShort, filteredNoisy, filteredInvalidXY,
+                skipped3DInsufficient, droppedMissingFrame, droppedOutOfBounds, droppedUnmapped));
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /** Builds one report line for a track that made it past the whole-track filters. */
+    private static String buildTrackReportLine(
+            String trackId, int totalPoints, boolean did2D, boolean did3D,
+            int validZCount, int minTrackLength, Map<String, Integer> dropReasons) {
+
+        String twoDPart = did2D
+                ? String.format("2D ✓ (%d pt)", totalPoints)
+                : "2D ✗ (npy export off)";
+
+        String threeDPart;
+        if (!did2D) {
+            threeDPart = "3D ✗";
+        } else if (dropReasons.isEmpty()) {
+            threeDPart = String.format("3D ✓ (%d/%d pt) — all points valid", validZCount, totalPoints);
+        } else {
+            String breakdown = describeDropReasons(dropReasons);
+            threeDPart = did3D
+                    ? String.format("3D ✓ (%d/%d pt) — dropped %d: %s",
+                            validZCount, totalPoints, totalPoints - validZCount, breakdown)
+                    : String.format("3D ✗ (%d/%d valid < min %d) — dropped %d: %s",
+                            validZCount, totalPoints, minTrackLength,
+                            totalPoints - validZCount, breakdown);
+        }
+
+        return String.format("Track %-10s %s | %s", trackId, twoDPart, threeDPart);
+    }
+
+    private static String describeDropReasons(Map<String, Integer> dropReasons) {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, Integer> e : dropReasons.entrySet()) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(e.getValue()).append(' ').append(e.getKey());
+        }
+        return sb.toString();
+    }
+
+    private static void logPerTrackReport(List<String> reportLines) {
+        IJ.log(String.format("[TrackExportManager] ── Per-track report (%d track(s)) ──",
+                reportLines.size()));
+        int shown = 0;
+        for (String line : reportLines) {
+            if (shown++ >= MAX_TRACKS_LOGGED) break;
+            IJ.log("[TrackExportManager]   " + line);
+        }
+        int remaining = reportLines.size() - Math.min(reportLines.size(), MAX_TRACKS_LOGGED);
+        if (remaining > 0) {
+            IJ.log(String.format("[TrackExportManager]   … %d more track(s) not shown (log cap %d)",
+                    remaining, MAX_TRACKS_LOGGED));
+        }
+    }
 
     private static Map<String, List<Integer>> groupByTrack(TrackData track) {
         Map<String, List<Integer>> map = new LinkedHashMap<>();
@@ -188,5 +304,15 @@ public class TrackExportManager {
     private static int parseTrackId(String tid) {
         try { return (int) Double.parseDouble(tid); }
         catch (NumberFormatException e) { return tid.hashCode() & 0x7FFFFFFF; }
+    }
+
+    /** Orders track ids numerically when both parse as integers, else lexicographically —
+     *  consistent with {@link ztracker.core.FrameAligner}'s per-track table ordering. */
+    private static int compareTrackIds(String a, String b) {
+        try {
+            return Long.compare(Long.parseLong(a.trim()), Long.parseLong(b.trim()));
+        } catch (NumberFormatException e) {
+            return a.compareTo(b);
+        }
     }
 }

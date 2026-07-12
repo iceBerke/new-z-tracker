@@ -45,10 +45,11 @@ public class ZExtractor {
             ZAggregator.Method aggregation) {
 
         int n = track.size();
-        double[] z          = new double[n];
-        double[] zStd       = new double[n];
-        int[]    numSamples = new int[n];
-        int[]    numUnmapped= new int[n];
+        double[] z            = new double[n];
+        double[] zStd         = new double[n];
+        int[]    numSamples   = new int[n];
+        int[]    numUnmapped  = new int[n];
+        String[] sampleStatus = new String[n];
 
         int missingFrames = 0;
         int outOfBounds   = 0;
@@ -80,8 +81,10 @@ public class ZExtractor {
                 // so they're counted and logged separately rather than lumped together.
                 if (stack.frameToIdx.containsKey(track.frame[i] + frameOffset)) {
                     outOfBounds++;
+                    sampleStatus[i] = ExtractionResult.STATUS_OUT_OF_BOUNDS;
                 } else {
                     missingFrames++;
+                    sampleStatus[i] = ExtractionResult.STATUS_MISSING_FRAME;
                 }
                 continue;
             }
@@ -97,6 +100,11 @@ public class ZExtractor {
             zStd[i]        = ZAggregator.std(zSamples);
             numSamples[i]  = indices.length;
             numUnmapped[i] = unmapped;
+            // zVal is only NaN here if every sampled index lacked a Z-mapping entry
+            // (partial unmapped still yields a valid aggregate over the remaining samples).
+            sampleStatus[i] = Double.isNaN(zVal)
+                    ? ExtractionResult.STATUS_UNMAPPED_INDEX
+                    : ExtractionResult.STATUS_OK;
         }
 
         IJ.showProgress(1.0);
@@ -109,7 +117,7 @@ public class ZExtractor {
                 "[ZExtractor] Done: %d / %d valid Z values | %d missing frames | %d out-of-bounds positions",
                 validCount, n, missingFrames, outOfBounds));
 
-        return new ExtractionResult(z, zStd, numSamples, numUnmapped,
+        return new ExtractionResult(z, zStd, numSamples, numUnmapped, sampleStatus,
                 sampling.label, aggregation.label, missingFrames, outOfBounds);
     }
 

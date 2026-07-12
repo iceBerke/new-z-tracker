@@ -6,6 +6,16 @@ package ztracker.model;
  */
 public class ExtractionResult {
 
+    /** {@link #sampleStatus} value for a detection with a valid Z value. */
+    public static final String STATUS_OK = "";
+    /** {@link #sampleStatus} value: the detection's TIFF frame isn't in the loaded stack. */
+    public static final String STATUS_MISSING_FRAME = "missing frame";
+    /** {@link #sampleStatus} value: the frame exists, but the sampled position (or its
+     *  whole radius/corner footprint) fell outside the image bounds. */
+    public static final String STATUS_OUT_OF_BOUNDS = "out of bounds";
+    /** {@link #sampleStatus} value: pixels were sampled, but none had a Z-mapping entry. */
+    public static final String STATUS_UNMAPPED_INDEX = "unmapped index";
+
     /** Extracted Z value in physical units (µm). NaN if extraction failed. */
     public final double[] z;
 
@@ -17,6 +27,11 @@ public class ExtractionResult {
 
     /** Number of sampled pixel indices that had no entry in the Z mapping. */
     public final int[] numUnmapped;
+
+    /** Per-detection reason for a NaN {@link #z} value — one of the {@code STATUS_*}
+     *  constants, or {@link #STATUS_OK} when z[i] is valid. Lets callers (export,
+     *  logging) explain *why* a specific point was dropped instead of just that it was. */
+    public final String[] sampleStatus;
 
     /** Sampling method label used (for logging / export naming). */
     public final String samplingMethod;
@@ -38,6 +53,7 @@ public class ExtractionResult {
             double[] zStd,
             int[]    numSamples,
             int[]    numUnmapped,
+            String[] sampleStatus,
             String   samplingMethod,
             String   aggregationMethod,
             int      missingFrameCount,
@@ -47,6 +63,7 @@ public class ExtractionResult {
         this.zStd              = zStd;
         this.numSamples        = numSamples;
         this.numUnmapped       = numUnmapped;
+        this.sampleStatus      = sampleStatus;
         this.samplingMethod    = samplingMethod;
         this.aggregationMethod = aggregationMethod;
         this.missingFrameCount = missingFrameCount;
