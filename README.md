@@ -14,7 +14,7 @@ ZTracker_Fiji/
 └── src/main/
     ├── java/ztracker/
     │   ├── ZTrackerPlugin.java          ← plugin entry point
-    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard, all non-modal (Steps 1 & 4: custom AWT; Steps 2, 3, 5, 6: NonBlockingGenericDialog) so the Log stays usable
+    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard, all non-modal (Steps 1, 4, 6: custom AWT; Steps 2, 3, 5: NonBlockingGenericDialog) so the Log stays usable
     │   ├── io/
     │   │   ├── ZMappingLoader.java      ← JSON index→Z parsing (no external lib)
     │   │   ├── TiffStackLoader.java     ← TIFF folder loader with frame→index map
@@ -119,6 +119,33 @@ returns zero samples (never partial).
 | Results Table CSV | `fiji/results_table.csv` | `Analyze > Import > Results…` |
 | ROI set | `fiji/track_rois.zip` | ROI Manager `More >> Open…` |
 | Export report | `export_report.txt` | Full, uncapped per-track breakdown of what was kept/dropped and why (see below) |
+
+**Output directory layout.** With a single sampling/aggregation method chosen in Step 5,
+everything exports flat into `outputDir`:
+
+```
+outputDir/
+├── tracks_2D/track_00001.npy, track_00002.npy, ...   (if .npy enabled)
+├── tracks_3D/track_00001.npy, track_00002.npy, ...   (if .npy enabled)
+├── fiji/results_table.csv, track_rois.zip             (if Results Table / ROI set enabled)
+└── export_report.txt
+```
+
+With either Step-5 axis set to **All**, each sampling × aggregation combination gets its
+own `<sampling>/<aggregation>/` subfolder (each an independent copy of the layout above):
+
+```
+outputDir/
+├── radius/
+│   ├── median/tracks_2D/, tracks_3D/, fiji/, export_report.txt
+│   └── mean/tracks_2D/, tracks_3D/, fiji/, export_report.txt
+├── four_neighbor/
+│   ├── median/...
+│   └── mean/...
+└── single_pixel/
+    ├── median/...
+    └── mean/...
+```
 
 ### What happens to a bad detection (missing frame, out-of-bounds, or bad X/Y)
 
