@@ -1,19 +1,27 @@
 package ztracker.export;
 
+import ij.gui.Roi;
+import ij.io.RoiDecoder;
+import ij.process.FloatPolygon;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ztracker.export.TrackExportManager.ExportConfig;
 import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -53,6 +61,86 @@ class TrackExportManagerTest {
 
         assertTrue(Files.exists(outDir.resolve("tracks_2D").resolve("track_00001.npy")));
         assertTrue(Files.exists(outDir.resolve("tracks_3D").resolve("track_00001.npy")));
+    }
+
+    @Test
+    void export_preservesInputXYCoordinatesIdenticallyAcrossEveryFormat(@TempDir Path outDir)
+            throws IOException {
+        // Distinct, non-integer, float-exact X/Y per detection so a column swap, an
+        // off-by-one index, or an accidental unit conversion would be caught by every
+        // format independently -- not just "some npy file got written".
+        double[] x = {10.25, 20.5, 30.75};
+        double[] y = {1.125, 2.5, 45.625};
+        int[]    frame = {0, 1, 2};
+        TrackData track = new TrackData(
+                x, y, frame,
+                new double[]{3.5, 3.5, 3.5},
+                new String[]{"7", "7", "7"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        double[] z = {100.0, 200.0, 300.0};
+        ExtractionResult result = new ExtractionResult(
+                z, new double[]{0.0, 0.0, 0.0}, new int[]{1, 1, 1}, new int[]{0, 0, 0},
+                new String[]{ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
+                "Radius-based", "Median", 0, 0, 0);
+        ExportConfig config = new ExportConfig(true, true, true);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        // .npy 2D: columns [X, Y, T]
+        double[][] rows2D = readNpy(outDir.resolve("tracks_2D").resolve("track_00007.npy"));
+        assertEquals(3, rows2D.length);
+        for (int i = 0; i < 3; i++) {
+            assertEquals(x[i], rows2D[i][0], 0.0, "2D npy X mismatch at row " + i);
+            assertEquals(y[i], rows2D[i][1], 0.0, "2D npy Y mismatch at row " + i);
+        }
+
+        // .npy 3D: columns [X, Y, Z, T]
+        double[][] rows3D = readNpy(outDir.resolve("tracks_3D").resolve("track_00007.npy"));
+        assertEquals(3, rows3D.length);
+        for (int i = 0; i < 3; i++) {
+            assertEquals(x[i], rows3D[i][0], 0.0, "3D npy X mismatch at row " + i);
+            assertEquals(y[i], rows3D[i][1], 0.0, "3D npy Y mismatch at row " + i);
+            assertEquals(z[i], rows3D[i][2], 0.0, "3D npy Z mismatch at row " + i);
+        }
+
+        // Results Table CSV: Track_ID,Frame,X,Y,Z (X/Y/Z formatted to 4 decimals)
+        List<String> csvLines = Files.readAllLines(
+                outDir.resolve("fiji").resolve("results_table.csv"), StandardCharsets.UTF_8);
+        assertEquals("Track_ID,Frame,X,Y,Z", csvLines.get(0));
+        for (int i = 0; i < 3; i++) {
+            String expected = String.format("7,%d,%.4f,%.4f,%.4f", frame[i], x[i], y[i], z[i]);
+            assertEquals(expected, csvLines.get(i + 1), "Results Table row mismatch at index " + i);
+        }
+
+        // ROI zip: one PointRoi per (trackId, frame), decoded back to float coordinates.
+        Map<String, float[]> roiCoordsByName = readRoiZipCoordinates(
+                outDir.resolve("fiji").resolve("track_rois.zip"));
+        for (int i = 0; i < 3; i++) {
+            String name = "7_f" + frame[i];
+            assertTrue(roiCoordsByName.containsKey(name), "missing ROI " + name);
+            float[] xy = roiCoordsByName.get(name);
+            assertEquals((float) x[i], xy[0], 1e-4f, "ROI X mismatch for " + name);
+            assertEquals((float) y[i], xy[1], 1e-4f, "ROI Y mismatch for " + name);
+        }
+    }
+
+    private static Map<String, float[]> readRoiZipCoordinates(Path zipPath) throws IOException {
+        Map<String, float[]> result = new java.util.LinkedHashMap<>();
+        try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(zipPath))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                ByteArrayOutputStream buf = new ByteArrayOutputStream();
+                byte[] chunk = new byte[4096];
+                int n;
+                while ((n = zis.read(chunk)) != -1) buf.write(chunk, 0, n);
+
+                Roi roi = new RoiDecoder(buf.toByteArray(), entry.getName()).getRoi();
+                FloatPolygon poly = roi.getFloatPolygon();
+                String name = entry.getName().replaceFirst("\\.roi$", "");
+                result.put(name, new float[]{poly.xpoints[0], poly.ypoints[0]});
+            }
+        }
+        return result;
     }
 
     /** A track where one detection (index 1) has a NaN Z from a missing TIFF frame. */
