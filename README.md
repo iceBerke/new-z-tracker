@@ -14,7 +14,7 @@ ZTracker_Fiji/
 └── src/main/
     ├── java/ztracker/
     │   ├── ZTrackerPlugin.java          ← plugin entry point
-    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard, all non-modal (Steps 1, 4, 6: custom AWT; Steps 2, 3, 5: NonBlockingGenericDialog) so the Log stays usable
+    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard, all non-modal (Steps 1, 4, 5, 6: custom AWT; Steps 2, 3: NonBlockingGenericDialog) so the Log stays usable
     │   ├── io/
     │   │   ├── ZMappingLoader.java      ← JSON index→Z parsing (no external lib)
     │   │   ├── TiffStackLoader.java     ← TIFF folder loader with frame→index map
@@ -23,7 +23,7 @@ ZTracker_Fiji/
     │   │   ├── FrameAligner.java        ← CSV-to-TIFF offset suggestion + per-track alignment reporting
     │   │   ├── ZSampler.java            ← radius / 4-neighbor / single-pixel sampling
     │   │   ├── ZAggregator.java         ← median / mean aggregation
-    │   │   └── ZExtractor.java          ← orchestrates sampling + mapping + aggregation; `extractAll` runs a full sampling × aggregation cross product
+    │   │   └── ZExtractor.java          ← orchestrates sampling + mapping + aggregation; `extractAll` runs the sampling × aggregation cross product (Single Pixel deduped to one run); `resolveComboOutputDir` picks each combo's export folder
     │   ├── export/
     │   │   ├── NpyExporter.java         ← writes [X,Y,Z,T] .npy (pure Java, no Python)
     │   │   ├── FijiPointsExporter.java  ← Results Table CSV + ROI Manager .zip
@@ -87,13 +87,17 @@ The plugin runs as a 6-step dialog wizard:
 | 2 | CSV format (header row, skip rows, default radius) |
 | 3 | Column names (auto-detected, editable) |
 | 4 | CSV-to-TIFF frame offset — a live-updating box shows a per-track verdict as you type; a suggested offset is pre-filled, and the full per-track table (each track's span + how its first/last frame maps) is written to the Log for verification |
-| 5 | Sampling method (Radius / 4-Neighbor / Single Pixel / **All**) + aggregation (Median / Mean / **All**) |
+| 5 | Sampling method (Radius / 4-Neighbor / Single Pixel / **All**) + aggregation (Median / Mean / **All**) — aggregation is disabled when Sampling is Single Pixel alone, since aggregating one sample is a no-op |
 | 6 | Output directory, export formats |
 
-Either Step-5 axis can be set to **All** instead of a single choice, running the full
-sampling × aggregation cross product (`ZExtractor.extractAll`). Each combination is
-exported to its own `outputDir/<sampling>/<aggregation>/` subfolder; a single chosen
-method still exports flat into `outputDir` as before.
+Either Step-5 axis can be set to **All** instead of a single choice, running the
+sampling × aggregation cross product (`ZExtractor.extractAll`). **Single Pixel is an
+exception**: it samples exactly one pixel per detection, so Median and Mean of that one
+value are identical — it only runs (and exports) once regardless of how many aggregation
+methods were requested, collapsing what would otherwise be a 3×2 = 6-combo run down to 5.
+Each combination is exported to its own `outputDir/<sampling>/<aggregation>/` subfolder —
+except Single Pixel, which collapses to `outputDir/single_pixel/` with no aggregation
+subfolder; a single chosen method still exports flat into `outputDir` as before.
 
 ### How sampling works, precisely
 
@@ -132,7 +136,10 @@ outputDir/
 ```
 
 With either Step-5 axis set to **All**, each sampling × aggregation combination gets its
-own `<sampling>/<aggregation>/` subfolder (each an independent copy of the layout above):
+own `<sampling>/<aggregation>/` subfolder (each an independent copy of the layout above)
+— except Single Pixel, which collapses to a bare `single_pixel/` folder with no
+aggregation subfolder, since aggregating exactly one sample makes the aggregation method
+meaningless:
 
 ```
 outputDir/
@@ -142,9 +149,7 @@ outputDir/
 ├── four_neighbor/
 │   ├── median/...
 │   └── mean/...
-└── single_pixel/
-    ├── median/...
-    └── mean/...
+└── single_pixel/tracks_2D/, tracks_3D/, fiji/, export_report.txt
 ```
 
 ### What happens to a bad detection (missing frame, out-of-bounds, or bad X/Y)
@@ -243,3 +248,5 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p4.6 | Fixed a latent bug: `ZExtractor` never checked for NaN X/Y before sampling, and `Math.round(Double.NaN) == 0` in Java meant a NaN X was silently treated as `x=0`, producing a bogus "valid" Z at a phantom pixel instead of failing (final `.npy` output was unaffected — `TrackExportManager` already caught it downstream — but `ZExtractor`'s own log/counts overcounted). Now checked up front with a new `ExtractionResult.STATUS_INVALID_XY`/`invalidXYCount`, shared with `TrackExportManager` instead of a separate local constant |
 | p4.7 | Per-track report now notes when Results Table CSV / ROI zip are enabled, even with `.npy` off — previously a track's line read `2D ✗ (npy export off) \| 3D ✗ (npy export off)` regardless of whether its points landed fine in another format, misleadingly reading as a total export failure |
 | p5.0 | Rebuilt Step 6 as a custom AWT dialog matching Step 1's file-picker style (`DirectoryChooser` browse button + aligned grid) instead of `GenericDialog.addDirectoryField`, fixing unrendered "──" dash glyphs; removed whole-track quality filtering (minimum length, max Z std dev) from both the UI and `TrackExportManager` — every track is now exported, with 2D/3D gated per-dimension only when it has zero valid points |
+| p5.1 | Synced README.md with the p5.0 changes (it still described the removed filters and old Step 6 dialog) and added an ASCII output-tree diagram documenting the actual on-disk export layout, which wasn't shown anywhere before |
+| p5.2 | `ZExtractor.extractAll` now runs `SINGLE_PIXEL` only once regardless of how many aggregation methods are requested — aggregating exactly one sample makes Median/Mean identical, so running both was pure duplicate work; `resolveComboOutputDir` collapses its export folder to `single_pixel/` (no aggregation subfolder) to match. Step 5 is now a custom AWT dialog (like Steps 1, 4, 6) that disables the aggregation choice whenever Sampling is Single Pixel alone |

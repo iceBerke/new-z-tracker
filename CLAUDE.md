@@ -39,7 +39,9 @@ eyeballed. Run instructions are in the class javadoc.
 `src/test/java/ztracker/core/Step5MethodsDemo.java` is the same kind of runnable walkthrough for
 step 5. It samples a synthetic TIFF frame (with a planted outlier pixel) using every
 `ZSampler.Method`, aggregates with every `ZAggregator.Method` to show MEDIAN's outlier robustness
-vs MEAN, runs `ZExtractor.extractAll`'s full sampling × aggregation cross product, places a
+vs MEAN, runs `ZExtractor.extractAll`'s sampling × aggregation cross product (collapsed from 6 to
+5 combos since `SINGLE_PIXEL` only runs once regardless of aggregation method — see the Pluggable
+methods section), places a
 detection at the image edge to show RADIUS/FOUR_NEIGHBOR getting clipped while SINGLE_PIXEL stays
 in-bounds, contrasts a genuinely out-of-bounds detection against a genuinely missing frame to show
 `ExtractionResult.outOfBoundsCount` vs `missingFrameCount` being reported separately, and actually
@@ -98,7 +100,7 @@ The entry point is `ZTrackerPlugin` (implements ImageJ's `PlugIn`). It is a **th
 Keep the package layout clean — `model` / `io` / `core` / `export` / `ui`, each with a **single responsibility**. Prefer small, focused classes over large ones. Keep business logic out of `ZTrackerPlugin`.
 
 - `ztracker` — `ZTrackerPlugin` entry point (orchestration only).
-- `ztracker.ui` — `ZTrackerDialog`, the 6-step dialog wizard. **All steps are non-modal** so the ImageJ Log window stays interactive/resizable while any step is open (the Step-4 per-track table lives in the Log). Steps 1, 4, and 6 are custom AWT `Dialog`s created modeless (`new Dialog(..., false)`) and block the plugin thread with a `CountDownLatch` counted down on OK/Cancel/close — Step 1 is the resizable file picker, Step 4 the live-updating frame-alignment box, Step 6 the output-directory-and-format picker (same `addInputGroup` grid layout as Step 1, with a `DirectoryChooser`-backed browse button instead of `GenericDialog.addDirectoryField`). Steps 2, 3, 5 use `NonBlockingGenericDialog` (ImageJ's non-modal `GenericDialog`, whose `showDialog()` still blocks the caller so the existing `wasCanceled()`/`getNext*()` usage is unchanged). Plugins run off the EDT, so blocking the plugin thread doesn't freeze the UI.
+- `ztracker.ui` — `ZTrackerDialog`, the 6-step dialog wizard. **All steps are non-modal** so the ImageJ Log window stays interactive/resizable while any step is open (the Step-4 per-track table lives in the Log). Steps 1, 4, 5, and 6 are custom AWT `Dialog`s created modeless (`new Dialog(..., false)`) and block the plugin thread with a `CountDownLatch` counted down on OK/Cancel/close — Step 1 is the resizable file picker, Step 4 the live-updating frame-alignment box, Step 5 the sampling/aggregation method picker (uses a live `ItemListener` to disable the aggregation `Choice` when Sampling is `SINGLE_PIXEL` alone — see the Pluggable methods section), Step 6 the output-directory-and-format picker (same `addInputGroup` grid layout as Step 1, with a `DirectoryChooser`-backed browse button instead of `GenericDialog.addDirectoryField`). Steps 2 and 3 use `NonBlockingGenericDialog` (ImageJ's non-modal `GenericDialog`, whose `showDialog()` still blocks the caller so the existing `wasCanceled()`/`getNext*()` usage is unchanged). Plugins run off the EDT, so blocking the plugin thread doesn't freeze the UI.
 - `ztracker.io` — input loaders (`ZMappingLoader`, `TiffStackLoader`, `TrackCsvLoader`).
 - `ztracker.core` — extraction logic (`FrameAligner`, `ZSampler`, `ZAggregator`, `ZExtractor`).
 - `ztracker.export` — output writers (`NpyExporter`, `FijiPointsExporter`, `TrackExportManager`).
@@ -126,9 +128,18 @@ To add a sampling or aggregation strategy, extend the relevant enum and its disp
 Step 5 of the dialog lets either axis (sampling method, aggregation method) be set to **"All"**
 instead of a single choice — `ZExtractor.extractAll` runs every requested combination (the full
 sampling × aggregation cross product when both axes are "All") and returns a
-`List<ZExtractor.MethodCombo>`. `ZTrackerPlugin` exports each combo to its own subfolder,
-`outputDir/<sampling>/<aggregation>/...` (e.g. `outputDir/radius/median/`), only when more than
-one combination was run — a single chosen method still exports flat into `outputDir` as before.
+`List<ZExtractor.MethodCombo>`. **`SINGLE_PIXEL` is an exception**: it samples exactly one pixel
+per detection, so every aggregation method produces an identical result — `extractAll` runs it
+only once regardless of how many aggregation methods were requested, instead of once per method.
+The Step-5 UI mirrors this: it's now a custom modeless AWT dialog (like Steps 1, 4, 6) with an
+`ItemListener` on the sampling `Choice` that disables the aggregation `Choice` (pinned to Median,
+never actually read downstream) whenever Sampling is set to `SINGLE_PIXEL` alone — it stays
+enabled when Sampling is "All", since Radius and 4-Neighbor still need it.
+`ZExtractor.resolveComboOutputDir` decides each combo's export folder: `outputDir/<sampling>/<aggregation>/...`
+(e.g. `outputDir/radius/median/`) for non-single-pixel combos when more than one combination was
+run, but `outputDir/single_pixel/` (no aggregation subfolder) for `SINGLE_PIXEL` — collapsed for
+the same reason its extraction is deduped. A single chosen method still exports flat into
+`outputDir` as before. `ZTrackerPlugin` just calls this resolver; it doesn't compute paths itself.
 
 ## Known Gotchas (real bugs we've already hit)
 

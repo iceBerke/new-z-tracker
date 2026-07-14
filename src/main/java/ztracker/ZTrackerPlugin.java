@@ -130,11 +130,8 @@ public class ZTrackerPlugin implements PlugIn {
         IJ.showStatus("Exporting tracks…");
         try {
             for (ZExtractor.MethodCombo combo : combos) {
-                java.nio.file.Path outDir = multiMethod
-                        ? dialog.outputDir.toPath()
-                                .resolve(combo.sampling.name().toLowerCase())
-                                .resolve(combo.aggregation.name().toLowerCase())
-                        : dialog.outputDir.toPath();
+                java.nio.file.Path outDir = ZExtractor.resolveComboOutputDir(
+                        dialog.outputDir.toPath(), combo, multiMethod);
 
                 TrackExportManager.export(
                         trackData,

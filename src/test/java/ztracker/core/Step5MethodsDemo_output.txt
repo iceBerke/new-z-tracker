@@ -25,7 +25,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
   Mean     ->  17.75
   (MEDIAN should sit near the non-outlier cluster; MEAN gets pulled toward 50)
 
---- 3) ZExtractor.extractAll: full 3x2 sampling x aggregation cross product ---
+--- 3) ZExtractor.extractAll: 3x2 sampling x aggregation cross product, collapsed to 5 combos ---
 [ZExtractor] Starting extraction: 2 detections | Radius-based + Median | offset=+0
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
 [ZExtractor] Starting extraction: 2 detections | Radius-based + Mean | offset=+0
@@ -36,16 +36,14 @@ Step-5 demo: sampling methods, aggregation methods, "All"
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
 [ZExtractor] Starting extraction: 2 detections | Single Pixel + Median | offset=+0
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
-[ZExtractor] Starting extraction: 2 detections | Single Pixel + Mean | offset=+0
-[ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
   sampling       aggreg.   z[det0]  z[det1] numSamples
   Radius-based   Median       6.00      NaN          5
   Radius-based   Mean         6.00      NaN          5
   4-Neighbor     Median       7.50      NaN          4
   4-Neighbor     Mean        17.75      NaN          4
   Single Pixel   Median       6.00      NaN          1
-  Single Pixel   Mean         6.00      NaN          1
   (det1 is frame 99, which has no TIFF -> always NaN / 0 samples, independent of method)
+  (Single Pixel only appears once above, not once per aggregation method: it samples exactly one pixel, so Median and Mean of that one value are identical -- running it twice would just be duplicate work. See ZExtractor.extractAll and ZExtractor.resolveComboOutputDir, which also collapses its export folder the same way.)
 
 --- 4) Edge-of-image detection: x=4.4, y=2.4 (col 4 is the last valid column in a 5-wide frame) ---
   SINGLE_PIXEL's nearest pixel (4,2) is still in-bounds, so it samples normally. RADIUS's disk and FOUR_NEIGHBOR's corners both reach past column 4 into column 5, which doesn't exist — those out-of-frame samples are silently dropped, not clamped, so their sample counts shrink instead of erroring.
@@ -79,7 +77,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
 [TrackExportManager] Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
-  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step5-demo13317082119140904876
+  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step5-demo16585150687969117616
     radius\median\export_report.txt
     radius\median\tracks_2D\track_00065.npy
     radius\median\tracks_3D\track_00065.npy

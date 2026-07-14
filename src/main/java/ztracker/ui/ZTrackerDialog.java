@@ -16,6 +16,7 @@ import ztracker.model.TrackData;
 import java.awt.BorderLayout;
 import java.awt.Button;
 import java.awt.Checkbox;
+import java.awt.Choice;
 import java.awt.Color;
 import java.awt.Dialog;
 import java.awt.FileDialog;
@@ -491,7 +492,13 @@ public class ZTrackerDialog {
 
     /** Step 5: Sampling and aggregation method selection. Either axis may be set to
      *  "All", in which case every method on that axis is run (and exported to its
-     *  own subfolder) instead of a single chosen one. */
+     *  own subfolder) instead of a single chosen one.
+     *
+     *  <p>Single Pixel samples exactly one pixel per detection, so every aggregation
+     *  method produces an identical Z value — the aggregation choice is disabled
+     *  (and pinned to Median, which is never actually used downstream) whenever
+     *  Single Pixel is chosen on its own. It stays enabled when Sampling is "All",
+     *  since Radius and 4-Neighbor still need an aggregation method. */
     private boolean step5_methods() {
         String[] samplingLabels = {
             ZSampler.Method.RADIUS.label,
@@ -505,25 +512,119 @@ public class ZTrackerDialog {
             ALL_LABEL
         };
 
-        GenericDialog gd = new NonBlockingGenericDialog("ZTracker — Step 5: Extraction Methods");
-        gd.addMessage("How pixels are collected around each detection:");
-        gd.addChoice("Sampling method:", samplingLabels, samplingLabels[0]);
-        gd.addMessage("\nHow sampled Z values are combined into one:");
-        gd.addChoice("Aggregation method:", aggregationLabels, aggregationLabels[0]);
-        gd.showDialog();
+        Frame parent = IJ.getInstance();
+        final Dialog dlg = new Dialog(
+                parent != null ? parent : new Frame(),
+                "ZTracker — Step 5: Extraction Methods", false);
+        dlg.setLayout(new BorderLayout(8, 8));
+        final CountDownLatch closeLatch = new CountDownLatch(1);
 
-        if (gd.wasCanceled()) return false;
+        Panel headerPanel = new Panel(new FlowLayout(FlowLayout.LEFT, 12, 8));
+        headerPanel.add(new Label("Choose how pixels are sampled and combined into a Z value."));
 
-        String samplingChoice    = gd.getNextChoice();
-        String aggregationChoice = gd.getNextChoice();
+        final Choice samplingBox    = new Choice();
+        final Choice aggregationBox = new Choice();
+        for (String s : samplingLabels)    samplingBox.add(s);
+        for (String s : aggregationLabels) aggregationBox.add(s);
+
+        final Label aggregationNote = new Label(" ");
+        aggregationNote.setForeground(Color.GRAY);
+
+        Panel grid = new Panel(new GridBagLayout());
+        int row = 0;
+        GridBagConstraints c;
+
+        c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = row++;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        c.insets = new Insets(4, 8, 2, 8);
+        Label samplingTitle = new Label("Sampling method — how pixels are collected around each detection");
+        Font base = samplingTitle.getFont();
+        if (base == null) base = new Font(Font.DIALOG, Font.PLAIN, 12);
+        samplingTitle.setFont(base.deriveFont(Font.BOLD));
+        grid.add(samplingTitle, c);
+
+        c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = row++;
+        c.anchor = GridBagConstraints.WEST;
+        c.insets = new Insets(0, 8, 8, 8);
+        grid.add(samplingBox, c);
+
+        c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = row++;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        c.insets = new Insets(8, 8, 2, 8);
+        Label aggregationTitle = new Label("Aggregation method — how sampled Z values are combined into one");
+        aggregationTitle.setFont(base.deriveFont(Font.BOLD));
+        grid.add(aggregationTitle, c);
+
+        c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = row++;
+        c.anchor = GridBagConstraints.WEST;
+        c.insets = new Insets(0, 8, 2, 8);
+        grid.add(aggregationBox, c);
+
+        c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = row++;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        c.insets = new Insets(0, 8, 8, 8);
+        grid.add(aggregationNote, c);
+
+        Runnable updateAggregationState = () -> {
+            boolean singlePixelOnly = ZSampler.Method.SINGLE_PIXEL.label.equals(samplingBox.getSelectedItem());
+            aggregationBox.setEnabled(!singlePixelOnly);
+            aggregationNote.setText(singlePixelOnly
+                    ? "Single Pixel samples one pixel per detection — aggregation doesn't apply."
+                    : " ");
+        };
+        samplingBox.addItemListener(e -> updateAggregationState.run());
+        updateAggregationState.run();
+
+        final boolean[] confirmed = {false};
+        Button okBtn     = new Button("OK");
+        Button cancelBtn = new Button("Cancel");
+        Panel btnPanel   = new Panel(new FlowLayout(FlowLayout.RIGHT));
+        btnPanel.add(cancelBtn);
+        btnPanel.add(okBtn);
+
+        okBtn.addActionListener(e     -> { confirmed[0] = true; dlg.setVisible(false); closeLatch.countDown(); });
+        cancelBtn.addActionListener(e -> { dlg.setVisible(false); closeLatch.countDown(); });
+        dlg.addWindowListener(new WindowAdapter() {
+            public void windowClosing(WindowEvent e) { dlg.setVisible(false); closeLatch.countDown(); }
+        });
+
+        dlg.add(headerPanel, BorderLayout.NORTH);
+        dlg.add(grid,        BorderLayout.CENTER);
+        dlg.add(btnPanel,    BorderLayout.SOUTH);
+        dlg.pack();
+        dlg.setMinimumSize(dlg.getSize());
+        if (parent != null) dlg.setLocationRelativeTo(parent);
+        dlg.setVisible(true);
+        try {
+            closeLatch.await();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            dlg.dispose();
+            return false;
+        }
+        dlg.dispose();
+
+        if (!confirmed[0]) return false;
+
+        String samplingChoice    = samplingBox.getSelectedItem();
+        String aggregationChoice = aggregationBox.getSelectedItem();
+        boolean singlePixelChosen = ZSampler.Method.SINGLE_PIXEL.label.equals(samplingChoice);
 
         sampleAllMethods    = ALL_LABEL.equals(samplingChoice);
-        aggregateAllMethods = ALL_LABEL.equals(aggregationChoice);
+        aggregateAllMethods = !singlePixelChosen && ALL_LABEL.equals(aggregationChoice);
 
         samplingMethod    = sampleAllMethods
                 ? ZSampler.Method.RADIUS
                 : labelToEnum(ZSampler.Method.values(), samplingChoice, ZSampler.Method.RADIUS);
-        aggregationMethod = aggregateAllMethods
+        aggregationMethod = (singlePixelChosen || aggregateAllMethods)
                 ? ZAggregator.Method.MEDIAN
                 : labelToEnum(ZAggregator.Method.values(), aggregationChoice, ZAggregator.Method.MEDIAN);
         return true;

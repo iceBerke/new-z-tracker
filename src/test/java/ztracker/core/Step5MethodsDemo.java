@@ -27,9 +27,11 @@ import java.util.stream.Stream;
  *       SINGLE_PIXEL's nearest pixel can be eyeballed against the printed grid).</li>
  *   <li>Aggregates those samples with MEDIAN vs MEAN, showing how MEDIAN shrugs off the
  *       planted outlier while MEAN does not.</li>
- *   <li>Runs {@link ZExtractor#extractAll} over the full 3x2 sampling x aggregation
- *       cross product (what Step 5's "All" / "All" selection triggers) and prints one
- *       row per combination.</li>
+ *   <li>Runs {@link ZExtractor#extractAll} over the 3x2 sampling x aggregation cross
+ *       product (what Step 5's "All" / "All" selection triggers), collapsed to 5 combos
+ *       — Single Pixel samples exactly one pixel, so Median and Mean of that one value
+ *       are identical and it only runs once instead of once per aggregation method —
+ *       and prints one row per combination actually run.</li>
  *   <li>Places a detection right at the image edge — still in-bounds for SINGLE_PIXEL,
  *       but far enough out that RADIUS's disk and FOUR_NEIGHBOR's corners get clipped by
  *       the frame boundary — and prints the reduced sample counts.</li>
@@ -184,7 +186,8 @@ public class Step5MethodsDemo {
     }
 
     private static void extractAllComparison(TrackData t, LoadedStack s, Map<Integer, Double> zMap) {
-        System.out.println("\n--- 3) ZExtractor.extractAll: full 3x2 sampling x aggregation cross product ---");
+        System.out.println("\n--- 3) ZExtractor.extractAll: 3x2 sampling x aggregation cross product, "
+                + "collapsed to 5 combos ---");
         List<ZExtractor.MethodCombo> combos = ZExtractor.extractAll(
                 t, s, zMap, 0,
                 Arrays.asList(ZSampler.Method.values()),
@@ -201,6 +204,10 @@ public class Step5MethodsDemo {
         }
         System.out.println("  (det1 is frame 99, which has no TIFF -> always NaN / 0 samples,"
                 + " independent of method)");
+        System.out.println("  (Single Pixel only appears once above, not once per aggregation method: "
+                + "it samples exactly one pixel, so Median and Mean of that one value are identical -- "
+                + "running it twice would just be duplicate work. See ZExtractor.extractAll and "
+                + "ZExtractor.resolveComboOutputDir, which also collapses its export folder the same way.)");
     }
 
     private static void edgeOfImageComparison(LoadedStack s, Map<Integer, Double> zMap) {

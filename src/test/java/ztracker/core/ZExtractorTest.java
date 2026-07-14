@@ -5,8 +5,11 @@ import ztracker.io.TiffStackLoader.LoadedStack;
 import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -188,7 +191,7 @@ class ZExtractorTest {
         Map<Integer, Double> mapping = zMapping();
 
         List<ZSampler.Method> samplingMethods = Arrays.asList(
-                ZSampler.Method.SINGLE_PIXEL, ZSampler.Method.FOUR_NEIGHBOR);
+                ZSampler.Method.RADIUS, ZSampler.Method.FOUR_NEIGHBOR);
         List<ZAggregator.Method> aggregationMethods = Arrays.asList(
                 ZAggregator.Method.MEDIAN, ZAggregator.Method.MEAN);
 
@@ -209,5 +212,95 @@ class ZExtractorTest {
             assertEquals(expected.outOfBoundsCount, combo.result.outOfBoundsCount);
             assertEquals(expected.invalidXYCount, combo.result.invalidXYCount);
         }
+    }
+
+    @Test
+    void extractAll_singlePixelWithAllAggregations_runsOnlyOnce() {
+        // SINGLE_PIXEL samples exactly one pixel, so MEDIAN and MEAN of that one value
+        // are identical -- running it once per aggregation method requested would be
+        // pure waste (and duplicate, byte-identical exports). Only RADIUS should be
+        // run once per aggregation method here.
+        TrackData track = twoDetectionTrack();
+        LoadedStack stack = singleFrameStack();
+        Map<Integer, Double> mapping = zMapping();
+
+        List<ZSampler.Method> samplingMethods = Arrays.asList(
+                ZSampler.Method.RADIUS, ZSampler.Method.SINGLE_PIXEL);
+        List<ZAggregator.Method> aggregationMethods = Arrays.asList(
+                ZAggregator.Method.MEDIAN, ZAggregator.Method.MEAN);
+
+        List<ZExtractor.MethodCombo> combos = ZExtractor.extractAll(
+                track, stack, mapping, 0, samplingMethods, aggregationMethods);
+
+        // RADIUS x {MEDIAN, MEAN} = 2, SINGLE_PIXEL collapsed to 1 = 3 total.
+        assertEquals(3, combos.size());
+
+        long singlePixelCombos = combos.stream()
+                .filter(c -> c.sampling == ZSampler.Method.SINGLE_PIXEL)
+                .count();
+        assertEquals(1, singlePixelCombos);
+
+        long radiusCombos = combos.stream()
+                .filter(c -> c.sampling == ZSampler.Method.RADIUS)
+                .count();
+        assertEquals(2, radiusCombos);
+    }
+
+    @Test
+    void extractAll_singlePixelAlone_usesFirstRequestedAggregation() {
+        TrackData track = twoDetectionTrack();
+        LoadedStack stack = singleFrameStack();
+        Map<Integer, Double> mapping = zMapping();
+
+        List<ZExtractor.MethodCombo> combos = ZExtractor.extractAll(
+                track, stack, mapping, 0,
+                Collections.singletonList(ZSampler.Method.SINGLE_PIXEL),
+                Arrays.asList(ZAggregator.Method.MEAN, ZAggregator.Method.MEDIAN));
+
+        assertEquals(1, combos.size());
+        assertEquals(ZAggregator.Method.MEAN, combos.get(0).aggregation);
+    }
+
+    @Test
+    void resolveComboOutputDir_singleMethod_isFlatOutputDir() {
+        Path outputDir = Paths.get("out");
+        ExtractionResult dummy = new ExtractionResult(
+                new double[]{1.0}, new double[]{0.0}, new int[]{1}, new int[]{0},
+                new String[]{ExtractionResult.STATUS_OK}, "Radius-based", "Median", 0, 0, 0);
+        ZExtractor.MethodCombo combo = new ZExtractor.MethodCombo(
+                ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN, dummy);
+
+        Path resolved = ZExtractor.resolveComboOutputDir(outputDir, combo, false);
+
+        assertEquals(outputDir, resolved);
+    }
+
+    @Test
+    void resolveComboOutputDir_multiMethodNonSinglePixel_usesSamplingThenAggregationSubfolder() {
+        Path outputDir = Paths.get("out");
+        ExtractionResult dummy = new ExtractionResult(
+                new double[]{1.0}, new double[]{0.0}, new int[]{1}, new int[]{0},
+                new String[]{ExtractionResult.STATUS_OK}, "Radius-based", "Median", 0, 0, 0);
+        ZExtractor.MethodCombo combo = new ZExtractor.MethodCombo(
+                ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN, dummy);
+
+        Path resolved = ZExtractor.resolveComboOutputDir(outputDir, combo, true);
+
+        assertEquals(outputDir.resolve("radius").resolve("median"), resolved);
+    }
+
+    @Test
+    void resolveComboOutputDir_multiMethodSinglePixel_collapsesToSamplingFolderOnly() {
+        Path outputDir = Paths.get("out");
+        ExtractionResult dummy = new ExtractionResult(
+                new double[]{1.0}, new double[]{0.0}, new int[]{1}, new int[]{0},
+                new String[]{ExtractionResult.STATUS_OK}, "Single Pixel", "Median", 0, 0, 0);
+        ZExtractor.MethodCombo combo = new ZExtractor.MethodCombo(
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, dummy);
+
+        Path resolved = ZExtractor.resolveComboOutputDir(outputDir, combo, true);
+
+        // No "median" subfolder, unlike the non-single-pixel case above.
+        assertEquals(outputDir.resolve("single_pixel"), resolved);
     }
 }

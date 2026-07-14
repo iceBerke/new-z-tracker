@@ -5,7 +5,9 @@ import ztracker.io.TiffStackLoader.LoadedStack;
 import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -140,6 +142,10 @@ public class ZExtractor {
      * Runs {@link #extract} once per combination of {@code samplingMethods} x
      * {@code aggregationMethods} (in that nesting order), e.g. for a Step-5 "All"
      * selection on either or both axes.
+     *
+     * <p>{@link ZSampler.Method#SINGLE_PIXEL} samples exactly one pixel, so every
+     * aggregation method produces an identical result — it's run only once regardless
+     * of how many aggregation methods were requested, instead of once per method.
      */
     public static List<MethodCombo> extractAll(
             TrackData track,
@@ -151,13 +157,33 @@ public class ZExtractor {
 
         List<MethodCombo> results = new ArrayList<>();
         for (ZSampler.Method sampling : samplingMethods) {
-            for (ZAggregator.Method aggregation : aggregationMethods) {
+            List<ZAggregator.Method> effectiveAggregations = (sampling == ZSampler.Method.SINGLE_PIXEL)
+                    ? Collections.singletonList(aggregationMethods.get(0))
+                    : aggregationMethods;
+            for (ZAggregator.Method aggregation : effectiveAggregations) {
                 ExtractionResult result = extract(
                         track, stack, zMapping, frameOffset, sampling, aggregation);
                 results.add(new MethodCombo(sampling, aggregation, result));
             }
         }
         return results;
+    }
+
+    /**
+     * Resolves the output directory for one {@link MethodCombo} produced by
+     * {@link #extractAll}. A single chosen method exports flat into {@code outputDir}.
+     * Multiple combos each get their own {@code <sampling>/<aggregation>/} subfolder —
+     * except {@link ZSampler.Method#SINGLE_PIXEL}, which collapses to a bare
+     * {@code <sampling>/} folder since aggregating exactly one sample makes the
+     * aggregation method meaningless (and every requested aggregation method already
+     * collapsed to the same single combo above).
+     */
+    public static Path resolveComboOutputDir(Path outputDir, MethodCombo combo, boolean multiMethod) {
+        if (!multiMethod) return outputDir;
+        Path samplingDir = outputDir.resolve(combo.sampling.name().toLowerCase());
+        return combo.sampling == ZSampler.Method.SINGLE_PIXEL
+                ? samplingDir
+                : samplingDir.resolve(combo.aggregation.name().toLowerCase());
     }
 
     /** One (sampling, aggregation) combination paired with its extraction result. */
