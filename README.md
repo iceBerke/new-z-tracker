@@ -121,17 +121,23 @@ returns zero samples (never partial).
 |--------|------|-------------|
 | `.npy` | `tracks_2D/track_XXXXX.npy`, `tracks_3D/track_XXXXX.npy` | Python downstream pipeline |
 | Results Table CSV | `fiji/results_table.csv` | `Analyze > Import > Results…` |
-| ROI set | `fiji/track_rois.zip` | ROI Manager `More >> Open…` |
+| ROI set (XY) | `fiji/track_rois.zip` | ROI Manager `More >> Open…` |
+| ROI set (XZ) | `fiji/track_rois_XZ.zip` | ROI Manager `More >> Open…` — points at `(X px, Z µm)`, only detections with a valid Z |
+| ROI set (YZ) | `fiji/track_rois_YZ.zip` | ROI Manager `More >> Open…` — points at `(Y px, Z µm)`, only detections with a valid Z |
 | Export report | `export_report.txt` | Full, uncapped per-track breakdown of what was kept/dropped and why (see below) |
+
+The XZ/YZ ROI sets plot Z **in µm, unconverted** against X/Y in pixels — they only overlay
+sensibly on an XZ/YZ projection image whose own pixel size matches the Z spacing.
 
 **Output directory layout.** With a single sampling/aggregation method chosen in Step 5,
 everything exports flat into `outputDir`:
 
 ```
 outputDir/
-├── tracks_2D/track_00001.npy, track_00002.npy, ...   (if .npy enabled)
-├── tracks_3D/track_00001.npy, track_00002.npy, ...   (if .npy enabled)
-├── fiji/results_table.csv, track_rois.zip             (if Results Table / ROI set enabled)
+├── tracks_2D/track_00001.npy, track_00002.npy, ...           (if .npy enabled)
+├── tracks_3D/track_00001.npy, track_00002.npy, ...           (if .npy enabled)
+├── fiji/results_table.csv, track_rois.zip,                    (if Results Table / ROI set enabled)
+│        track_rois_XZ.zip, track_rois_YZ.zip                 (if XZ / YZ ROI set enabled)
 └── export_report.txt
 ```
 
@@ -258,3 +264,4 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p5.8 | Fixed a stale line-number reference: `<outputDirectory>` moved to `pom.xml` line 126 at some point, but the "Adapting to a different machine" section and the antrun build-verification failure message both still said line 120 — found during a full README-vs-code audit (everything else in README checked out accurate) |
 | p5.9 | Fixed `Step6ExportDemo`'s section 3, which quietly declared its own local X/Y/Z/frame arrays (with different frame numbers than the input printed at the top) instead of reusing the shared input — every section now takes the same input/Z as parameters, and `main` prints Z as its own explicitly-labeled "NOT read from any input" table alongside the input track, instead of Z being buried inline in section 4's code |
 | p5.10 | Added `ZMappingLoaderTest` (index→Z JSON regex parser had zero direct tests) covering negatives, decimals, scientific notation, multi-digit keys, and the empty/no-valid-entries `IllegalArgumentException` cases — found via a full test-suite-vs-code audit confirming every other test file accurately reflects current behavior, with no stale references to removed concepts |
+| p6.0 | Added optional **XZ/YZ ROI set export** (`fiji/track_rois_XZ.zip`, `fiji/track_rois_YZ.zip`) — `FijiPointsExporter.writeXZRoiSet`/`writeYZRoiSet` plot `(X px, Z µm)`/`(Y px, Z µm)` per detection, Z left unconverted (no pixel conversion); only detections with a valid (non-NaN) Z are included, since a NaN Z has nothing to plot on that axis. Two new `ExportConfig` flags and Step-6 checkboxes, off by default; the per-track report gets a trailing `XZ ROI+YZ ROI: N/M pt` segment mirroring the existing Results Table/ROI one |

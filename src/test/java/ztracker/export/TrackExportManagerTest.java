@@ -382,6 +382,51 @@ class TrackExportManagerTest {
     }
 
     @Test
+    void export_xzAndYzRoiSetEnabled_writeZipsAndNoteThemInReport(@TempDir Path outDir) throws IOException {
+        TrackData track = threeDetectionTrack();
+        ExtractionResult result = validResult();
+        ExportConfig config = new ExportConfig(false, false, false, true, true);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        assertTrue(Files.exists(outDir.resolve("fiji").resolve("track_rois_XZ.zip")));
+        assertTrue(Files.exists(outDir.resolve("fiji").resolve("track_rois_YZ.zip")));
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains("XZ ROI+YZ ROI: 3/3 pt"),
+                "report should note the track's points landed in both the XZ and YZ ROI sets");
+    }
+
+    @Test
+    void export_xzRoiSet_onlyIncludesPointsWithValidZ(@TempDir Path outDir) throws IOException {
+        // Detection 1 has a missing TIFF frame -> NaN Z -> must be excluded from the XZ
+        // ROI set, since Z is exactly the coordinate that ROI plots on its second axis.
+        TrackData track = threeDetectionTrack();
+        ExtractionResult result = new ExtractionResult(
+                new double[]{10.0, Double.NaN, 12.0},
+                new double[]{0.1, 0.0, 0.1},
+                new int[]{5, 0, 5},
+                new int[]{0, 0, 0},
+                new String[]{
+                        ExtractionResult.STATUS_OK, ExtractionResult.STATUS_MISSING_FRAME,
+                        ExtractionResult.STATUS_OK},
+                "Radius-based", "Median", 0, 1, 0);
+        ExportConfig config = new ExportConfig(false, false, false, true, false);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        Path outZip = outDir.resolve("fiji").resolve("track_rois_XZ.zip");
+        assertTrue(Files.exists(outZip));
+
+        int entryCount = 0;
+        try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(outZip))) {
+            while (zis.getNextEntry() != null) entryCount++;
+        }
+        assertEquals(2, entryCount, "only the 2 detections with valid Z should produce an XZ ROI");
+    }
+
+    @Test
     void export_summaryLine_reportsNoValidPointsSkipsSeparatelyFor2DAnd3D(
             @TempDir Path outDir) throws IOException {
         // All 3 detections have an invalid X -> zero valid-XY points remain, so both 2D and

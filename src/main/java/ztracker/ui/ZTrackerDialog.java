@@ -682,7 +682,9 @@ public class ZTrackerDialog {
         final Checkbox npyBox = new Checkbox("Export .npy files  (Python/downstream pipeline)", true);
         final Checkbox csvBox = new Checkbox("Export Results Table CSV  (Fiji: Analyze > Import > Results)", true);
         final Checkbox roiBox = new Checkbox("Export ROI point set .zip  (Fiji ROI Manager)", false);
-        Checkbox[] formatBoxes = { npyBox, csvBox, roiBox };
+        final Checkbox xzRoiBox = new Checkbox("Export XZ ROI point set .zip  (X px, Z µm — points with valid Z only)", false);
+        final Checkbox yzRoiBox = new Checkbox("Export YZ ROI point set .zip  (Y px, Z µm — points with valid Z only)", false);
+        Checkbox[] formatBoxes = { npyBox, csvBox, roiBox, xzRoiBox, yzRoiBox };
         for (int i = 0; i < formatBoxes.length; i++) {
             c = new GridBagConstraints();
             c.gridx = 0; c.gridy = row++;
@@ -731,10 +733,12 @@ public class ZTrackerDialog {
         }
         outputDir = new File(outPath[0]);
 
-        boolean npy = npyBox.getState();
-        boolean csv = csvBox.getState();
-        boolean roi = roiBox.getState();
-        exportConfig = new ExportConfig(npy, csv, roi);
+        boolean npy   = npyBox.getState();
+        boolean csv   = csvBox.getState();
+        boolean roi   = roiBox.getState();
+        boolean xzRoi = xzRoiBox.getState();
+        boolean yzRoi = yzRoiBox.getState();
+        exportConfig = new ExportConfig(npy, csv, roi, xzRoi, yzRoi);
 
         outputDir.mkdirs();
         return true;

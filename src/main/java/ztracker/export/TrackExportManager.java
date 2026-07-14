@@ -42,14 +42,25 @@ public class TrackExportManager {
         public final boolean exportNpy;
         /** Export Fiji Results Table CSV. */
         public final boolean exportResultsTable;
-        /** Export Fiji ROI set (.zip). */
+        /** Export Fiji ROI set (.zip), in the XY plane. */
         public final boolean exportRoiSet;
+        /** Export a Fiji ROI set (.zip) in the XZ plane (X pixels, Z µm — unconverted). */
+        public final boolean exportXZRoiSet;
+        /** Export a Fiji ROI set (.zip) in the YZ plane (Y pixels, Z µm — unconverted). */
+        public final boolean exportYZRoiSet;
 
         public ExportConfig(boolean exportNpy, boolean exportResultsTable,
                             boolean exportRoiSet) {
+            this(exportNpy, exportResultsTable, exportRoiSet, false, false);
+        }
+
+        public ExportConfig(boolean exportNpy, boolean exportResultsTable,
+                            boolean exportRoiSet, boolean exportXZRoiSet, boolean exportYZRoiSet) {
             this.exportNpy         = exportNpy;
             this.exportResultsTable= exportResultsTable;
             this.exportRoiSet      = exportRoiSet;
+            this.exportXZRoiSet    = exportXZRoiSet;
+            this.exportYZRoiSet    = exportYZRoiSet;
         }
     }
 
@@ -97,6 +108,14 @@ public class TrackExportManager {
         List<Double>  allX     = new ArrayList<>();
         List<Double>  allY     = new ArrayList<>();
         List<Double>  allZ     = new ArrayList<>();
+
+        // Separate accumulation for XZ/YZ ROIs — these need a real (non-NaN) Z, so they
+        // draw from valid3D rather than valid2D (a track can have valid X/Y but NaN Z).
+        List<String>  allTids3D  = new ArrayList<>();
+        List<Integer> allFrames3D = new ArrayList<>();
+        List<Double>  allX3D    = new ArrayList<>();
+        List<Double>  allY3D    = new ArrayList<>();
+        List<Double>  allZ3D    = new ArrayList<>();
 
         for (String trackId : orderedTrackIds) {
             List<Integer> indices = byTrack.get(trackId);
@@ -170,7 +189,8 @@ public class TrackExportManager {
             reportLines.add(buildTrackReportLine(trackId, n, config.exportNpy,
                     did2D, valid2D.size(), dropReasons2D,
                     did3D, valid3D.size(), dropReasons3D,
-                    config.exportResultsTable, config.exportRoiSet));
+                    config.exportResultsTable, config.exportRoiSet,
+                    config.exportXZRoiSet, config.exportYZRoiSet));
 
             // ── Accumulate for Fiji export — only points with a real position (invalid-XY
             //    points can't be placed on the image at all); NaN-Z points are still included
@@ -182,6 +202,18 @@ public class TrackExportManager {
                     allX.add(track.x[i]);
                     allY.add(track.y[i]);
                     allZ.add(result.z[i]);
+                }
+            }
+
+            // ── Accumulate for XZ/YZ Fiji export — only points with a real Z (valid3D);
+            //    a NaN Z can't be placed on either projection.
+            if (config.exportXZRoiSet || config.exportYZRoiSet) {
+                for (int i : valid3D) {
+                    allTids3D.add(trackId);
+                    allFrames3D.add(track.frame[i]);
+                    allX3D.add(track.x[i]);
+                    allY3D.add(track.y[i]);
+                    allZ3D.add(result.z[i]);
                 }
             }
         }
@@ -203,6 +235,25 @@ public class TrackExportManager {
             if (config.exportRoiSet) {
                 FijiPointsExporter.writeRoiSet(tidsArr, framesArr, xBulk, yBulk, zBulk,
                         dirFiji.resolve("track_rois.zip"));
+            }
+        }
+
+        if (!allTids3D.isEmpty() && (config.exportXZRoiSet || config.exportYZRoiSet)) {
+            String[]  tidsArr3D   = allTids3D.toArray(new String[0]);
+            int[]     framesArr3D = allFrames3D.stream().mapToInt(Integer::intValue).toArray();
+            double[]  xBulk3D     = allX3D.stream().mapToDouble(Double::doubleValue).toArray();
+            double[]  yBulk3D     = allY3D.stream().mapToDouble(Double::doubleValue).toArray();
+            double[]  zBulk3D     = allZ3D.stream().mapToDouble(Double::doubleValue).toArray();
+
+            dirFiji.toFile().mkdirs();
+
+            if (config.exportXZRoiSet) {
+                FijiPointsExporter.writeXZRoiSet(tidsArr3D, framesArr3D, xBulk3D, zBulk3D,
+                        dirFiji.resolve("track_rois_XZ.zip"));
+            }
+            if (config.exportYZRoiSet) {
+                FijiPointsExporter.writeYZRoiSet(tidsArr3D, framesArr3D, yBulk3D, zBulk3D,
+                        dirFiji.resolve("track_rois_YZ.zip"));
             }
         }
 
@@ -237,7 +288,8 @@ public class TrackExportManager {
             String trackId, int totalPoints, boolean npyEnabled,
             boolean did2D, int valid2DCount, Map<String, Integer> dropReasons2D,
             boolean did3D, int valid3DCount, Map<String, Integer> dropReasons3D,
-            boolean resultsTableEnabled, boolean roiSetEnabled) {
+            boolean resultsTableEnabled, boolean roiSetEnabled,
+            boolean xzRoiEnabled, boolean yzRoiEnabled) {
 
         String twoDPart = buildDimensionPart(
                 "2D", npyEnabled, did2D, valid2DCount, totalPoints, dropReasons2D);
@@ -257,6 +309,17 @@ public class TrackExportManager {
             // needed Z), so valid2DCount is the accurate "how many points made it in" count
             // regardless of whether npy itself is enabled.
             line += String.format(" | %s: %d/%d pt", formats, valid2DCount, totalPoints);
+        }
+
+        if (xzRoiEnabled || yzRoiEnabled) {
+            StringBuilder formats = new StringBuilder();
+            if (xzRoiEnabled) formats.append("XZ ROI");
+            if (yzRoiEnabled) {
+                if (formats.length() > 0) formats.append("+");
+                formats.append("YZ ROI");
+            }
+            // XZ/YZ need a real Z, so they draw from the same valid3D set as 3D npy.
+            line += String.format(" | %s: %d/%d pt", formats, valid3DCount, totalPoints);
         }
 
         return line;

@@ -10,12 +10,16 @@ import java.nio.file.Path;
 import java.util.*;
 
 /**
- * Exports 3D track data in two Fiji-native formats:
+ * Exports 3D track data in Fiji-native formats:
  *
  * <ol>
- *   <li><b>RoiManager point ROIs</b> — one {@link PointRoi} per track per frame,
+ *   <li><b>RoiManager point ROIs (XY)</b> — one {@link PointRoi} per track per frame,
  *       named {@code trackID_frame}, compatible with Fiji's ROI Manager and
  *       overlay system.</li>
+ *   <li><b>RoiManager point ROIs (XZ / YZ)</b> — the same per-track-per-frame layout,
+ *       but plotting X (or Y) against Z in µm instead of Y (or X); Z is left
+ *       unconverted, and only detections with a valid (non-NaN) Z are included, since
+ *       there is nothing to plot on that axis otherwise.</li>
  *   <li><b>Results Table CSV</b> — a flat CSV with columns
  *       {@code Track_ID, Frame, X, Y, Z}, importable via
  *       {@code Analyze > Import > Results...} in Fiji.</li>
@@ -88,6 +92,56 @@ public class FijiPointsExporter {
             String[] trackIds, int[] frames,
             double[] x, double[] y, double[] z,
             Path outZip) throws IOException {
+        writePlanarRoiSet(trackIds, frames, x, y, outZip, "ROI set");
+    }
+
+    /**
+     * Creates one {@link PointRoi} per (trackId, frame) combination in the
+     * <b>XZ plane</b> — each point's coordinates are {@code (X pixels, Z µm)} rather
+     * than {@code (X, Y)}. Z is written as-is, in µm, with no conversion to pixels, so
+     * the resulting ROI only overlays sensibly on an XZ projection image whose own
+     * pixel size matches the Z spacing (or is otherwise interpreted with that in mind).
+     *
+     * @param trackIds  track ID per detection
+     * @param frames    frame number per detection
+     * @param x         X pixel coordinate per detection
+     * @param z         Z µm coordinate per detection
+     * @param outZip    destination .zip file for the ROI set
+     */
+    public static void writeXZRoiSet(
+            String[] trackIds, int[] frames,
+            double[] x, double[] z,
+            Path outZip) throws IOException {
+        writePlanarRoiSet(trackIds, frames, x, z, outZip, "XZ ROI set");
+    }
+
+    /**
+     * Creates one {@link PointRoi} per (trackId, frame) combination in the
+     * <b>YZ plane</b> — each point's coordinates are {@code (Y pixels, Z µm)} rather
+     * than {@code (X, Y)}. Z is written as-is, in µm, with no conversion to pixels, so
+     * the resulting ROI only overlays sensibly on a YZ projection image whose own
+     * pixel size matches the Z spacing (or is otherwise interpreted with that in mind).
+     *
+     * @param trackIds  track ID per detection
+     * @param frames    frame number per detection
+     * @param y         Y pixel coordinate per detection
+     * @param z         Z µm coordinate per detection
+     * @param outZip    destination .zip file for the ROI set
+     */
+    public static void writeYZRoiSet(
+            String[] trackIds, int[] frames,
+            double[] y, double[] z,
+            Path outZip) throws IOException {
+        writePlanarRoiSet(trackIds, frames, y, z, outZip, "YZ ROI set");
+    }
+
+    /** Shared implementation for {@link #writeRoiSet}, {@link #writeXZRoiSet}, and
+     *  {@link #writeYZRoiSet} — they differ only in which two coordinate arrays are
+     *  plotted against each other, not in the grouping/naming/save logic. */
+    private static void writePlanarRoiSet(
+            String[] trackIds, int[] frames,
+            double[] coord1, double[] coord2,
+            Path outZip, String logLabel) throws IOException {
 
         Files.createDirectories(outZip.getParent());
 
@@ -106,15 +160,15 @@ public class FijiPointsExporter {
         for (Map.Entry<String, List<Integer>> entry : groupedIndices.entrySet()) {
             List<Integer> idxList = entry.getValue();
 
-            float[] px = new float[idxList.size()];
-            float[] py = new float[idxList.size()];
+            float[] p1 = new float[idxList.size()];
+            float[] p2 = new float[idxList.size()];
             for (int k = 0; k < idxList.size(); k++) {
                 int i = idxList.get(k);
-                px[k] = (float) x[i];
-                py[k] = (float) y[i];
+                p1[k] = (float) coord1[i];
+                p2[k] = (float) coord2[i];
             }
 
-            PointRoi roi = new PointRoi(px, py, px.length);
+            PointRoi roi = new PointRoi(p1, p2, p1.length);
 
             // Name: trackID_f<frame>  (underscores allowed in ROI names)
             int    firstIdx = idxList.get(0);
@@ -129,7 +183,7 @@ public class FijiPointsExporter {
 
         // Save as zip
         rm.runCommand("Save", outZip.toAbsolutePath().toString());
-        IJ.log(String.format("[FijiPointsExporter] ROI set saved (%d ROIs): %s",
-                rm.getCount(), outZip.getFileName()));
+        IJ.log(String.format("[FijiPointsExporter] %s saved (%d ROIs): %s",
+                logLabel, rm.getCount(), outZip.getFileName()));
     }
 }

@@ -91,6 +91,61 @@ class FijiPointsExporterTest {
     }
 
     @Test
+    void writeXZRoiSet_plotsXAgainstUnconvertedMicronZ(@TempDir Path outDir) throws IOException {
+        String[] trackIds = {"1", "2"};
+        int[]    frames   = {0, 0};
+        double[] x        = {12.375, 100.5};
+        double[] z        = {-45.625, 7.25};
+
+        Path outZip = outDir.resolve("track_rois_XZ.zip");
+        FijiPointsExporter.writeXZRoiSet(trackIds, frames, x, z, outZip);
+
+        boolean sawTrack1 = false, sawTrack2 = false;
+        try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(outZip))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                byte[] bytes = readAllBytes(zis);
+                Roi roi = new RoiDecoder(bytes, entry.getName()).getRoi();
+                FloatPolygon poly = roi.getFloatPolygon();
+                assertEquals(1, poly.npoints);
+
+                if (entry.getName().contains("1_f0")) {
+                    assertEquals((float) x[0], poly.xpoints[0], 1e-4f);
+                    assertEquals((float) z[0], poly.ypoints[0], 1e-4f, "Z must be unconverted microns, not pixels");
+                    sawTrack1 = true;
+                } else if (entry.getName().contains("2_f0")) {
+                    assertEquals((float) x[1], poly.xpoints[0], 1e-4f);
+                    assertEquals((float) z[1], poly.ypoints[0], 1e-4f, "Z must be unconverted microns, not pixels");
+                    sawTrack2 = true;
+                }
+            }
+        }
+        assertTrue(sawTrack1 && sawTrack2, "both ROIs should have been decoded and checked");
+    }
+
+    @Test
+    void writeYZRoiSet_plotsYAgainstUnconvertedMicronZ(@TempDir Path outDir) throws IOException {
+        String[] trackIds = {"1"};
+        int[]    frames   = {2};
+        double[] y        = {7.25};
+        double[] z        = {-600.5};
+
+        Path outZip = outDir.resolve("track_rois_YZ.zip");
+        FijiPointsExporter.writeYZRoiSet(trackIds, frames, y, z, outZip);
+
+        try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(outZip))) {
+            ZipEntry entry = zis.getNextEntry();
+            assertTrue(entry != null && entry.getName().contains("1_f2"));
+            byte[] bytes = readAllBytes(zis);
+            Roi roi = new RoiDecoder(bytes, entry.getName()).getRoi();
+            FloatPolygon poly = roi.getFloatPolygon();
+            assertEquals(1, poly.npoints);
+            assertEquals((float) y[0], poly.xpoints[0], 1e-4f);
+            assertEquals((float) z[0], poly.ypoints[0], 1e-4f);
+        }
+    }
+
+    @Test
     void writeResultsTable_hasCorrectHeaderAndPreservesInputXYZ(@TempDir Path outDir) throws IOException {
         String[] trackIds = {"1", "2"};
         int[]    frames   = {0, 3};
