@@ -2,12 +2,16 @@ package ztracker.export;
 
 import ij.IJ;
 import ij.gui.PointRoi;
+import ij.gui.Roi;
+import ij.io.RoiEncoder;
 import ij.plugin.frame.RoiManager;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Exports 3D track data in Fiji-native formats:
@@ -92,7 +96,20 @@ public class FijiPointsExporter {
             String[] trackIds, int[] frames,
             double[] x, double[] y, double[] z,
             Path outZip) throws IOException {
-        writePlanarRoiSet(trackIds, frames, x, y, outZip, "ROI set");
+
+        Files.createDirectories(outZip.getParent());
+
+        RoiManager rm = RoiManager.getInstance();
+        if (rm == null) rm = new RoiManager();
+        rm.reset();
+
+        for (Roi roi : buildPlanarRois(trackIds, frames, x, y)) {
+            rm.addRoi(roi);
+        }
+
+        rm.runCommand("Save", outZip.toAbsolutePath().toString());
+        IJ.log(String.format("[FijiPointsExporter] ROI set saved (%d ROIs): %s",
+                rm.getCount(), outZip.getFileName()));
     }
 
     /**
@@ -112,7 +129,7 @@ public class FijiPointsExporter {
             String[] trackIds, int[] frames,
             double[] x, double[] z,
             Path outZip) throws IOException {
-        writePlanarRoiSet(trackIds, frames, x, z, outZip, "XZ ROI set");
+        writeHeadlessRoiZip(trackIds, frames, x, z, outZip, "XZ ROI set");
     }
 
     /**
@@ -132,31 +149,24 @@ public class FijiPointsExporter {
             String[] trackIds, int[] frames,
             double[] y, double[] z,
             Path outZip) throws IOException {
-        writePlanarRoiSet(trackIds, frames, y, z, outZip, "YZ ROI set");
+        writeHeadlessRoiZip(trackIds, frames, y, z, outZip, "YZ ROI set");
     }
 
-    /** Shared implementation for {@link #writeRoiSet}, {@link #writeXZRoiSet}, and
-     *  {@link #writeYZRoiSet} — they differ only in which two coordinate arrays are
-     *  plotted against each other, not in the grouping/naming/save logic. */
-    private static void writePlanarRoiSet(
-            String[] trackIds, int[] frames,
-            double[] coord1, double[] coord2,
-            Path outZip, String logLabel) throws IOException {
+    /** Groups detections by (trackId, frame) into one {@link PointRoi} per group
+     *  (multiple detections for the same track+frame merge into one multi-point ROI),
+     *  named {@code <trackID>_f<frame>} and positioned on that frame. Shared by
+     *  {@link #writeRoiSet}, {@link #writeXZRoiSet}, and {@link #writeYZRoiSet} — they
+     *  differ only in which two coordinate arrays are plotted against each other. */
+    private static List<Roi> buildPlanarRois(
+            String[] trackIds, int[] frames, double[] coord1, double[] coord2) {
 
-        Files.createDirectories(outZip.getParent());
-
-        RoiManager rm = RoiManager.getInstance();
-        if (rm == null) rm = new RoiManager();
-        rm.reset();
-
-        // Group detections by (trackId, frame) to build one ROI per group
-        // (multiple detections for the same track+frame are merged into one MultiPoint ROI)
         Map<String, List<Integer>> groupedIndices = new LinkedHashMap<>();
         for (int i = 0; i < trackIds.length; i++) {
             String key = trackIds[i] + "|" + frames[i];
             groupedIndices.computeIfAbsent(key, k -> new ArrayList<>()).add(i);
         }
 
+        List<Roi> rois = new ArrayList<>();
         for (Map.Entry<String, List<Integer>> entry : groupedIndices.entrySet()) {
             List<Integer> idxList = entry.getValue();
 
@@ -170,20 +180,47 @@ public class FijiPointsExporter {
 
             PointRoi roi = new PointRoi(p1, p2, p1.length);
 
-            // Name: trackID_f<frame>  (underscores allowed in ROI names)
             int    firstIdx = idxList.get(0);
             String roiName  = trackIds[firstIdx] + "_f" + frames[firstIdx];
             roi.setName(roiName);
-
-            // Set frame position for hyperstack compatibility
             roi.setPosition(frames[firstIdx]);
 
-            rm.addRoi(roi);
+            rois.add(roi);
+        }
+        return rois;
+    }
+
+    /**
+     * Writes a planar ROI set straight to a {@code .zip} via {@link RoiEncoder}, without
+     * touching the on-screen {@link RoiManager} — used for the XZ/YZ sets specifically
+     * because they're not meant to share the interactive ROI list with the real XY
+     * overlay (X-vs-Z points would look like nonsense image coordinates if shown there),
+     * and because calling {@code RoiManager.reset()}/{@code addRoi} back-to-back for
+     * XY, then XZ, then YZ within one export run was hammering the manager's on-screen
+     * list faster than it could repaint, triggering a Swing/AWT rendering race in its
+     * list widget (an ArrayIndexOutOfBoundsException from the renderer painting a row
+     * the list model had already dropped). Writing bytes directly sidesteps that
+     * entirely. The resulting {@code .zip} is still the same standard ROI-set format
+     * (one {@code <name>.roi} entry per ROI), reopenable via {@code More >> Open...}.
+     */
+    private static void writeHeadlessRoiZip(
+            String[] trackIds, int[] frames, double[] coord1, double[] coord2,
+            Path outZip, String logLabel) throws IOException {
+
+        Files.createDirectories(outZip.getParent());
+
+        List<Roi> rois = buildPlanarRois(trackIds, frames, coord1, coord2);
+
+        try (ZipOutputStream zos = new ZipOutputStream(
+                new BufferedOutputStream(Files.newOutputStream(outZip)))) {
+            for (Roi roi : rois) {
+                zos.putNextEntry(new ZipEntry(roi.getName() + ".roi"));
+                zos.write(RoiEncoder.saveAsByteArray(roi));
+                zos.closeEntry();
+            }
         }
 
-        // Save as zip
-        rm.runCommand("Save", outZip.toAbsolutePath().toString());
         IJ.log(String.format("[FijiPointsExporter] %s saved (%d ROIs): %s",
-                logLabel, rm.getCount(), outZip.getFileName()));
+                logLabel, rois.size(), outZip.getFileName()));
     }
 }
