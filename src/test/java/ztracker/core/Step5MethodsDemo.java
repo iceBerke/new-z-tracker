@@ -77,6 +77,15 @@ import java.util.stream.Stream;
  *   mvn dependency:build-classpath -Dmdep.outputFile=cp.txt
  *   java -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.Step5MethodsDemo
  * </pre>
+ *
+ * <p>To save the full output to a file instead of (or in addition to) the console, redirect
+ * stdout to {@code Step5MethodsDemo_output.txt} alongside this source file. Java's default
+ * stdout encoding on Windows is not UTF-8, which mangles the ✓/✗/── characters in
+ * {@code TrackExportManager}'s log lines when redirected — pass
+ * {@code -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8} to keep them intact:
+ * <pre>
+ *   java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.Step5MethodsDemo &gt; src/test/java/ztracker/core/Step5MethodsDemo_output.txt 2&gt;&amp;1
+ * </pre>
  */
 public class Step5MethodsDemo {
 

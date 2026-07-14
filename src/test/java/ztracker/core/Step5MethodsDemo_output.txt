@@ -1,0 +1,150 @@
+============================================================
+Step-5 demo: sampling methods, aggregation methods, "All"
+============================================================
+  TIFF frame (value = row*5+col, except the planted outlier):
+       0   1   2   3   4
+       5   6   7   8   9
+      10  11  12  13  14
+      15  16  17 100  19
+      20  21  22  23  24
+  (outlier planted at row=3,col=3 -> value 100 instead of 18)
+
+--- 1) Sampling methods on the same detection (x=2.4, y=2.4, radius=1.0) ---
+  Radius-based   indices=[7.0, 11.0, 12.0, 13.0, 17.0] z=[3.5, 5.5, 6.0, 6.5, 8.5]
+  4-Neighbor     indices=[12.0, 13.0, 17.0, 100.0] z=[6.0, 6.5, 8.5, 50.0]
+  Single Pixel   indices=[12.0]                   z=[6.0]
+
+--- 2) Aggregation on FOUR_NEIGHBOR's samples (includes the outlier) ---
+  z samples = [6.0, 6.5, 8.5, 50.0]
+  Median   ->   7.50
+  Mean     ->  17.75
+  (MEDIAN should sit near the non-outlier cluster; MEAN gets pulled toward 50)
+
+--- 3) ZExtractor.extractAll: full 3x2 sampling x aggregation cross product ---
+[ZExtractor] Starting extraction: 2 detections | Radius-based + Median | offset=+0
+[ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+[ZExtractor] Starting extraction: 2 detections | Radius-based + Mean | offset=+0
+[ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+[ZExtractor] Starting extraction: 2 detections | 4-Neighbor + Median | offset=+0
+[ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+[ZExtractor] Starting extraction: 2 detections | 4-Neighbor + Mean | offset=+0
+[ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+[ZExtractor] Starting extraction: 2 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+[ZExtractor] Starting extraction: 2 detections | Single Pixel + Mean | offset=+0
+[ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+  sampling       aggreg.   z[det0]  z[det1] numSamples
+  Radius-based   Median       6.00      NaN          5
+  Radius-based   Mean         6.00      NaN          5
+  4-Neighbor     Median       7.50      NaN          4
+  4-Neighbor     Mean        17.75      NaN          4
+  Single Pixel   Median       6.00      NaN          1
+  Single Pixel   Mean         6.00      NaN          1
+  (det1 is frame 99, which has no TIFF -> always NaN / 0 samples, independent of method)
+
+--- 4) Edge-of-image detection: x=4.4, y=2.4 (col 4 is the last valid column in a 5-wide frame) ---
+  SINGLE_PIXEL's nearest pixel (4,2) is still in-bounds, so it samples normally. RADIUS's disk and FOUR_NEIGHBOR's corners both reach past column 4 into column 5, which doesn't exist — those out-of-frame samples are silently dropped, not clamped, so their sample counts shrink instead of erroring.
+  Radius-based   samples=4  indices=[9.0, 13.0, 14.0, 19.0] z=[4.5, 6.5, 7.0, 9.5]
+  4-Neighbor     samples=2  indices=[14.0, 19.0]         z=[7.0, 9.5]
+  Single Pixel   samples=1  indices=[14.0]               z=[7.0]
+
+--- 5) Out-of-bounds position vs. genuinely missing frame ---
+  Two failure detections that both end up with 0 samples / NaN Z, but for different reasons — ZExtractor now counts and reports them separately instead of lumping both into "missing frames":
+[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Done: 0 / 1 valid Z values | 0 missing frames | 1 out-of-bounds positions | 0 invalid X/Y
+  Detection A: frame=0 (exists), position=(50,50) (way off-grid)
+     -> z=NaN | missingFrameCount=0 | outOfBoundsCount=1
+[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Done: 0 / 1 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+  Detection B: frame=99 (no such TIFF), position=(2,2) (fine)
+     -> z=NaN | missingFrameCount=1 | outOfBoundsCount=0
+  Same symptom (NaN, 0 samples), different root cause and different fix:
+    A -> bad detection X/Y (or wrong radius) — check the tracking CSV
+    B -> frame-offset / TIFF folder problem — check Step 4's alignment
+
+--- 6) Exporting two combinations to see the folder layout ---
+  Track "A" has 2 detections: frame 0 (valid) and frame 99 (missing TIFF, NaN Z). TrackExportManager now keeps the track and just drops that one bad point from the 3D export -- watch the per-track report line below: 2D still writes both points, 3D writes only the 1 valid one.
+[ZExtractor] Starting extraction: 2 detections | Radius-based + Median | offset=+0
+[ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+[ZExtractor] Starting extraction: 2 detections | Single Pixel + Mean | offset=+0
+[ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+[TrackExportManager] ── Per-track report (1 track(s)) ──
+[TrackExportManager]   Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
+[TrackExportManager] Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
+[TrackExportManager] ── Per-track report (1 track(s)) ──
+[TrackExportManager]   Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
+[TrackExportManager] Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
+  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step5-demo14393508348927513421
+    radius\median\export_report.txt
+    radius\median\tracks_2D\track_00065.npy
+    radius\median\tracks_3D\track_00065.npy
+    single_pixel\mean\export_report.txt
+    single_pixel\mean\tracks_2D\track_00065.npy
+    single_pixel\mean\tracks_3D\track_00065.npy
+
+  Contents of radius/median/export_report.txt (full, uncapped -- the Fiji Log view caps at 50 tracks, this file never does):
+    ZTracker export report
+    Sampling method:    Radius-based
+    Aggregation method: Median
+    
+    Per-track report (1 track(s)):
+    Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
+    
+    Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
+  (temp directory cleaned up after printing)
+
+--- 7) Invalid X/Y vs. invalid Z: dropped from different exports ---
+  Track "B" has 3 detections: frame 0 (fully valid), frame 1 (X is NaN -- e.g. an unparseable coordinate from the CSV), frame 2 (valid X/Y but a NaN Z from a missing TIFF frame). A missing position can't be placed in EITHER export, so frame 1 is dropped from both 2D and 3D; frame 2's bad Z only breaks 3D, so it survives in 2D.
+[TrackExportManager] ── Per-track report (1 track(s)) ──
+[TrackExportManager]   Track B          2D ✓ (2/3 pt) — dropped 1: 1 invalid X/Y | 3D ✓ (1/3 pt) — dropped 2: 1 invalid X/Y, 1 missing frame
+[TrackExportManager] Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=1, missingFrame=1, outOfBounds=0, unmappedIndex=0
+  Contents of export_report.txt:
+    ZTracker export report
+    Sampling method:    Radius-based
+    Aggregation method: Median
+    
+    Per-track report (1 track(s)):
+    Track B          2D ✓ (2/3 pt) — dropped 1: 1 invalid X/Y | 3D ✓ (1/3 pt) — dropped 2: 1 invalid X/Y, 1 missing frame
+    
+    Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=1, missingFrame=1, outOfBounds=0, unmappedIndex=0
+  (temp directory cleaned up after printing)
+
+--- 8) A NaN X/Y is never sampled -- not silently treated as pixel 0 ---
+  Math.round(Double.NaN) == 0 in Java. Without an explicit check, a NaN X would be silently rounded to 0 and a REAL pixel at column 0 would get sampled, producing a bogus "valid" Z instead of failing. A distinctive marker value (999, mapped to Z=42.0) is planted at column 0 to prove it's never read.
+[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Done: 0 / 1 valid Z values | 0 missing frames | 0 out-of-bounds positions | 1 invalid X/Y
+  Detection: x=NaN, y=1.0, frame=0 (exists)
+     -> z=NaN (NOT 42.0) | numSamples=0 | invalidXYCount=1 | sampleStatus="invalid X/Y"
+  (numSamples=0 proves ZSampler was never even called for this detection)
+
+--- 9) Per-track report notes Results Table/ROI, even with .npy off ---
+  Track "D" has 3 fully-valid detections. Exporting with .npy UNCHECKED but Results Table CSV checked: the 2D/3D verdict is specifically about .npy, so both read "npy export off" -- but the report now adds a trailing segment so this doesn't read as a total export failure when the CSV actually succeeded.
+[FijiPointsExporter] Results table written: results_table.csv
+[TrackExportManager] ── Per-track report (1 track(s)) ──
+[TrackExportManager]   Track D          2D ✗ (npy export off) | 3D ✗ (npy export off) | Results Table: 3/3 pt
+[TrackExportManager] Exported 2D=0, 3D=0 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
+  Files written: 
+    export_report.txt
+    fiji\results_table.csv
+  Contents of export_report.txt:
+    ZTracker export report
+    Sampling method:    Radius-based
+    Aggregation method: Median
+    
+    Per-track report (1 track(s)):
+    Track D          2D ✗ (npy export off) | 3D ✗ (npy export off) | Results Table: 3/3 pt
+    
+    Exported 2D=0, 3D=0 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
+  (temp directory cleaned up after printing)
+
+--- 10) Unmapped pixel index: a third distinct NaN-Z cause ---
+  Pixel value 999 is planted with NO entry in the Z mapping (simulating a stray index the JSON mapping doesn't cover). This is different from a missing TIFF frame or an out-of-bounds position: the frame exists and the position is in-bounds, so sampling succeeds and numSamples > 0 -- it's the index-to-Z lookup that fails.
+[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Done: 0 / 1 valid Z values | 0 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+  Case A (SINGLE_PIXEL, only the unmapped pixel sampled):
+     -> z=NaN | numSamples=1 | numUnmapped=1 | sampleStatus="unmapped index"
+[ZExtractor] Starting extraction: 1 detections | Radius-based + Median | offset=+0
+[ZExtractor] Done: 1 / 1 valid Z values | 0 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
+  Case B (RADIUS, unmapped pixel + mapped neighbors sampled):
+     -> z=1.0 | numSamples=5 | numUnmapped=1 | sampleStatus=""
+  (Case A fails: the ONLY sample was unmapped, nothing left to aggregate. Case B succeeds: partial unmapped still leaves valid neighbors for the aggregate.)
