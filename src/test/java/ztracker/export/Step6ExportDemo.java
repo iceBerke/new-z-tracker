@@ -125,18 +125,16 @@ public class Step6ExportDemo {
 
     // ── 3) write2DTrack / write3DTrack column order ─────────────────────────────
 
-    private static void trackColumnOrder() throws IOException {
+    private static void trackColumnOrder(double[] x, double[] y, double[] z, int[] frame) throws IOException {
         System.out.println("\n--- 3) write2DTrack/write3DTrack column order: [X,Y,T] and [X,Y,Z,T] ---");
-
-        double[] x = {10.25, 20.5, 30.75};
-        double[] y = {1.125, 2.5, -3.0};
-        double[] z = {-50.0, 0.0, 75.5};
-        int[]    t = {0, 5, 12};
+        System.out.println("  Same input track and synthetic Z printed above -- shown here written and"
+                + " read back through NpyExporter's convenience builders, before section 4 runs the full"
+                + " TrackExportManager pipeline on the same data.");
 
         Path p2d = Files.createTempFile("ztracker-step6-demo-2d", ".npy");
         Path p3d = Files.createTempFile("ztracker-step6-demo-3d", ".npy");
-        NpyExporter.write2DTrack(x, y, t, p2d);
-        NpyExporter.write3DTrack(x, y, z, t, p3d);
+        NpyExporter.write2DTrack(x, y, frame, p2d);
+        NpyExporter.write3DTrack(x, y, z, frame, p3d);
 
         double[][] rows2D = readNpy(p2d);
         double[][] rows3D = readNpy(p3d);
@@ -156,12 +154,13 @@ public class Step6ExportDemo {
 
     // ── 4) Full export across every format, then trace X/Y through all of them ─
 
-    private static void crossFormatCoordinateIdentity(double[] x, double[] y, int[] frame)
+    private static void crossFormatCoordinateIdentity(double[] x, double[] y, double[] z, int[] frame)
             throws IOException {
         System.out.println("\n--- 4) The input track above, exported to every format at once -- X/Y traced through each ---");
-        System.out.println("  X/Y are the only coordinates that actually come from the input CSV; Z here is"
-                + " a synthetic ZExtractor output (real Z always is), not something read from anywhere, so"
-                + " it has no \"input\" to match against -- only X/Y get the identity check below.");
+        System.out.println("  X/Y are the only coordinates that actually come from the input CSV; Z (printed"
+                + " above as \"synthetic\") is a stand-in for a real ZExtractor output, not something read"
+                + " from anywhere, so it has no \"input\" to match against -- only X/Y get the identity check"
+                + " below.");
         System.out.println("  NOTE: this demo only PRINTS the comparison below -- it makes no assertions."
                 + " The actual pass/fail check is in JUnit, run via `mvn test`:"
                 + " NpyExporterTest, FijiPointsExporterTest, and"
@@ -173,7 +172,6 @@ public class Step6ExportDemo {
                 new double[]{3.5, 3.5, 3.5},
                 new String[]{"7", "7", "7"},
                 "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
-        double[] z = {100.0, 200.0, 300.0}; // computed by ZExtractor in a real run, not "input"
         ExtractionResult result = new ExtractionResult(
                 z, new double[]{0.0, 0.0, 0.0}, new int[]{1, 1, 1}, new int[]{0, 0, 0},
                 new String[]{ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
@@ -299,9 +297,21 @@ public class Step6ExportDemo {
             System.out.printf("  %-6d %-8s %10d %10.4f %10.4f%n", i, "7", frame[i], x[i], y[i]);
         }
 
+        // Z is NOT part of the input -- a real run computes it via ZExtractor (sampling +
+        // Z-mapping lookup + aggregation over the TIFF stack), so there's nothing in a tracking
+        // CSV for it to come from. This is a synthetic stand-in for that computed value, declared
+        // and printed here (rather than buried inside a later section) so it's clear it's a
+        // separate input to this demo, not something read from anywhere.
+        double[] z = {100.0, 200.0, 300.0};
+        System.out.println("\nSynthetic Z (stand-in for a real ZExtractor output -- NOT read from any input):");
+        System.out.printf("  %-6s %10s%n", "point", "Z");
+        for (int i = 0; i < z.length; i++) {
+            System.out.printf("  %-6d %10.4f%n", i, z[i]);
+        }
+
         npyByteAnatomy();
         headerAlignmentAcrossShapes();
-        trackColumnOrder();
-        crossFormatCoordinateIdentity(x, y, frame);
+        trackColumnOrder(x, y, z, frame);
+        crossFormatCoordinateIdentity(x, y, z, frame);
     }
 }
