@@ -681,9 +681,9 @@ public class ZTrackerDialog {
 
         final Checkbox npyBox = new Checkbox("Export .npy files  (Python/downstream pipeline)", true);
         final Checkbox csvBox = new Checkbox("Export Results Table CSV  (Fiji: Analyze > Import > Results)", true);
-        final Checkbox roiBox = new Checkbox("Export ROI point set .zip  (Fiji ROI Manager)", false);
-        final Checkbox xzRoiBox = new Checkbox("Export XZ ROI point set .zip  (X px, Z µm — points with valid Z only)", false);
-        final Checkbox yzRoiBox = new Checkbox("Export YZ ROI point set .zip  (Y px, Z µm — points with valid Z only)", false);
+        final Checkbox roiBox = new Checkbox("Export XY ROI point set .zip  (X px, Y px)", false);
+        final Checkbox xzRoiBox = new Checkbox("Export XZ ROI point set .zip  (X px, Z µm — valid-Z points only)", false);
+        final Checkbox yzRoiBox = new Checkbox("Export YZ ROI point set .zip  (Y px, Z µm — valid-Z points only)", false);
         Checkbox[] formatBoxes = { npyBox, csvBox, roiBox, xzRoiBox, yzRoiBox };
         for (int i = 0; i < formatBoxes.length; i++) {
             c = new GridBagConstraints();
