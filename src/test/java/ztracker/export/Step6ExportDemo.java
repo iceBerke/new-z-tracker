@@ -1,11 +1,8 @@
-package ztracker.core;
+package ztracker.export;
 
 import ij.gui.Roi;
 import ij.io.RoiDecoder;
 import ij.process.FloatPolygon;
-import ztracker.export.FijiPointsExporter;
-import ztracker.export.NpyExporter;
-import ztracker.export.TrackExportManager;
 import ztracker.export.TrackExportManager.ExportConfig;
 import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
@@ -36,7 +33,7 @@ import java.util.zip.ZipInputStream;
  * {@link NpyExporter} / {@link FijiPointsExporter} / {@link TrackExportManager} on every
  * {@code mvn test}.
  *
- * <p>Unlike {@link Step5MethodsDemo}'s export section (which shows the per-track report and
+ * <p>Unlike {@link ztracker.core.Step5MethodsDemo}'s export section (which shows the per-track report and
  * multi-method folder layout), this demo focuses on two things that aren't shown elsewhere:
  * <ol>
  *   <li>The actual bytes of a {@code .npy} file — magic, version, header dict, the 64-byte
@@ -53,7 +50,7 @@ import java.util.zip.ZipInputStream;
  * <p>Run it manually (from the project root, after {@code mvn test-compile}):
  * <pre>
  *   mvn dependency:build-classpath -Dmdep.outputFile=cp.txt
- *   java -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.Step6ExportDemo
+ *   java -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.export.Step6ExportDemo
  * </pre>
  *
  * <p>To save the full output to a file instead of (or in addition to) the console, redirect
@@ -62,7 +59,7 @@ import java.util.zip.ZipInputStream;
  * {@code TrackExportManager}'s log lines when redirected — pass
  * {@code -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8} to keep them intact:
  * <pre>
- *   java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.Step6ExportDemo &gt; src/test/java/ztracker/core/Step6ExportDemo_output.txt 2&gt;&amp;1
+ *   java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.export.Step6ExportDemo &gt; src/test/java/ztracker/export/Step6ExportDemo_output.txt 2&gt;&amp;1
  * </pre>
  */
 public class Step6ExportDemo {
@@ -164,6 +161,11 @@ public class Step6ExportDemo {
         System.out.println("  X/Y are the only coordinates that actually come from the input CSV; Z here is"
                 + " a synthetic ZExtractor output (real Z always is), not something read from anywhere, so"
                 + " it has no \"input\" to match against -- only X/Y get the identity check below.");
+        System.out.println("  NOTE: this demo only PRINTS the comparison below -- it makes no assertions."
+                + " The actual pass/fail check is in JUnit, run via `mvn test`:"
+                + " NpyExporterTest, FijiPointsExporterTest, and"
+                + " TrackExportManagerTest.export_preservesInputXYCoordinatesIdenticallyAcrossEveryFormat"
+                + " (which this section mirrors).");
 
         double[] x = {10.25, 20.5, 30.75};
         double[] y = {1.125, 2.5, 45.625};
@@ -198,27 +200,36 @@ public class Step6ExportDemo {
                 .toArray(new String[0]);
         Map<String, float[]> roiCoords = readRoiZipCoordinates(tmp.resolve("fiji").resolve("track_rois.zip"));
 
+        boolean allMatch = true;
+
         System.out.printf("%n  %-6s %10s %10s %10s %10s %10s %10s%n",
-                "point", "input.X", "2D.X", "3D.X", "csv.X", "roi.X", "match?");
+                "point", "input.X", "2D.X", "3D.X", "csv.X", "roi.X", "MATCH?");
         for (int i = 0; i < 3; i++) {
             double csvX = Double.parseDouble(csvLines[i + 1].split(",")[2]);
             float roiX = roiCoords.get("7_f" + frame[i])[0];
             boolean match = x[i] == rows2D[i][0] && x[i] == rows3D[i][0]
                     && x[i] == csvX && (float) x[i] == roiX;
+            allMatch &= match;
             System.out.printf("  %-6d %10.4f %10.4f %10.4f %10.4f %10.4f %10s%n",
-                    i, x[i], rows2D[i][0], rows3D[i][0], csvX, roiX, match ? "yes" : "NO");
+                    i, x[i], rows2D[i][0], rows3D[i][0], csvX, roiX, match ? "MATCH" : "MISMATCH!!");
         }
 
         System.out.printf("%n  %-6s %10s %10s %10s %10s %10s %10s%n",
-                "point", "input.Y", "2D.Y", "3D.Y", "csv.Y", "roi.Y", "match?");
+                "point", "input.Y", "2D.Y", "3D.Y", "csv.Y", "roi.Y", "MATCH?");
         for (int i = 0; i < 3; i++) {
             double csvY = Double.parseDouble(csvLines[i + 1].split(",")[3]);
             float roiY = roiCoords.get("7_f" + frame[i])[1];
             boolean match = y[i] == rows2D[i][1] && y[i] == rows3D[i][1]
                     && y[i] == csvY && (float) y[i] == roiY;
+            allMatch &= match;
             System.out.printf("  %-6d %10.4f %10.4f %10.4f %10.4f %10.4f %10s%n",
-                    i, y[i], rows2D[i][1], rows3D[i][1], csvY, roiY, match ? "yes" : "NO");
+                    i, y[i], rows2D[i][1], rows3D[i][1], csvY, roiY, match ? "MATCH" : "MISMATCH!!");
         }
+
+        System.out.println();
+        System.out.println(allMatch
+                ? "  RESULT: X and Y match the original input identically in 2D npy, 3D npy, CSV, and ROI."
+                : "  RESULT: MISMATCH DETECTED -- an export format diverged from the input X/Y (see rows above marked MISMATCH!!).");
 
         deleteRecursively(tmp);
         System.out.println("  (temp directory cleaned up after printing)");

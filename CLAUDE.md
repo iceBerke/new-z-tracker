@@ -58,18 +58,25 @@ contrast a detection that samples *only* that unmapped pixel (fails with
 position) against one that samples it alongside mapped neighbors (`ZAggregator`'s NaN-filtering
 lets the aggregate still succeed). Run instructions are in the class javadoc.
 
-`src/test/java/ztracker/core/Step6ExportDemo.java` is the same kind of runnable walkthrough for
-step 6's export machinery, complementing rather than duplicating `Step5MethodsDemo`'s export
-section (which shows the per-track report and multi-method folder layout). It prints the actual
-bytes of an `NpyExporter`-written `.npy` file (magic, version, header dict, the 64-byte alignment
-padding, and a little-endian float64 value decoded back), confirms that padding stays aligned to a
-single 64-byte block across shapes from `(1, 1)` up to `(999999999, 999999999)` since the header
-dict's fixed text dominates its length, shows `write2DTrack`/`write3DTrack`'s exact `[X,Y,T]` /
-`[X,Y,Z,T]` column order, and finally exports one track through every format at once (`.npy` ×2,
-Results Table CSV, ROI `.zip`) to print a side-by-side table tracing each detection's X/Y through
-all four outputs — making explicit that X/Y are the only coordinates that actually originate in
-the input CSV (Z is computed by `ZExtractor`, not read from anywhere, so it has no "input" to
-match against). Run instructions are in the class javadoc.
+`src/test/java/ztracker/export/Step6ExportDemo.java` is the same kind of runnable walkthrough for
+step 6's export machinery — it lives in `ztracker.export`, not `ztracker.core` like the other
+Step-N demos, since it's exercising `NpyExporter`/`FijiPointsExporter`/`TrackExportManager`
+directly rather than dialog-step logic. It complements rather than duplicates
+`ztracker.core.Step5MethodsDemo`'s export section (which shows the per-track report and
+multi-method folder layout). It prints the actual bytes of an `NpyExporter`-written `.npy` file
+(magic, version, header dict, the 64-byte alignment padding, and a little-endian float64 value
+decoded back), confirms that padding stays aligned to a single 64-byte block across shapes from
+`(1, 1)` up to `(999999999, 999999999)` since the header dict's fixed text dominates its length,
+shows `write2DTrack`/`write3DTrack`'s exact `[X,Y,T]` / `[X,Y,Z,T]` column order, and finally
+exports one track through every format at once (`.npy` ×2, Results Table CSV, ROI `.zip`) to print
+a side-by-side table tracing each detection's X/Y through all four outputs, ending in an explicit
+`RESULT: ... MATCH` / `MISMATCH DETECTED` line — making clear that X/Y are the only coordinates
+that actually originate in the input CSV (Z is computed by `ZExtractor`, not read from anywhere,
+so it has no "input" to match against), and that **this demo only prints the comparison — it
+makes no assertions itself**; the real pass/fail check is `NpyExporterTest`,
+`FijiPointsExporterTest`, and
+`TrackExportManagerTest.export_preservesInputXYCoordinatesIdenticallyAcrossEveryFormat`, run via
+`mvn test`. Run instructions are in the class javadoc.
 
 ## Critical Constraints
 
