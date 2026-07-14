@@ -1,0 +1,53 @@
+============================================================
+Step-6 demo: .npy byte format and cross-format X/Y identity
+============================================================
+
+--- 1) Anatomy of a .npy file written by NpyExporter ---
+  CLAUDE.md requires this writer to stay byte-compatible with numpy.load() -- printing the raw bytes here makes that contract visible instead of just asserted in NpyExporterTest.
+  magic bytes (hex): 93 4E 55 4D 50 59  (expect 93 4E 55 4D 50 59 = \x93NUMPY)
+  version: major=1 minor=0
+  header dict (118 bytes, includes padding + trailing '\n'): {'descr': '<f8', 'fortran_order': False, 'shape': (2, 3), }                                                          \n
+  alignment check: (prefix 10 + header 118) % 64 = 0 (must be 0)
+  first data value decoded back from little-endian bytes: 1.50 (wrote 1.50)
+
+--- 2) Header padding stays 64-byte aligned across the whole realistic shape range ---
+  NpyExporter pads the header dict with spaces so magic+version+header_len+header always lands on a 64-byte boundary. The header text's length depends only on how many digits rows/cols print as, so its padded size can be computed without writing a real file -- shown here from a tiny shape up to one far beyond anything this pipeline would ever produce, confirming the fixed dict text dominates and the boundary never gets crossed in practice. NpyExporterTest instead writes real (small) files for cols 1..5 and checks the same alignment invariant on-disk, byte for byte.
+  shape=(1, 1) -> header_len=118  total_prefix=128  (%64 = 0)
+  shape=(3, 4) -> header_len=118  total_prefix=128  (%64 = 0)
+  shape=(1,000,000, 4) -> header_len=118  total_prefix=128  (%64 = 0)
+  shape=(999,999,999, 999,999,999) -> header_len=118  total_prefix=128  (%64 = 0)
+
+--- 3) write2DTrack/write3DTrack column order: [X,Y,T] and [X,Y,Z,T] ---
+  2D [X, Y, T]:
+      10.250    1.125        0
+      20.500    2.500        5
+      30.750   -3.000       12
+  3D [X, Y, Z, T]:
+      10.250    1.125  -50.000        0
+      20.500    2.500    0.000        5
+      30.750   -3.000   75.500       12
+
+--- 4) One track exported to every format at once -- X/Y traced through each ---
+  X/Y are the only coordinates that actually come from the input CSV; Z here is a synthetic ZExtractor output (real Z always is), not something read from anywhere, so it has no "input" to match against -- only X/Y get the identity check below.
+[FijiPointsExporter] Results table written: results_table.csv
+[FijiPointsExporter] ROI set saved (3 ROIs): track_rois.zip
+[TrackExportManager] ── Per-track report (1 track(s)) ──
+[TrackExportManager]   Track 7          2D ✓ (3 pt) — all points valid | 3D ✓ (3 pt) — all points valid | Results Table+ROI: 3/3 pt
+[TrackExportManager] Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
+  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step6-demo-export5051066257102685088
+    export_report.txt
+    fiji\results_table.csv
+    fiji\track_rois.zip
+    tracks_2D\track_00007.npy
+    tracks_3D\track_00007.npy
+
+  point     input.X       2D.X       3D.X      csv.X      roi.X     match?
+  0         10.2500    10.2500    10.2500    10.2500    10.2500        yes
+  1         20.5000    20.5000    20.5000    20.5000    20.5000        yes
+  2         30.7500    30.7500    30.7500    30.7500    30.7500        yes
+
+  point     input.Y       2D.Y       3D.Y      csv.Y      roi.Y     match?
+  0          1.1250     1.1250     1.1250     1.1250     1.1250        yes
+  1          2.5000     2.5000     2.5000     2.5000     2.5000        yes
+  2         45.6250    45.6250    45.6250    45.6250    45.6250        yes
+  (temp directory cleaned up after printing)
