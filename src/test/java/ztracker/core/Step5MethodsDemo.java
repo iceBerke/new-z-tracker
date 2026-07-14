@@ -137,6 +137,26 @@ public class Step5MethodsDemo {
         System.out.println("  (outlier planted at row=3,col=3 -> value 100 instead of 18)");
     }
 
+    private static void printZMapping(Map<Integer, Double> zMap) {
+        System.out.println("\n  Z mapping (this is the ztracker.io.ZMappingLoader JSON, index -> Z"
+                + " in micrometers -- what a real run loads from the mapping file the user picks in"
+                + " Step 1): for this demo it's synthesized as Z = index * 0.5, so every pixel value"
+                + " above maps 1:1 to a Z below. Real mappings come from an arbitrary JSON file and"
+                + " aren't necessarily linear -- this formula is just how THIS demo's fake data was built.");
+        List<Integer> indices = new ArrayList<>(zMap.keySet());
+        Collections.sort(indices);
+        StringBuilder idxLine = new StringBuilder("    index:");
+        StringBuilder zLine   = new StringBuilder("    Z:    ");
+        for (int idx : indices) {
+            idxLine.append(String.format("%6d", idx));
+            zLine.append(String.format("%6.1f", zMap.get(idx)));
+        }
+        System.out.println(idxLine);
+        System.out.println(zLine);
+        System.out.println("  (a pixel value with NO row here -- e.g. a stray index not in the JSON"
+                + " -- is what section 10 below calls an \"unmapped index\")");
+    }
+
     private static void samplingComparison(LoadedStack s, Map<Integer, Double> zMap) {
         System.out.println("\n--- 1) Sampling methods on the same detection (x=2.4, y=2.4, radius=1.0) ---");
         for (ZSampler.Method method : ZSampler.Method.values()) {
@@ -451,6 +471,7 @@ public class Step5MethodsDemo {
         System.out.println("Step-5 demo: sampling methods, aggregation methods, \"All\"");
         System.out.println("============================================================");
         printGrid();
+        printZMapping(zMap);
         samplingComparison(s, zMap);
         aggregationComparison(s, zMap);
         extractAllComparison(t, s, zMap);
