@@ -19,6 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ZExtractorTest {
 
+    private static final ZSampler.PixelConvention CENTER = ZSampler.PixelConvention.PIXEL_CENTER;
+
     // Single 3x3 frame (frame number 0). Center pixel index = 5, corners = 1..4 clockwise.
     private static LoadedStack singleFrameStack() {
         int[][] frame = {
@@ -55,7 +57,7 @@ class ZExtractorTest {
         TrackData track = twoDetectionTrack();
         ExtractionResult result = ZExtractor.extract(
                 track, singleFrameStack(), zMapping(), 0,
-                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEAN);
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEAN, CENTER);
 
         assertEquals(12.5, result.z[0], 1e-9);
         assertEquals(1, result.numSamples[0]);
@@ -88,7 +90,7 @@ class ZExtractorTest {
 
         ExtractionResult result = ZExtractor.extract(
                 track, singleFrameStack(), zMapping(), 0,
-                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, CENTER);
 
         assertTrue(Double.isNaN(result.z[0]));
         assertEquals(0, result.numSamples[0]);
@@ -112,7 +114,7 @@ class ZExtractorTest {
 
         ExtractionResult result = ZExtractor.extract(
                 track, singleFrameStack(), partialMapping, 0,
-                ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN);
+                ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN, CENTER);
 
         // Radius=1.0 around (1,1) covers the center (5) plus the 4 orthogonal
         // neighbours (all index 1, unmapped) -> median of the single mapped value.
@@ -136,7 +138,7 @@ class ZExtractorTest {
 
         ExtractionResult result = ZExtractor.extract(
                 track, singleFrameStack(), emptyMapping, 0,
-                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, CENTER);
 
         assertTrue(Double.isNaN(result.z[0]));
         assertEquals(1, result.numSamples[0]);   // a pixel WAS sampled...
@@ -174,7 +176,7 @@ class ZExtractorTest {
 
         ExtractionResult result = ZExtractor.extract(
                 track, stack, mapping, 0,
-                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, CENTER);
 
         assertTrue(Double.isNaN(result.z[0]), "must be NaN, not 42.0 from the marker pixel");
         assertEquals(0, result.numSamples[0], "sampling must never be attempted");
@@ -182,6 +184,27 @@ class ZExtractorTest {
         assertEquals(0, result.outOfBoundsCount);
         assertEquals(1, result.invalidXYCount);
         assertEquals(ExtractionResult.STATUS_INVALID_XY, result.sampleStatus[0]);
+    }
+
+    @Test
+    void extract_pixelCorner_threadsThroughToSamplerAndResult() {
+        // A detection at (1.6, 1.6): under PIXEL_CENTER this rounds to pixel (2,2)=1
+        // (unmapped-to-nonzero edge value, mapped to 0.0), but under PIXEL_CORNER it floors
+        // to pixel (1,1)=5 (the mapped center, 12.5). Confirms the convention parameter
+        // genuinely reaches ZSampler -- not just gets stored/ignored -- and that
+        // ExtractionResult.pixelConvention reports the convention actually used.
+        TrackData track = new TrackData(
+                new double[]{1.6}, new double[]{1.6}, new int[]{0},
+                new double[]{1.0}, new String[]{"1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+
+        ExtractionResult result = ZExtractor.extract(
+                track, singleFrameStack(), zMapping(), 0,
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN,
+                ZSampler.PixelConvention.PIXEL_CORNER);
+
+        assertEquals(12.5, result.z[0], 1e-9);
+        assertEquals(ZSampler.PixelConvention.PIXEL_CORNER.label, result.pixelConvention);
     }
 
     @Test
@@ -196,13 +219,13 @@ class ZExtractorTest {
                 ZAggregator.Method.MEDIAN, ZAggregator.Method.MEAN);
 
         List<ZExtractor.MethodCombo> combos = ZExtractor.extractAll(
-                track, stack, mapping, 0, samplingMethods, aggregationMethods);
+                track, stack, mapping, 0, samplingMethods, aggregationMethods, CENTER);
 
         assertEquals(4, combos.size()); // 2 sampling x 2 aggregation
 
         for (ZExtractor.MethodCombo combo : combos) {
             ExtractionResult expected = ZExtractor.extract(
-                    track, stack, mapping, 0, combo.sampling, combo.aggregation);
+                    track, stack, mapping, 0, combo.sampling, combo.aggregation, CENTER);
             assertEquals(expected.z[0], combo.result.z[0], 1e-9);
             assertEquals(expected.z[1], combo.result.z[1], 1e-9,
                     () -> "mismatch for " + combo.sampling + "/" + combo.aggregation);
@@ -230,7 +253,7 @@ class ZExtractorTest {
                 ZAggregator.Method.MEDIAN, ZAggregator.Method.MEAN);
 
         List<ZExtractor.MethodCombo> combos = ZExtractor.extractAll(
-                track, stack, mapping, 0, samplingMethods, aggregationMethods);
+                track, stack, mapping, 0, samplingMethods, aggregationMethods, CENTER);
 
         // RADIUS x {MEDIAN, MEAN} = 2, SINGLE_PIXEL collapsed to 1 = 3 total.
         assertEquals(3, combos.size());
@@ -255,7 +278,7 @@ class ZExtractorTest {
         List<ZExtractor.MethodCombo> combos = ZExtractor.extractAll(
                 track, stack, mapping, 0,
                 Collections.singletonList(ZSampler.Method.SINGLE_PIXEL),
-                Arrays.asList(ZAggregator.Method.MEAN, ZAggregator.Method.MEDIAN));
+                Arrays.asList(ZAggregator.Method.MEAN, ZAggregator.Method.MEDIAN), CENTER);
 
         assertEquals(1, combos.size());
         assertEquals(ZAggregator.Method.MEAN, combos.get(0).aggregation);
@@ -266,7 +289,8 @@ class ZExtractorTest {
         Path outputDir = Paths.get("out");
         ExtractionResult dummy = new ExtractionResult(
                 new double[]{1.0}, new double[]{0.0}, new int[]{1}, new int[]{0},
-                new String[]{ExtractionResult.STATUS_OK}, "Radius-based", "Median", 0, 0, 0);
+                new String[]{ExtractionResult.STATUS_OK}, "Radius-based", "Median",
+                ZSampler.PixelConvention.PIXEL_CORNER.label, 0, 0, 0);
         ZExtractor.MethodCombo combo = new ZExtractor.MethodCombo(
                 ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN, dummy);
 
@@ -280,7 +304,8 @@ class ZExtractorTest {
         Path outputDir = Paths.get("out");
         ExtractionResult dummy = new ExtractionResult(
                 new double[]{1.0}, new double[]{0.0}, new int[]{1}, new int[]{0},
-                new String[]{ExtractionResult.STATUS_OK}, "Radius-based", "Median", 0, 0, 0);
+                new String[]{ExtractionResult.STATUS_OK}, "Radius-based", "Median",
+                ZSampler.PixelConvention.PIXEL_CORNER.label, 0, 0, 0);
         ZExtractor.MethodCombo combo = new ZExtractor.MethodCombo(
                 ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN, dummy);
 
@@ -294,7 +319,8 @@ class ZExtractorTest {
         Path outputDir = Paths.get("out");
         ExtractionResult dummy = new ExtractionResult(
                 new double[]{1.0}, new double[]{0.0}, new int[]{1}, new int[]{0},
-                new String[]{ExtractionResult.STATUS_OK}, "Single Pixel", "Median", 0, 0, 0);
+                new String[]{ExtractionResult.STATUS_OK}, "Single Pixel", "Median",
+                ZSampler.PixelConvention.PIXEL_CORNER.label, 0, 0, 0);
         ZExtractor.MethodCombo combo = new ZExtractor.MethodCombo(
                 ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, dummy);
 

@@ -120,7 +120,7 @@ public class ZTrackerPlugin implements PlugIn {
 
         List<ZExtractor.MethodCombo> combos = ZExtractor.extractAll(
                 trackData, stack, zMapping, dialog.frameOffset,
-                samplingMethods, aggregationMethods);
+                samplingMethods, aggregationMethods, dialog.pixelConvention);
 
         for (ZExtractor.MethodCombo combo : combos) {
             logExtractionSummary(combo.result);

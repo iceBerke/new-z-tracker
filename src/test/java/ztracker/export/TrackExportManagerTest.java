@@ -48,7 +48,7 @@ class TrackExportManagerTest {
                 new int[]{5, 5, 5},
                 new int[]{0, 0, 0},
                 new String[]{ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 0, 0, 0);
     }
 
     @Test
@@ -81,7 +81,7 @@ class TrackExportManagerTest {
         ExtractionResult result = new ExtractionResult(
                 z, new double[]{0.0, 0.0, 0.0}, new int[]{1, 1, 1}, new int[]{0, 0, 0},
                 new String[]{ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 0, 0, 0);
         ExportConfig config = new ExportConfig(true, true, true);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -154,7 +154,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 1, 0, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 1, 0, 0);
     }
 
     @Test
@@ -186,7 +186,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_MISSING_FRAME},
-                "Radius-based", "Median", 3, 0, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 3, 0, 0);
     }
 
     @Test
@@ -232,7 +232,7 @@ class TrackExportManagerTest {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 0, 0, 0);
         ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -280,7 +280,7 @@ class TrackExportManagerTest {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_MISSING_FRAME, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 1, 0, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 1, 0, 0);
         ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -322,7 +322,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_UNMAPPED_INDEX,
                         ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 0, 0, 0);
         ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -429,7 +429,7 @@ class TrackExportManagerTest {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 1, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 0, 1, 0);
         ExportConfig config = new ExportConfig(false, false, false, true, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -465,7 +465,7 @@ class TrackExportManagerTest {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 0, 0, 0);
         ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -498,7 +498,7 @@ class TrackExportManagerTest {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 1, 0, 0);
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 1, 0, 0);
         ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
@@ -527,6 +527,8 @@ class TrackExportManagerTest {
         String content = String.join("\n", Files.readAllLines(reportFile, StandardCharsets.UTF_8));
         assertTrue(content.contains("Radius-based"), "should record the sampling method");
         assertTrue(content.contains("Median"), "should record the aggregation method");
+        assertTrue(content.contains("Pixel convention:   Pixel = corner (floor to containing cell)"),
+                "should record the pixel coordinate convention");
         assertTrue(content.contains("Track 1"), "should include the per-track line");
         assertTrue(content.contains("dropped 1: 1 missing frame"), "should include the drop reason");
         assertTrue(content.contains("Exported 2D=1, 3D=1"), "should include the summary line");

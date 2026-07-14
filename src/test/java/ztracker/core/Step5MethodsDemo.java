@@ -64,6 +64,10 @@ import java.util.stream.Stream;
  *       and prints {@code export_report.txt} to show the report's new trailing segment — the
  *       2D/3D verdict reads "npy export off" either way, but the added segment makes clear the
  *       track's points still landed in the CSV rather than reading as a total export failure.</li>
+ *   <li>Contrasts {@link ZSampler.PixelConvention#PIXEL_CORNER} (the new default) against
+ *       {@link ZSampler.PixelConvention#PIXEL_CENTER} (the switchable alternate) for
+ *       SINGLE_PIXEL and FOUR_NEIGHBOR at the same sub-pixel detection, showing which pixel(s)
+ *       each convention actually samples.</li>
  *   <li>Plants a pixel value that has no entry in the Z JSON mapping and contrasts two
  *       detections against it: one that samples <b>only</b> the unmapped pixel (every sample
  *       lacks a mapping, so aggregation has nothing left and the detection fails with
@@ -90,6 +94,9 @@ import java.util.stream.Stream;
  * </pre>
  */
 public class Step5MethodsDemo {
+
+    private static final ZSampler.PixelConvention CENTER = ZSampler.PixelConvention.PIXEL_CENTER;
+    private static final ZSampler.PixelConvention CORNER = ZSampler.PixelConvention.PIXEL_CORNER;
 
     // 5x5 frame, value == row*5+col, except (3,3) is planted as an outlier (100)
     // instead of its natural value 18 — visible in FOUR_NEIGHBOR's corner sampling.
@@ -162,7 +169,7 @@ public class Step5MethodsDemo {
     private static void samplingComparison(LoadedStack s, Map<Integer, Double> zMap) {
         System.out.println("\n--- 1) Sampling methods on the same detection (x=2.4, y=2.4, radius=1.0) ---");
         for (ZSampler.Method method : ZSampler.Method.values()) {
-            double[] indices = ZSampler.sample(s, 2.4, 2.4, 0, 0, 1.0, method);
+            double[] indices = ZSampler.sample(s, 2.4, 2.4, 0, 0, 1.0, method, CENTER);
             double[] zValues = Arrays.stream(indices)
                     .map(idx -> zMap.get((int) Math.round(idx)))
                     .toArray();
@@ -173,7 +180,7 @@ public class Step5MethodsDemo {
 
     private static void aggregationComparison(LoadedStack s, Map<Integer, Double> zMap) {
         System.out.println("\n--- 2) Aggregation on FOUR_NEIGHBOR's samples (includes the outlier) ---");
-        double[] indices = ZSampler.sample(s, 2.4, 2.4, 0, 0, 1.0, ZSampler.Method.FOUR_NEIGHBOR);
+        double[] indices = ZSampler.sample(s, 2.4, 2.4, 0, 0, 1.0, ZSampler.Method.FOUR_NEIGHBOR, CENTER);
         double[] zValues = Arrays.stream(indices)
                 .map(idx -> zMap.get((int) Math.round(idx)))
                 .toArray();
@@ -191,7 +198,7 @@ public class Step5MethodsDemo {
         List<ZExtractor.MethodCombo> combos = ZExtractor.extractAll(
                 t, s, zMap, 0,
                 Arrays.asList(ZSampler.Method.values()),
-                Arrays.asList(ZAggregator.Method.values()));
+                Arrays.asList(ZAggregator.Method.values()), CENTER);
 
         System.out.printf("  %-14s %-8s %8s %8s %10s%n",
                 "sampling", "aggreg.", "z[det0]", "z[det1]", "numSamples");
@@ -218,7 +225,7 @@ public class Step5MethodsDemo {
                 + "column 5, which doesn't exist — those out-of-frame samples are silently dropped, "
                 + "not clamped, so their sample counts shrink instead of erroring.");
         for (ZSampler.Method method : ZSampler.Method.values()) {
-            double[] indices = ZSampler.sample(s, 4.4, 2.4, 0, 0, 1.0, method);
+            double[] indices = ZSampler.sample(s, 4.4, 2.4, 0, 0, 1.0, method, CENTER);
             double[] zValues = Arrays.stream(indices)
                     .map(idx -> zMap.get((int) Math.round(idx)))
                     .toArray();
@@ -239,7 +246,7 @@ public class Step5MethodsDemo {
                 new double[]{1.0}, new String[]{"OOB"},
                 "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
         ExtractionResult oobResult = ZExtractor.extract(
-                outOfBoundsTrack, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+                outOfBoundsTrack, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, CENTER);
         System.out.printf("  Detection A: frame=0 (exists), position=(50,50) (way off-grid)%n");
         System.out.printf("     -> z=%s | missingFrameCount=%d | outOfBoundsCount=%d%n",
                 oobResult.z[0], oobResult.missingFrameCount, oobResult.outOfBoundsCount);
@@ -250,7 +257,7 @@ public class Step5MethodsDemo {
                 new double[]{1.0}, new String[]{"MF"},
                 "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
         ExtractionResult mfResult = ZExtractor.extract(
-                missingFrameTrack, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+                missingFrameTrack, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, CENTER);
         System.out.printf("  Detection B: frame=99 (no such TIFF), position=(2,2) (fine)%n");
         System.out.printf("     -> z=%s | missingFrameCount=%d | outOfBoundsCount=%d%n",
                 mfResult.z[0], mfResult.missingFrameCount, mfResult.outOfBoundsCount);
@@ -270,9 +277,9 @@ public class Step5MethodsDemo {
         ExportConfig config = new ExportConfig(true, false, false);
 
         ExtractionResult radiusMedian = ZExtractor.extract(
-                t, s, zMap, 0, ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN);
+                t, s, zMap, 0, ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN, CENTER);
         ExtractionResult pixelMean = ZExtractor.extract(
-                t, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEAN);
+                t, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEAN, CENTER);
 
         TrackExportManager.export(t, radiusMedian, config,
                 tmp.resolve("radius").resolve("median"), "");
@@ -320,7 +327,7 @@ public class Step5MethodsDemo {
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_MISSING_FRAME},
-                "Radius-based", "Median", 1, 0, 0);
+                "Radius-based", "Median", CENTER.label, 1, 0, 0);
 
         Path tmp = Files.createTempDirectory("ztracker-step5-demo-xy");
         ExportConfig config = new ExportConfig(true, false, false);
@@ -361,7 +368,7 @@ public class Step5MethodsDemo {
                 "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
 
         ExtractionResult result = ZExtractor.extract(
-                track, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+                track, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, CENTER);
 
         System.out.printf("  Detection: x=NaN, y=1.0, frame=0 (exists)%n");
         System.out.printf("     -> z=%s (NOT 42.0) | numSamples=%d | invalidXYCount=%d | sampleStatus=\"%s\"%n",
@@ -390,7 +397,7 @@ public class Step5MethodsDemo {
                 new int[]{0, 0, 0},
                 new String[]{
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0, 0);
+                "Radius-based", "Median", CENTER.label, 0, 0, 0);
 
         Path tmp = Files.createTempDirectory("ztracker-step5-demo-formats");
         // npy OFF, Results Table CSV ON
@@ -410,6 +417,32 @@ public class Step5MethodsDemo {
         }
         deleteRecursively(tmp);
         System.out.println("  (temp directory cleaned up after printing)");
+    }
+
+    private static void pixelConventionComparison(LoadedStack s, Map<Integer, Double> zMap) {
+        System.out.println("\n--- 11) Pixel coordinate convention: CORNER (new default) vs CENTER (switchable) ---");
+        System.out.println("  Integer coordinates can mean a pixel's CENTER (round to nearest) or its"
+                + " top-left CORNER (floor to the containing cell, center at i+0.5). Same sub-pixel"
+                + " position, different sampled pixel(s) depending on which convention is active.");
+
+        System.out.println("\n  Single Pixel at (x=1.6, y=1.6):");
+        for (ZSampler.PixelConvention convention : new ZSampler.PixelConvention[]{CORNER, CENTER}) {
+            double[] indices = ZSampler.sample(s, 1.6, 1.6, 0, 0, 1.0,
+                    ZSampler.Method.SINGLE_PIXEL, convention);
+            System.out.printf("    %-13s indices=%s%n", convention.label, Arrays.toString(indices));
+        }
+        System.out.println("    (CORNER floors to pixel (1,1)=6; CENTER rounds to pixel (2,2)=12)");
+
+        System.out.println("\n  4-Neighbor at (x=2.1, y=2.1):");
+        for (ZSampler.PixelConvention convention : new ZSampler.PixelConvention[]{CORNER, CENTER}) {
+            double[] indices = ZSampler.sample(s, 2.1, 2.1, 0, 0, 1.0,
+                    ZSampler.Method.FOUR_NEIGHBOR, convention);
+            System.out.printf("    %-13s indices=%s%n", convention.label, Arrays.toString(indices));
+        }
+        System.out.println("    (CORNER brackets pixels (1,1),(2,1),(1,2),(2,2) -- the outlier at (3,3)"
+                + " isn't reached. CENTER brackets (2,2),(3,2),(2,3),(3,3) -- and DOES pick up the"
+                + " planted outlier (100), since 2.1's CENTER-convention corners already touch column"
+                + "/row 3.)");
     }
 
     private static void unmappedIndexComparison() {
@@ -439,7 +472,7 @@ public class Step5MethodsDemo {
                 new double[]{1.0}, new String[]{"E1"},
                 "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
         ExtractionResult singleResult = ZExtractor.extract(
-                single, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+                single, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, CENTER);
         System.out.printf("  Case A (SINGLE_PIXEL, only the unmapped pixel sampled):%n");
         System.out.printf("     -> z=%s | numSamples=%d | numUnmapped=%d | sampleStatus=\"%s\"%n",
                 singleResult.z[0], singleResult.numSamples[0], singleResult.numUnmapped[0],
@@ -452,7 +485,7 @@ public class Step5MethodsDemo {
                 new double[]{1.0}, new String[]{"E2"},
                 "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
         ExtractionResult radiusResult = ZExtractor.extract(
-                radius, s, zMap, 0, ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN);
+                radius, s, zMap, 0, ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN, CENTER);
         System.out.printf("  Case B (RADIUS, unmapped pixel + mapped neighbors sampled):%n");
         System.out.printf("     -> z=%s | numSamples=%d | numUnmapped=%d | sampleStatus=\"%s\"%n",
                 radiusResult.z[0], radiusResult.numSamples[0], radiusResult.numUnmapped[0],
@@ -488,6 +521,7 @@ public class Step5MethodsDemo {
         invalidXYVsInvalidZComparison();
         nanXIsNeverSampledComparison();
         reportNotesOtherFormatsComparison();
+        pixelConventionComparison(s, zMap);
         unmappedIndexComparison();
     }
 }

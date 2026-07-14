@@ -87,7 +87,7 @@ The plugin runs as a 6-step dialog wizard:
 | 2 | CSV format (header row, skip rows, default radius) |
 | 3 | Column names (auto-detected, editable) |
 | 4 | CSV-to-TIFF frame offset — a live-updating box shows a per-track verdict as you type; a suggested offset is pre-filled, and the full per-track table (each track's span + how its first/last frame maps) is written to the Log for verification |
-| 5 | Sampling method (Radius / 4-Neighbor / Single Pixel / **All**) + aggregation (Median / Mean / **All**) — aggregation is disabled when Sampling is Single Pixel alone, since aggregating one sample is a no-op |
+| 5 | Sampling method (Radius / 4-Neighbor / Single Pixel / **All**) + aggregation (Median / Mean / **All**) — aggregation is disabled when Sampling is Single Pixel alone, since aggregating one sample is a no-op — plus pixel coordinate convention (Corner **[default]** / Center, no "All" option) |
 | 6 | Output directory, export formats |
 
 Either Step-5 axis can be set to **All** instead of a single choice, running the
@@ -101,32 +101,55 @@ subfolder; a single chosen method still exports flat into `outputDir` as before.
 
 ### How sampling works, precisely
 
-Integer X/Y coordinates are pixel **centers** — a sub-pixel detection is rounded/floored/
-ceiled directly against that integer grid, not against pixel corners/edges.
+#### Pixel coordinate convention
 
-- **Single Pixel** rounds the sub-pixel `(x, y)` to the **nearest** integer pixel first
-  (`Math.round`), *then* checks whether that rounded pixel is in bounds — a detection is
-  only rejected for being out of the image after rounding, never for having a non-integer
-  coordinate.
+Step 5 lets you pick how integer X/Y coordinates relate to the pixel grid — there is no
+single universally "correct" convention, so both are available:
+
+- **Corner** (`ZSampler.PixelConvention.PIXEL_CORNER`) — **the default.** Integer `i` marks
+  pixel `i`'s top-left corner, so pixel `i` spans `[i, i+1)` and its center is actually at
+  `i+0.5`. This is the convention common in 2D tracking tools.
+- **Center** (`ZSampler.PixelConvention.PIXEL_CENTER`) — the switchable alternate, and this
+  plugin's original behavior. Integer `i` marks pixel `i`'s center directly, so pixel `i`
+  spans `[i-0.5, i+0.5)`.
+
+Only one is active at a time — there is no "All" option for this setting (unlike Sampling/
+Aggregation Method), since a detection can't be sampled under two coordinate systems at once.
+
+**This is not just a rounding-mode detail — it changes bounds checking too.** Near zero or
+negative coordinates, the two conventions can disagree about whether a detection is even
+in-bounds: `x=-0.4` rounds to `0` under Center (in-bounds) but floors to `-1` under Corner
+(out-of-bounds). If you switch conventions on an existing dataset, some detections near a
+frame edge may newly flip between a valid Z and `STATUS_OUT_OF_BOUNDS`.
+
+#### The three sampling methods, under each convention
+
+- **Single Pixel** samples the one pixel *containing* `(x, y)`: **rounds** to the nearest
+  integer under Center (`Math.round`), or **floors** to the containing cell under Corner
+  (`Math.floor`) — then checks whether that pixel is in bounds. A detection is only rejected
+  for being out of the image after this step, never for having a non-integer coordinate.
 
   ```
-  Sub-pixel detection at (x=2.3, y=1.4) → rounds to pixel (2, 1)
+  Center:  (x=2.3, y=1.4) rounds to pixel (2, 1)          [Math.round]
+  Corner:  (x=2.7, y=1.6) floors to pixel (2, 1)          [Math.floor]
 
        x→ 0   1   2   3
      y↓ ┌───┬───┬───┬───┐
       0 │   │   │   │   │
         ├───┼───┼───┼───┤
-      1 │   │   │ ● │   │   ← sampled pixel (2,1)
+      1 │   │   │ ● │   │   ← sampled pixel (2,1) either way (different input, same pixel)
         ├───┼───┼───┼───┤
       2 │   │   │   │   │
         └───┴───┴───┴───┘
   ```
 
-- **4-Neighbor** samples the 4 bilinear corner pixels around the sub-pixel position
-  (`floor(x)/ceil(x)` × `floor(y)/ceil(y)`).
+- **4-Neighbor** samples the 4 pixels whose *centers* bracket the sub-pixel position. Under
+  Center, integer coordinates already are pixel centers, so that's `floor(x)/ceil(x)` ×
+  `floor(y)/ceil(y)`. Under Corner, pixel centers sit at `i+0.5`, so bracketing needs the
+  standard bilinear half-pixel shift: `floor(x-0.5)`/`floor(x-0.5)+1` on each axis.
 
   ```
-  Sub-pixel detection at (x=2.3, y=1.4) → 4 bilinear corners sampled
+  Center:  (x=2.3, y=1.4) → floor(x)=2, ceil(x)=3 / floor(y)=1, ceil(y)=2
 
        x→ 0   1   2   3
      y↓ ┌───┬───┬───┬───┐
@@ -138,13 +161,29 @@ ceiled directly against that integer grid, not against pixel corners/edges.
         └───┴───┴───┴───┘
                ↑   ↑
           floor(x)=2  ceil(x)=3
+
+  Corner:  (x=2.7, y=1.6) → floor(x-0.5)=2, +1=3 / floor(y-0.5)=1, +1=2
+
+       x→ 0   1   2   3   4
+     y↓ ┌───┬───┬───┬───┬───┐
+      0 │   │   │   │   │   │
+        ├───┼───┼───┼───┼───┤
+      1 │   │   │ ○ │ ○ │   │   ← floor(y-0.5)=1
+        ├───┼───┼───┼───┼───┤
+      2 │   │   │ ○ │ ○ │   │   ← floor(y-0.5)+1=2
+        └───┴───┴───┴───┴───┘
+               ↑   ↑
+      floor(x-0.5)=2  +1=3
   ```
 
 - **Radius** samples every pixel within a circular disk (`radius` from the CSV or the
-  Step-2 default) around the detection, rounded to the nearest pixel center.
+  Step-2 default) — same disk-mask loop either way, just anchored on the pixel *containing*
+  `(x, y)`: `round(x), round(y)` under Center, `floor(x), floor(y)` under Corner (not true
+  continuous distance from the exact sub-pixel position — this is an existing approximation,
+  unchanged by which convention is active).
 
   ```
-  Detection at (x=2, y=2), radius=1.5 px → every pixel within the disk
+  Center:  (x=2, y=2), radius=1.5 px → anchored on round(2)=2, round(2)=2
 
        x→ 0   1   2   3   4
      y↓ ┌───┬───┬───┬───┬───┐
@@ -152,12 +191,16 @@ ceiled directly against that integer grid, not against pixel corners/edges.
         ├───┼───┼───┼───┼───┤
       1 │   │ · │ · │ · │   │
         ├───┼───┼───┼───┼───┤
-      2 │ · │ · │ ● │ · │ · │   ← ● = center, · = sampled
+      2 │ · │ · │ ● │ · │ · │   ← ● = anchor, · = sampled
         ├───┼───┼───┼───┼───┤
       3 │   │ · │ · │ · │   │
         ├───┼───┼───┼───┼───┤
       4 │   │   │ · │   │   │
         └───┴───┴───┴───┴───┘
+
+  Corner:  (x=2.6, y=2.6), radius=1.5 px → anchored on floor(2.6)=2, floor(2.6)=2 (same
+  disk shape as above — under Center, this same (2.6, 2.6) would instead anchor on
+  round(2.6)=3, round(2.6)=3, shifting the whole disk one pixel down and right).
   ```
 
 For all three methods, any sampled pixel that falls outside `[0, width) × [0, height)` is
@@ -317,3 +360,4 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p6.0 | Added optional **XZ/YZ ROI set export** (`fiji/track_rois_XZ.zip`, `fiji/track_rois_YZ.zip`) — `FijiPointsExporter.writeXZRoiSet`/`writeYZRoiSet` plot `(X px, Z µm)`/`(Y px, Z µm)` per detection, Z left unconverted (no pixel conversion); only detections with a valid (non-NaN) Z are included, since a NaN Z has nothing to plot on that axis. Two new `ExportConfig` flags and Step-6 checkboxes, off by default; the per-track report gets a trailing `XZ ROI+YZ ROI: N/M pt` segment mirroring the existing Results Table/ROI one |
 | p6.1 | Fixed a Swing/AWT rendering race in Fiji's ROI Manager list widget (`ArrayIndexOutOfBoundsException` from its renderer painting a row the list model had already dropped), surfaced by p6.0: running all three ROI formats in one export hammered `RoiManager.reset()`/`addRoi()`/save three times back-to-back on the same visible on-screen manager, faster than it could repaint. `writeXZRoiSet`/`writeYZRoiSet` now write their `.zip` directly via `ij.io.RoiEncoder`, bypassing the on-screen `RoiManager` entirely — architecturally more correct too, since X-vs-Z/Y-vs-Z points would look like nonsense image coordinates if added to the same interactive list as the real XY overlay. `writeRoiSet` (XY) is unchanged, still using `RoiManager` as before |
 | p6.2 | Reworded the Step-6 ROI checkboxes to a consistent `Export <plane> ROI point set .zip (<coords>)` style across XY/XZ/YZ; dropped the XY-only "Fiji ROI Manager" mention since all three ROI zips are equally openable there |
+| p7.0 | Added a selectable **pixel coordinate convention** (`ZSampler.PixelConvention`) — whether integer X/Y mark a pixel's **corner** (`[i, i+1)`, center at `i+0.5`, a common 2D-tracking convention) or its **center** (`[i-0.5, i+0.5)`, this plugin's original behavior). **Corner is the new default** in Step 5 (Center remains fully available as the switchable alternate, no "All" option for either — it's always exactly one). The parameter is threaded explicitly through `ZSampler`/`ZExtractor`/`ExtractionResult` (no silent-default overload) so there's no risk of the UI defaulting to Corner while some internal path still assumed Center. Since this changes what the plugin does out of the box, near-zero/negative coordinates can now flip in/out of bounds differently than before (`x=-0.4` was in-bounds under the old Center default, is out-of-bounds under the new Corner default) — see the README's "Pixel coordinate convention" section and the new CLAUDE.md gotcha for details. `export_report.txt` gets a new "Pixel convention:" line |

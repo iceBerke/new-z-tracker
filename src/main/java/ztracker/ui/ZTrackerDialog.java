@@ -59,11 +59,12 @@ public class ZTrackerDialog {
     public CsvConfig    csvConfig;
     public ColumnConfig columnConfig;   // set by plugin after auto-detection, then confirmed here
 
-    public int                frameOffset;
-    public ZSampler.Method    samplingMethod;      // ignored when sampleAllMethods is true
-    public ZAggregator.Method aggregationMethod;   // ignored when aggregateAllMethods is true
-    public boolean            sampleAllMethods;
-    public boolean            aggregateAllMethods;
+    public int                       frameOffset;
+    public ZSampler.Method           samplingMethod;      // ignored when sampleAllMethods is true
+    public ZAggregator.Method        aggregationMethod;   // ignored when aggregateAllMethods is true
+    public boolean                   sampleAllMethods;
+    public boolean                   aggregateAllMethods;
+    public ZSampler.PixelConvention  pixelConvention;     // no "All" option — always exactly one
 
     public ExportConfig exportConfig;
     public File         outputDir;
@@ -498,7 +499,13 @@ public class ZTrackerDialog {
      *  method produces an identical Z value — the aggregation choice is disabled
      *  (and pinned to Median, which is never actually used downstream) whenever
      *  Single Pixel is chosen on its own. It stays enabled when Sampling is "All",
-     *  since Radius and 4-Neighbor still need an aggregation method. */
+     *  since Radius and 4-Neighbor still need an aggregation method.
+     *
+     *  <p>A third control picks the pixel coordinate convention (whether integer X/Y mark
+     *  a pixel's center or its top-left corner — see {@link ZSampler.PixelConvention}).
+     *  Unlike Sampling/Aggregation, it has no "All" option: a detection can only be sampled
+     *  under one coordinate system at a time. Corner is listed first, making it the
+     *  dialog's default. */
     private boolean step5_methods() {
         String[] samplingLabels = {
             ZSampler.Method.RADIUS.label,
@@ -510,6 +517,10 @@ public class ZTrackerDialog {
             ZAggregator.Method.MEDIAN.label,
             ZAggregator.Method.MEAN.label,
             ALL_LABEL
+        };
+        String[] conventionLabels = {
+            ZSampler.PixelConvention.PIXEL_CORNER.label,
+            ZSampler.PixelConvention.PIXEL_CENTER.label
         };
 
         Frame parent = IJ.getInstance();
@@ -524,8 +535,10 @@ public class ZTrackerDialog {
 
         final Choice samplingBox    = new Choice();
         final Choice aggregationBox = new Choice();
+        final Choice conventionBox  = new Choice();
         for (String s : samplingLabels)    samplingBox.add(s);
         for (String s : aggregationLabels) aggregationBox.add(s);
+        for (String s : conventionLabels)  conventionBox.add(s);
 
         final Label aggregationNote = new Label(" ");
         aggregationNote.setForeground(Color.GRAY);
@@ -572,6 +585,31 @@ public class ZTrackerDialog {
         c.weightx = 1.0;
         c.insets = new Insets(0, 8, 8, 8);
         grid.add(aggregationNote, c);
+
+        c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = row++;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        c.insets = new Insets(8, 8, 2, 8);
+        Label conventionTitle = new Label("Pixel coordinate convention — where (X, Y) sits relative to the pixel grid");
+        conventionTitle.setFont(base.deriveFont(Font.BOLD));
+        grid.add(conventionTitle, c);
+
+        c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = row++;
+        c.anchor = GridBagConstraints.WEST;
+        c.insets = new Insets(0, 8, 2, 8);
+        grid.add(conventionBox, c);
+
+        c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = row++;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        c.insets = new Insets(0, 8, 8, 8);
+        Label conventionNote = new Label(
+                "Switching this can change which detections are in-bounds near frame edges (e.g. x=-0.4 is in-bounds under Center but not Corner).");
+        conventionNote.setForeground(Color.GRAY);
+        grid.add(conventionNote, c);
 
         Runnable updateAggregationState = () -> {
             boolean singlePixelOnly = ZSampler.Method.SINGLE_PIXEL.label.equals(samplingBox.getSelectedItem());
@@ -627,6 +665,9 @@ public class ZTrackerDialog {
         aggregationMethod = (singlePixelChosen || aggregateAllMethods)
                 ? ZAggregator.Method.MEDIAN
                 : labelToEnum(ZAggregator.Method.values(), aggregationChoice, ZAggregator.Method.MEDIAN);
+
+        pixelConvention = labelToEnum(ZSampler.PixelConvention.values(),
+                conventionBox.getSelectedItem(), ZSampler.PixelConvention.PIXEL_CORNER);
         return true;
     }
 

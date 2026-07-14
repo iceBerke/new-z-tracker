@@ -3,6 +3,7 @@ package ztracker.export;
 import ij.gui.Roi;
 import ij.io.RoiDecoder;
 import ij.process.FloatPolygon;
+import ztracker.core.ZSampler;
 import ztracker.export.TrackExportManager.ExportConfig;
 import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
@@ -175,7 +176,7 @@ public class Step6ExportDemo {
         ExtractionResult result = new ExtractionResult(
                 z, new double[]{0.0, 0.0, 0.0}, new int[]{1, 1, 1}, new int[]{0, 0, 0},
                 new String[]{ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
-                "Radius-based", "Median", 0, 0, 0);
+                "Radius-based", "Median", ZSampler.PixelConvention.PIXEL_CENTER.label, 0, 0, 0);
         ExportConfig config = new ExportConfig(true, true, true); // npy + Results Table + ROI
 
         Path tmp = Files.createTempDirectory("ztracker-step6-demo-export");

@@ -367,6 +367,7 @@ public class TrackExportManager {
         lines.add("ZTracker export report");
         lines.add("Sampling method:    " + result.samplingMethod);
         lines.add("Aggregation method: " + result.aggregationMethod);
+        lines.add("Pixel convention:   " + result.pixelConvention);
         lines.add("");
         lines.add(String.format("Per-track report (%d track(s)):", reportLines.size()));
         lines.addAll(reportLines);

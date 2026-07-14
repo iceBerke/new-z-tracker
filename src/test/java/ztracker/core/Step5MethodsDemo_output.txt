@@ -26,15 +26,15 @@ Step-5 demo: sampling methods, aggregation methods, "All"
   (MEDIAN should sit near the non-outlier cluster; MEAN gets pulled toward 50)
 
 --- 3) ZExtractor.extractAll: 3x2 sampling x aggregation cross product, collapsed to 5 combos ---
-[ZExtractor] Starting extraction: 2 detections | Radius-based + Median | offset=+0
+[ZExtractor] Starting extraction: 2 detections | Radius-based + Median | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
-[ZExtractor] Starting extraction: 2 detections | Radius-based + Mean | offset=+0
+[ZExtractor] Starting extraction: 2 detections | Radius-based + Mean | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
-[ZExtractor] Starting extraction: 2 detections | 4-Neighbor + Median | offset=+0
+[ZExtractor] Starting extraction: 2 detections | 4-Neighbor + Median | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
-[ZExtractor] Starting extraction: 2 detections | 4-Neighbor + Mean | offset=+0
+[ZExtractor] Starting extraction: 2 detections | 4-Neighbor + Mean | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
-[ZExtractor] Starting extraction: 2 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Starting extraction: 2 detections | Single Pixel + Median | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
   sampling       aggreg.   z[det0]  z[det1] numSamples
   Radius-based   Median       6.00      NaN          5
@@ -53,11 +53,11 @@ Step-5 demo: sampling methods, aggregation methods, "All"
 
 --- 5) Out-of-bounds position vs. genuinely missing frame ---
   Two failure detections that both end up with 0 samples / NaN Z, but for different reasons — ZExtractor now counts and reports them separately instead of lumping both into "missing frames":
-[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 0 / 1 valid Z values | 0 missing frames | 1 out-of-bounds positions | 0 invalid X/Y
   Detection A: frame=0 (exists), position=(50,50) (way off-grid)
      -> z=NaN | missingFrameCount=0 | outOfBoundsCount=1
-[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 0 / 1 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
   Detection B: frame=99 (no such TIFF), position=(2,2) (fine)
      -> z=NaN | missingFrameCount=1 | outOfBoundsCount=0
@@ -67,9 +67,9 @@ Step-5 demo: sampling methods, aggregation methods, "All"
 
 --- 6) Exporting two combinations to see the folder layout ---
   Track "A" has 2 detections: frame 0 (valid) and frame 99 (missing TIFF, NaN Z). TrackExportManager now keeps the track and just drops that one bad point from the 3D export -- watch the per-track report line below: 2D still writes both points, 3D writes only the 1 valid one.
-[ZExtractor] Starting extraction: 2 detections | Radius-based + Median | offset=+0
+[ZExtractor] Starting extraction: 2 detections | Radius-based + Median | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
-[ZExtractor] Starting extraction: 2 detections | Single Pixel + Mean | offset=+0
+[ZExtractor] Starting extraction: 2 detections | Single Pixel + Mean | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
@@ -77,7 +77,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
 [TrackExportManager] Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
-  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step5-demo16585150687969117616
+  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step5-demo16241449244213530108
     radius\median\export_report.txt
     radius\median\tracks_2D\track_00065.npy
     radius\median\tracks_3D\track_00065.npy
@@ -89,6 +89,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
     ZTracker export report
     Sampling method:    Radius-based
     Aggregation method: Median
+    Pixel convention:   Pixel = center (round to nearest)
     
     Per-track report (1 track(s)):
     Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
@@ -105,6 +106,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
     ZTracker export report
     Sampling method:    Radius-based
     Aggregation method: Median
+    Pixel convention:   Pixel = center (round to nearest)
     
     Per-track report (1 track(s)):
     Track B          2D ✓ (2/3 pt) — dropped 1: 1 invalid X/Y | 3D ✓ (1/3 pt) — dropped 2: 1 invalid X/Y, 1 missing frame
@@ -114,7 +116,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
 
 --- 8) A NaN X/Y is never sampled -- not silently treated as pixel 0 ---
   Math.round(Double.NaN) == 0 in Java. Without an explicit check, a NaN X would be silently rounded to 0 and a REAL pixel at column 0 would get sampled, producing a bogus "valid" Z instead of failing. A distinctive marker value (999, mapped to Z=42.0) is planted at column 0 to prove it's never read.
-[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 0 / 1 valid Z values | 0 missing frames | 0 out-of-bounds positions | 1 invalid X/Y
   Detection: x=NaN, y=1.0, frame=0 (exists)
      -> z=NaN (NOT 42.0) | numSamples=0 | invalidXYCount=1 | sampleStatus="invalid X/Y"
@@ -133,6 +135,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
     ZTracker export report
     Sampling method:    Radius-based
     Aggregation method: Median
+    Pixel convention:   Pixel = center (round to nearest)
     
     Per-track report (1 track(s)):
     Track D          2D ✗ (npy export off) | 3D ✗ (npy export off) | Results Table: 3/3 pt
@@ -140,13 +143,26 @@ Step-5 demo: sampling methods, aggregation methods, "All"
     Exported 2D=0, 3D=0 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
   (temp directory cleaned up after printing)
 
+--- 11) Pixel coordinate convention: CORNER (new default) vs CENTER (switchable) ---
+  Integer coordinates can mean a pixel's CENTER (round to nearest) or its top-left CORNER (floor to the containing cell, center at i+0.5). Same sub-pixel position, different sampled pixel(s) depending on which convention is active.
+
+  Single Pixel at (x=1.6, y=1.6):
+    Pixel = corner (floor to containing cell) indices=[6.0]
+    Pixel = center (round to nearest) indices=[12.0]
+    (CORNER floors to pixel (1,1)=6; CENTER rounds to pixel (2,2)=12)
+
+  4-Neighbor at (x=2.1, y=2.1):
+    Pixel = corner (floor to containing cell) indices=[6.0, 7.0, 11.0, 12.0]
+    Pixel = center (round to nearest) indices=[12.0, 13.0, 17.0, 100.0]
+    (CORNER brackets pixels (1,1),(2,1),(1,2),(2,2) -- the outlier at (3,3) isn't reached. CENTER brackets (2,2),(3,2),(2,3),(3,3) -- and DOES pick up the planted outlier (100), since 2.1's CENTER-convention corners already touch column/row 3.)
+
 --- 10) Unmapped pixel index: a third distinct NaN-Z cause ---
   Pixel value 999 is planted with NO entry in the Z mapping (simulating a stray index the JSON mapping doesn't cover). This is different from a missing TIFF frame or an out-of-bounds position: the frame exists and the position is in-bounds, so sampling succeeds and numSamples > 0 -- it's the index-to-Z lookup that fails.
-[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | offset=+0
+[ZExtractor] Starting extraction: 1 detections | Single Pixel + Median | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 0 / 1 valid Z values | 0 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
   Case A (SINGLE_PIXEL, only the unmapped pixel sampled):
      -> z=NaN | numSamples=1 | numUnmapped=1 | sampleStatus="unmapped index"
-[ZExtractor] Starting extraction: 1 detections | Radius-based + Median | offset=+0
+[ZExtractor] Starting extraction: 1 detections | Radius-based + Median | Pixel = center (round to nearest) | offset=+0
 [ZExtractor] Done: 1 / 1 valid Z values | 0 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
   Case B (RADIUS, unmapped pixel + mapped neighbors sampled):
      -> z=1.0 | numSamples=5 | numUnmapped=1 | sampleStatus=""

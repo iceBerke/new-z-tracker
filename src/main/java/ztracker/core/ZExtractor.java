@@ -36,6 +36,7 @@ public class ZExtractor {
      * @param frameOffset CSV-to-TIFF frame offset (from {@link FrameAligner})
      * @param sampling   sampling strategy
      * @param aggregation aggregation strategy
+     * @param convention whether integer X/Y mark a pixel's center or corner
      * @return extraction result parallel to {@code track}'s arrays
      */
     public static ExtractionResult extract(
@@ -44,7 +45,8 @@ public class ZExtractor {
             Map<Integer, Double> zMapping,
             int frameOffset,
             ZSampler.Method sampling,
-            ZAggregator.Method aggregation) {
+            ZAggregator.Method aggregation,
+            ZSampler.PixelConvention convention) {
 
         int n = track.size();
         double[] z            = new double[n];
@@ -58,8 +60,8 @@ public class ZExtractor {
         int invalidXY     = 0;
 
         IJ.log(String.format(
-                "[ZExtractor] Starting extraction: %d detections | %s + %s | offset=%+d",
-                n, sampling.label, aggregation.label, frameOffset));
+                "[ZExtractor] Starting extraction: %d detections | %s + %s | %s | offset=%+d",
+                n, sampling.label, aggregation.label, convention.label, frameOffset));
 
         for (int i = 0; i < n; i++) {
             if (i % 500 == 0) IJ.showProgress(i, n);
@@ -83,7 +85,7 @@ public class ZExtractor {
             double[] indices = ZSampler.sample(
                     stack, track.x[i], track.y[i],
                     track.frame[i], frameOffset,
-                    radius, sampling);
+                    radius, sampling, convention);
 
             if (indices.length == 0) {
                 z[i]           = Double.NaN;
@@ -135,7 +137,8 @@ public class ZExtractor {
                 validCount, n, missingFrames, outOfBounds, invalidXY));
 
         return new ExtractionResult(z, zStd, numSamples, numUnmapped, sampleStatus,
-                sampling.label, aggregation.label, missingFrames, outOfBounds, invalidXY);
+                sampling.label, aggregation.label, convention.label,
+                missingFrames, outOfBounds, invalidXY);
     }
 
     /**
@@ -153,7 +156,8 @@ public class ZExtractor {
             Map<Integer, Double> zMapping,
             int frameOffset,
             List<ZSampler.Method> samplingMethods,
-            List<ZAggregator.Method> aggregationMethods) {
+            List<ZAggregator.Method> aggregationMethods,
+            ZSampler.PixelConvention convention) {
 
         List<MethodCombo> results = new ArrayList<>();
         for (ZSampler.Method sampling : samplingMethods) {
@@ -162,7 +166,7 @@ public class ZExtractor {
                     : aggregationMethods;
             for (ZAggregator.Method aggregation : effectiveAggregations) {
                 ExtractionResult result = extract(
-                        track, stack, zMapping, frameOffset, sampling, aggregation);
+                        track, stack, zMapping, frameOffset, sampling, aggregation, convention);
                 results.add(new MethodCombo(sampling, aggregation, result));
             }
         }

@@ -42,6 +42,10 @@ public class ExtractionResult {
     /** Aggregation method label used. */
     public final String aggregationMethod;
 
+    /** Pixel coordinate convention label used (center vs. corner — see {@link
+     *  ztracker.core.ZSampler.PixelConvention}). */
+    public final String pixelConvention;
+
     /** Detections whose TIFF frame doesn't exist in the loaded stack at all. */
     public final int missingFrameCount;
 
@@ -63,6 +67,7 @@ public class ExtractionResult {
             String[] sampleStatus,
             String   samplingMethod,
             String   aggregationMethod,
+            String   pixelConvention,
             int      missingFrameCount,
             int      outOfBoundsCount,
             int      invalidXYCount) {
@@ -74,6 +79,7 @@ public class ExtractionResult {
         this.sampleStatus      = sampleStatus;
         this.samplingMethod    = samplingMethod;
         this.aggregationMethod = aggregationMethod;
+        this.pixelConvention   = pixelConvention;
         this.missingFrameCount = missingFrameCount;
         this.outOfBoundsCount  = outOfBoundsCount;
         this.invalidXYCount    = invalidXYCount;
