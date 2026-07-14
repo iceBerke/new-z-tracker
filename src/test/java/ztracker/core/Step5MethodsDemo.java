@@ -521,7 +521,7 @@ public class Step5MethodsDemo {
         invalidXYVsInvalidZComparison();
         nanXIsNeverSampledComparison();
         reportNotesOtherFormatsComparison();
-        pixelConventionComparison(s, zMap);
         unmappedIndexComparison();
+        pixelConventionComparison(s, zMap);
     }
 }
