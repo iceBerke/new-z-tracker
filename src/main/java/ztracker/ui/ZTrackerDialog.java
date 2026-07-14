@@ -529,30 +529,111 @@ public class ZTrackerDialog {
         return true;
     }
 
-    /** Step 6: Output directory, quality filters, and export format selection. */
+    /** Step 6: Output directory and export format selection. */
     private boolean step6_export() {
-        GenericDialog gd = new NonBlockingGenericDialog("ZTracker — Step 6: Output & Export");
-        gd.addDirectoryField("Output directory:", "", 40);
-        gd.addMessage("── Track quality filters ────────────────────");
-        gd.addNumericField("Minimum track length (frames):", 3, 0);
-        gd.addNumericField("Maximum Z std dev (0 = no filter):", 0.0, 2);
-        gd.addMessage("── Export formats ──────────────────────────");
-        gd.addCheckbox("Export .npy files  (Python/downstream pipeline)", true);
-        gd.addCheckbox("Export Results Table CSV  (Fiji: Analyze > Import > Results)", true);
-        gd.addCheckbox("Export ROI point set .zip  (Fiji ROI Manager)", false);
-        gd.showDialog();
+        Frame parent = IJ.getInstance();
+        // Modeless (not modal), same convention as Steps 1 and 4.
+        final Dialog dlg = new Dialog(
+                parent != null ? parent : new Frame(),
+                "ZTracker — Step 6: Output & Export", false);
+        dlg.setLayout(new BorderLayout(8, 8));
+        final CountDownLatch closeLatch = new CountDownLatch(1);
 
-        if (gd.wasCanceled()) return false;
+        // Header
+        Panel headerPanel = new Panel(new FlowLayout(FlowLayout.LEFT, 12, 8));
+        headerPanel.add(new Label("Choose the output directory and export formats."));
 
-        outputDir        = new File(gd.getNextString().trim());
-        int    minLen    = (int) gd.getNextNumber();
-        double maxStdRaw = gd.getNextNumber();
-        boolean npy      = gd.getNextBoolean();
-        boolean csv      = gd.getNextBoolean();
-        boolean roi      = gd.getNextBoolean();
+        // Output directory
+        final String[] outPath = {""};
+        final Label outPathLbl = new Label("No folder selected.");
+        outPathLbl.setForeground(Color.GRAY);
+        Button outBtn = new Button("...");
 
-        Double maxZStd = (maxStdRaw <= 0.0) ? null : maxStdRaw;
-        exportConfig   = new ExportConfig(minLen, maxZStd, npy, csv, roi);
+        Panel grid = new Panel(new GridBagLayout());
+        int row = 0;
+        row = addInputGroup(grid, row, true,
+                "Output directory",
+                "Folder where exported tracks (.npy / CSV / ROI zip) will be written",
+                outBtn, outPathLbl);
+
+        outBtn.addActionListener(e -> {
+            DirectoryChooser dc = new DirectoryChooser("Select output directory");
+            String dir = dc.getDirectory();
+            if (dir != null) {
+                outPath[0] = dir;
+                outPathLbl.setText(dir);
+                outPathLbl.setForeground(Color.BLACK);
+            }
+        });
+
+        // Export formats
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = row++;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        c.insets = new Insets(16, 8, 4, 8);
+        Label formatsTitle = new Label("Export formats");
+        Font base = formatsTitle.getFont();
+        if (base == null) base = new Font(Font.DIALOG, Font.PLAIN, 12);
+        formatsTitle.setFont(base.deriveFont(Font.BOLD));
+        grid.add(formatsTitle, c);
+
+        final Checkbox npyBox = new Checkbox("Export .npy files  (Python/downstream pipeline)", true);
+        final Checkbox csvBox = new Checkbox("Export Results Table CSV  (Fiji: Analyze > Import > Results)", true);
+        final Checkbox roiBox = new Checkbox("Export ROI point set .zip  (Fiji ROI Manager)", false);
+        Checkbox[] formatBoxes = { npyBox, csvBox, roiBox };
+        for (int i = 0; i < formatBoxes.length; i++) {
+            c = new GridBagConstraints();
+            c.gridx = 0; c.gridy = row++;
+            c.anchor = GridBagConstraints.WEST;
+            c.fill = GridBagConstraints.HORIZONTAL;
+            c.weightx = 1.0;
+            c.insets = new Insets(2, 8, i == formatBoxes.length - 1 ? 8 : 2, 8);
+            grid.add(formatBoxes[i], c);
+        }
+
+        // OK / Cancel
+        final boolean[] confirmed = {false};
+        Button okBtn     = new Button("OK");
+        Button cancelBtn = new Button("Cancel");
+        Panel btnPanel   = new Panel(new FlowLayout(FlowLayout.RIGHT));
+        btnPanel.add(cancelBtn);
+        btnPanel.add(okBtn);
+
+        okBtn.addActionListener(e     -> { confirmed[0] = true; dlg.setVisible(false); closeLatch.countDown(); });
+        cancelBtn.addActionListener(e -> { dlg.setVisible(false); closeLatch.countDown(); });
+        dlg.addWindowListener(new WindowAdapter() {
+            public void windowClosing(WindowEvent e) { dlg.setVisible(false); closeLatch.countDown(); }
+        });
+
+        dlg.add(headerPanel, BorderLayout.NORTH);
+        dlg.add(grid,        BorderLayout.CENTER);
+        dlg.add(btnPanel,    BorderLayout.SOUTH);
+        dlg.pack();
+        dlg.setMinimumSize(dlg.getSize());
+        if (parent != null) dlg.setLocationRelativeTo(parent);
+        dlg.setVisible(true);
+        try {
+            closeLatch.await();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            dlg.dispose();
+            return false;
+        }
+        dlg.dispose();
+
+        if (!confirmed[0]) return false;
+
+        if (outPath[0].isEmpty()) {
+            IJ.error("ZTracker", "No output directory selected.");
+            return false;
+        }
+        outputDir = new File(outPath[0]);
+
+        boolean npy = npyBox.getState();
+        boolean csv = csvBox.getState();
+        boolean roi = roiBox.getState();
+        exportConfig = new ExportConfig(npy, csv, roi);
 
         outputDir.mkdirs();
         return true;

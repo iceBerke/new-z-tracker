@@ -260,7 +260,7 @@ public class Step5MethodsDemo {
                 + " from the 3D export -- watch the per-track report line below: 2D still writes"
                 + " both points, 3D writes only the 1 valid one.");
         Path tmp = Files.createTempDirectory("ztracker-step5-demo");
-        ExportConfig config = new ExportConfig(1, null, true, false, false); // minTrackLength=1 for this tiny demo track
+        ExportConfig config = new ExportConfig(true, false, false);
 
         ExtractionResult radiusMedian = ZExtractor.extract(
                 t, s, zMap, 0, ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN);
@@ -316,7 +316,7 @@ public class Step5MethodsDemo {
                 "Radius-based", "Median", 1, 0, 0);
 
         Path tmp = Files.createTempDirectory("ztracker-step5-demo-xy");
-        ExportConfig config = new ExportConfig(1, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
         TrackExportManager.export(track, result, config, tmp, "");
 
         System.out.println("  Contents of export_report.txt:");
@@ -387,7 +387,7 @@ public class Step5MethodsDemo {
 
         Path tmp = Files.createTempDirectory("ztracker-step5-demo-formats");
         // npy OFF, Results Table CSV ON
-        ExportConfig config = new ExportConfig(1, null, false, true, false);
+        ExportConfig config = new ExportConfig(false, true, false);
         TrackExportManager.export(track, result, config, tmp, "");
 
         System.out.println("  Files written: ");

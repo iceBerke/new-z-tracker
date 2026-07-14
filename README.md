@@ -27,7 +27,7 @@ ZTracker_Fiji/
     │   ├── export/
     │   │   ├── NpyExporter.java         ← writes [X,Y,Z,T] .npy (pure Java, no Python)
     │   │   ├── FijiPointsExporter.java  ← Results Table CSV + ROI Manager .zip
-    │   │   └── TrackExportManager.java  ← groups by track, filters, dispatches to exporters
+    │   │   └── TrackExportManager.java  ← groups by track, dispatches to exporters
     │   └── model/
     │       ├── TrackData.java           ← parallel arrays for all CSV detections
     │       └── ExtractionResult.java    ← per-detection Z result + quality stats
@@ -88,7 +88,7 @@ The plugin runs as a 6-step dialog wizard:
 | 3 | Column names (auto-detected, editable) |
 | 4 | CSV-to-TIFF frame offset — a live-updating box shows a per-track verdict as you type; a suggested offset is pre-filled, and the full per-track table (each track's span + how its first/last frame maps) is written to the Log for verification |
 | 5 | Sampling method (Radius / 4-Neighbor / Single Pixel / **All**) + aggregation (Median / Mean / **All**) |
-| 6 | Output directory, track length filter, Z-std filter, export formats |
+| 6 | Output directory, export formats |
 
 Either Step-5 axis can be set to **All** instead of a single choice, running the full
 sampling × aggregation cross product (`ZExtractor.extractAll`). Each combination is
@@ -122,8 +122,10 @@ returns zero samples (never partial).
 
 ### What happens to a bad detection (missing frame, out-of-bounds, or bad X/Y)
 
-A track is **never discarded wholesale** for one bad detection — only the specific bad
-point is dropped, and only from the export(s) it actually breaks:
+There is no whole-track quality filtering (no minimum track length, no max-Z-std cutoff)
+— every track is exported. A track is **never discarded wholesale** for one bad
+detection — only the specific bad point is dropped, and only from the export(s) it
+actually breaks:
 
 - **Invalid X/Y** (a detection whose X *or* Y — either one alone is enough — is missing,
   unparseable, or a literal `"NaN"` in the source CSV) drops that point from **both** 2D
@@ -134,9 +136,9 @@ point is dropped, and only from the export(s) it actually breaks:
 - **A NaN Z** (missing TIFF frame, position/footprint out of image bounds, or every
   sampled pixel unmapped in the JSON) drops that point from **3D only** — 2D never
   depended on Z, so it's unaffected.
-- Each dimension (2D, 3D) is skipped for a track only if **too few valid points remain
-  for that dimension** (below the Step-6 minimum track length) — 2D and 3D are gated
-  independently, so 3D can be skipped while 2D still exports fine, or vice versa.
+- Each dimension (2D, 3D) is skipped for a track only if it has **zero valid points
+  remaining** for that dimension — 2D and 3D are gated independently, so 3D can be
+  skipped while 2D still exports fine, or vice versa.
 - **Dropping a point never renumbers the surviving frame numbers.** The `T` column always
   holds each kept detection's real original frame number, so a dropped point leaves a
   genuine gap in the sequence (e.g. `0,1,3` if frame 2 was dropped) — never a shift or
@@ -213,3 +215,4 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p4.5 | Fixed a misleading `3D(insufficientValidZ)` summary label (a 3D shortfall can come from X/Y drops alone, not just Z) to `3D(insufficientValidPoints)`; closed test gaps confirming invalid-X/Y and invalid-Z drop reasons don't conflate when both occur in the same track |
 | p4.6 | Fixed a latent bug: `ZExtractor` never checked for NaN X/Y before sampling, and `Math.round(Double.NaN) == 0` in Java meant a NaN X was silently treated as `x=0`, producing a bogus "valid" Z at a phantom pixel instead of failing (final `.npy` output was unaffected — `TrackExportManager` already caught it downstream — but `ZExtractor`'s own log/counts overcounted). Now checked up front with a new `ExtractionResult.STATUS_INVALID_XY`/`invalidXYCount`, shared with `TrackExportManager` instead of a separate local constant |
 | p4.7 | Per-track report now notes when Results Table CSV / ROI zip are enabled, even with `.npy` off — previously a track's line read `2D ✗ (npy export off) \| 3D ✗ (npy export off)` regardless of whether its points landed fine in another format, misleadingly reading as a total export failure |
+| p5.0 | Rebuilt Step 6 as a custom AWT dialog matching Step 1's file-picker style (`DirectoryChooser` browse button + aligned grid) instead of `GenericDialog.addDirectoryField`, fixing unrendered "──" dash glyphs; removed whole-track quality filtering (minimum length, max Z std dev) from both the UI and `TrackExportManager` — every track is now exported, with 2D/3D gated per-dimension only when it has zero valid points |

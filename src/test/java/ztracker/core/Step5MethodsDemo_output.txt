@@ -75,11 +75,11 @@ Step-5 demo: sampling methods, aggregation methods, "All"
 [ZExtractor] Done: 1 / 2 valid Z values | 1 missing frames | 0 out-of-bounds positions | 0 invalid X/Y
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
-[TrackExportManager] Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
+[TrackExportManager] Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
-[TrackExportManager] Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
-  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step5-demo16868833944502518140
+[TrackExportManager] Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
+  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step5-demo13317082119140904876
     radius\median\export_report.txt
     radius\median\tracks_2D\track_00065.npy
     radius\median\tracks_3D\track_00065.npy
@@ -95,14 +95,14 @@ Step-5 demo: sampling methods, aggregation methods, "All"
     Per-track report (1 track(s)):
     Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
     
-    Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
+    Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
   (temp directory cleaned up after printing)
 
 --- 7) Invalid X/Y vs. invalid Z: dropped from different exports ---
   Track "B" has 3 detections: frame 0 (fully valid), frame 1 (X is NaN -- e.g. an unparseable coordinate from the CSV), frame 2 (valid X/Y but a NaN Z from a missing TIFF frame). A missing position can't be placed in EITHER export, so frame 1 is dropped from both 2D and 3D; frame 2's bad Z only breaks 3D, so it survives in 2D.
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track B          2D ✓ (2/3 pt) — dropped 1: 1 invalid X/Y | 3D ✓ (1/3 pt) — dropped 2: 1 invalid X/Y, 1 missing frame
-[TrackExportManager] Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=1, missingFrame=1, outOfBounds=0, unmappedIndex=0
+[TrackExportManager] Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=1, missingFrame=1, outOfBounds=0, unmappedIndex=0
   Contents of export_report.txt:
     ZTracker export report
     Sampling method:    Radius-based
@@ -111,7 +111,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
     Per-track report (1 track(s)):
     Track B          2D ✓ (2/3 pt) — dropped 1: 1 invalid X/Y | 3D ✓ (1/3 pt) — dropped 2: 1 invalid X/Y, 1 missing frame
     
-    Exported 2D=1, 3D=1 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=1, missingFrame=1, outOfBounds=0, unmappedIndex=0
+    Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=1, missingFrame=1, outOfBounds=0, unmappedIndex=0
   (temp directory cleaned up after printing)
 
 --- 8) A NaN X/Y is never sampled -- not silently treated as pixel 0 ---
@@ -127,7 +127,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
 [FijiPointsExporter] Results table written: results_table.csv
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track D          2D ✗ (npy export off) | 3D ✗ (npy export off) | Results Table: 3/3 pt
-[TrackExportManager] Exported 2D=0, 3D=0 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
+[TrackExportManager] Exported 2D=0, 3D=0 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
   Files written: 
     export_report.txt
     fiji\results_table.csv
@@ -139,7 +139,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
     Per-track report (1 track(s)):
     Track D          2D ✗ (npy export off) | 3D ✗ (npy export off) | Results Table: 3/3 pt
     
-    Exported 2D=0, 3D=0 | Filtered tracks: short=0, noisy=0 | Skipped: 2D(insufficientValidXY)=0, 3D(insufficientValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
+    Exported 2D=0, 3D=0 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
   (temp directory cleaned up after printing)
 
 --- 10) Unmapped pixel index: a third distinct NaN-Z cause ---

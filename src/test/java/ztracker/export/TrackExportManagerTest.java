@@ -12,7 +12,6 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TrackExportManagerTest {
 
-    // One track of 3 detections (meets default min length).
+    // One track of 3 detections.
     private static TrackData threeDetectionTrack() {
         return new TrackData(
                 new double[]{1.0, 2.0, 3.0},
@@ -45,22 +44,10 @@ class TrackExportManagerTest {
     }
 
     @Test
-    void export_shortTrack_isFilteredOut(@TempDir Path outDir) throws IOException {
-        TrackData track = threeDetectionTrack();
-        ExtractionResult result = validResult();
-        ExportConfig config = new ExportConfig(4, null, true, false, false); // min length 4 > 3 detections
-
-        TrackExportManager.export(track, result, config, outDir, "");
-
-        assertFalse(Files.exists(outDir.resolve("tracks_2D")));
-        assertFalse(Files.exists(outDir.resolve("tracks_3D")));
-    }
-
-    @Test
     void export_validTrack_writesNpyFiles(@TempDir Path outDir) throws IOException {
         TrackData track = threeDetectionTrack();
         ExtractionResult result = validResult();
-        ExportConfig config = new ExportConfig(3, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -86,8 +73,7 @@ class TrackExportManagerTest {
     void export_trackWithOneBadPoint_keepsTrackButDropsOnlyThatPointFrom3D(@TempDir Path outDir) throws IOException {
         TrackData track = threeDetectionTrack();
         ExtractionResult result = partialNaNResult();
-        // min length 2 so the remaining 2 valid-Z points still clear the 3D bar
-        ExportConfig config = new ExportConfig(2, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -99,19 +85,6 @@ class TrackExportManagerTest {
         // 2D keeps all 3 points; 3D keeps only the 2 with a valid Z.
         assertEquals(3, npyRowCount(npy2D));
         assertEquals(2, npyRowCount(npy3D));
-    }
-
-    @Test
-    void export_tooFewValidZPoints_keeps2DButSkips3D(@TempDir Path outDir) throws IOException {
-        TrackData track = threeDetectionTrack();
-        ExtractionResult result = partialNaNResult();
-        // min length 3: only 2 valid-Z points remain after dropping the bad one -> 3D skipped
-        ExportConfig config = new ExportConfig(3, null, true, false, false);
-
-        TrackExportManager.export(track, result, config, outDir, "");
-
-        assertTrue(Files.exists(outDir.resolve("tracks_2D").resolve("track_00001.npy")));
-        assertFalse(Files.exists(outDir.resolve("tracks_3D").resolve("track_00001.npy")));
     }
 
     /** A track where every detection has a NaN Z (all missing frames). */
@@ -132,7 +105,7 @@ class TrackExportManagerTest {
     void export_allPointsBad_keeps2DButSkips3DEntirely(@TempDir Path outDir) throws IOException {
         TrackData track = threeDetectionTrack();
         ExtractionResult result = allNaNResult();
-        ExportConfig config = new ExportConfig(3, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -141,7 +114,7 @@ class TrackExportManagerTest {
         assertTrue(Files.exists(npy2D));
         assertEquals(3, npyRowCount(npy2D));
 
-        // 0 valid-Z points < minTrackLength -> 3D skipped entirely, not written at all.
+        // 0 valid-Z points -> 3D skipped entirely, not written at all.
         assertFalse(Files.exists(outDir.resolve("tracks_3D").resolve("track_00001.npy")));
 
         String content = String.join("\n", Files.readAllLines(
@@ -172,7 +145,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
                 "Radius-based", "Median", 0, 0, 0);
-        ExportConfig config = new ExportConfig(3, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -220,7 +193,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_MISSING_FRAME, ExtractionResult.STATUS_OK},
                 "Radius-based", "Median", 1, 0, 0);
-        ExportConfig config = new ExportConfig(1, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -262,7 +235,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_UNMAPPED_INDEX,
                         ExtractionResult.STATUS_OK},
                 "Radius-based", "Median", 0, 0, 0);
-        ExportConfig config = new ExportConfig(2, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -289,7 +262,7 @@ class TrackExportManagerTest {
         ExtractionResult result = validResult();
         // npy off, ROI set on -- exercises exportRoiSet end-to-end through TrackExportManager,
         // and the "Results Table+ROI"-style trailing report segment when only ROI is enabled.
-        ExportConfig config = new ExportConfig(3, null, false, false, true);
+        ExportConfig config = new ExportConfig(false, false, true);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -307,7 +280,7 @@ class TrackExportManagerTest {
             @TempDir Path outDir) throws IOException {
         TrackData track = threeDetectionTrack();
         ExtractionResult result = validResult();
-        ExportConfig config = new ExportConfig(3, null, true, true, true);
+        ExportConfig config = new ExportConfig(true, true, true);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -321,15 +294,13 @@ class TrackExportManagerTest {
     }
 
     @Test
-    void export_summaryLine_reportsInsufficientSkipsSeparatelyFor2DAnd3D(
+    void export_summaryLine_reportsNoValidPointsSkipsSeparatelyFor2DAnd3D(
             @TempDir Path outDir) throws IOException {
-        // 3 detections, min length 3: two have invalid X -> only 1 valid-XY point remains,
-        // which is short of minTrackLength for BOTH 2D and 3D. Since that one remaining
-        // point's Z is perfectly valid, 3D's shortfall here is caused entirely by the X/Y
-        // drops, not by Z -- exercising exactly the case the "insufficientValidPoints"
-        // (not "insufficientValidZ") label exists to describe accurately.
+        // All 3 detections have an invalid X -> zero valid-XY points remain, so both 2D and
+        // 3D have nothing to export (3D's shortfall here is entirely an X/Y problem, since
+        // there's no Z data to speak of once every point's position is gone).
         TrackData track = new TrackData(
-                new double[]{1.0, Double.NaN, Double.NaN},
+                new double[]{Double.NaN, Double.NaN, Double.NaN},
                 new double[]{1.0, 2.0, 3.0},
                 new int[]{0, 1, 2},
                 new double[]{3.5, 3.5, 3.5},
@@ -344,7 +315,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK,
                         ExtractionResult.STATUS_OK},
                 "Radius-based", "Median", 0, 0, 0);
-        ExportConfig config = new ExportConfig(3, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -353,7 +324,7 @@ class TrackExportManagerTest {
 
         String content = String.join("\n", Files.readAllLines(
                 outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
-        assertTrue(content.contains("Skipped: 2D(insufficientValidXY)=1, 3D(insufficientValidPoints)=1"),
+        assertTrue(content.contains("Skipped: 2D(noValidPoints)=1, 3D(noValidPoints)=1"),
                 "both dimensions' skip counters should reflect this one track");
     }
 
@@ -377,7 +348,7 @@ class TrackExportManagerTest {
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_MISSING_FRAME,
                         ExtractionResult.STATUS_OK, ExtractionResult.STATUS_OK},
                 "Radius-based", "Median", 1, 0, 0);
-        ExportConfig config = new ExportConfig(3, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -395,7 +366,7 @@ class TrackExportManagerTest {
     void export_writesFullUncappedReportFile(@TempDir Path outDir) throws IOException {
         TrackData track = threeDetectionTrack();
         ExtractionResult result = partialNaNResult();
-        ExportConfig config = new ExportConfig(2, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -417,7 +388,7 @@ class TrackExportManagerTest {
         // npy off, Results Table CSV on -- the per-track report must still note the track's
         // points landed in the CSV rather than just saying "npy off" for both dimensions,
         // which would misleadingly read as if nothing at all was exported for this track.
-        ExportConfig config = new ExportConfig(3, null, false, true, false);
+        ExportConfig config = new ExportConfig(false, true, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -436,7 +407,7 @@ class TrackExportManagerTest {
             @TempDir Path outDir) throws IOException {
         TrackData track = threeDetectionTrack();
         ExtractionResult result = validResult();
-        ExportConfig config = new ExportConfig(3, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         TrackExportManager.export(track, result, config, outDir, "");
 
@@ -481,7 +452,7 @@ class TrackExportManagerTest {
     void export_differentOutDirsPerMethod_doNotCrossContaminate(@TempDir Path base) throws IOException {
         TrackData track = threeDetectionTrack();
         ExtractionResult result = validResult();
-        ExportConfig config = new ExportConfig(3, null, true, false, false);
+        ExportConfig config = new ExportConfig(true, false, false);
 
         Path radiusDir = base.resolve("radius").resolve("median");
         Path pixelDir  = base.resolve("single_pixel").resolve("mean");
