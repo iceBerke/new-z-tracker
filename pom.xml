@@ -15,7 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <patch.version>p5.7</patch.version>
+        <patch.version>p5.8</patch.version>
     </properties>
 
     <repositories>
@@ -156,7 +156,7 @@
                                 <available file="C:/Users/berke.santos/Desktop/Fiji-Stable/plugins/z-tracker-v4-${patch.version}.jar"
                                            property="fiji.jar.exists"/>
                                 <fail unless="fiji.jar.exists"
-                                      message="JAR not copied to Fiji plugins folder. Check outputDirectory in pom.xml line 120."/>
+                                      message="JAR not copied to Fiji plugins folder. Check outputDirectory in pom.xml line 126."/>
                                 <echo level="info" message="[verify-deploy] OK — z-tracker-v4-${patch.version}.jar built and deployed."/>
                             </target>
                         </configuration>
