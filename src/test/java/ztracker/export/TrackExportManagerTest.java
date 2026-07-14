@@ -382,6 +382,24 @@ class TrackExportManagerTest {
     }
 
     @Test
+    void export_allThreeRoiFormatsEnabled_writeAllThreeZipsIndependently(@TempDir Path outDir)
+            throws IOException {
+        // Regression guard: exporting XY + XZ + YZ ROI sets in one run used to hammer the
+        // on-screen RoiManager (reset/addRoi/save x3 back-to-back) and trigger a Swing list
+        // rendering race. XZ/YZ now write straight to disk via RoiEncoder instead, so all
+        // three formats should coexist cleanly in a single export call.
+        TrackData track = threeDetectionTrack();
+        ExtractionResult result = validResult();
+        ExportConfig config = new ExportConfig(false, false, true, true, true);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        assertTrue(Files.exists(outDir.resolve("fiji").resolve("track_rois.zip")));
+        assertTrue(Files.exists(outDir.resolve("fiji").resolve("track_rois_XZ.zip")));
+        assertTrue(Files.exists(outDir.resolve("fiji").resolve("track_rois_YZ.zip")));
+    }
+
+    @Test
     void export_xzAndYzRoiSetEnabled_writeZipsAndNoteThemInReport(@TempDir Path outDir) throws IOException {
         TrackData track = threeDetectionTrack();
         ExtractionResult result = validResult();
