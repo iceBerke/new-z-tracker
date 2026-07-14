@@ -204,9 +204,11 @@ frame edge may newly flip between a valid Z and `STATUS_OUT_OF_BOUNDS`.
   ```
 
 For all three methods, any sampled pixel that falls outside `[0, width) × [0, height)` is
-silently **dropped, not clamped** — near an image edge, Radius's disk and 4-Neighbor's
-corners can end up with fewer samples than usual; Single Pixel either succeeds normally or
-returns zero samples (never partial).
+silently **dropped, not clamped** — `width`/`height` are the loaded TIFF stack's actual pixel
+dimensions (from `TiffStackLoader`), not an independent constant, so the boundary is exactly
+the size of the TIFF frame the detection's `x`/`y` are being sampled against. Near an image
+edge, Radius's disk and 4-Neighbor's corners can end up with fewer samples than usual; Single
+Pixel either succeeds normally or returns zero samples (never partial).
 
 ### Export formats
 
