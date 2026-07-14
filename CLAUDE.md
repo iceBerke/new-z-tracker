@@ -17,7 +17,7 @@ patch number (e.g. `p1.3` → `p2.0`) for a major new capability, or the minor v
 (e.g. `p1.3` → `p1.4`) for iterative fixes within the same feature.
 
 **Auto-deploy path** — machine-specific. To use on a different machine, update
-`<outputDirectory>` in `pom.xml` line 120.
+`<outputDirectory>` in `pom.xml` line 126.
 
 **Build verification** — `maven-antrun-plugin` runs after the copy and fails the build with a
 clear message if either the fat JAR in `target/` or the deployed file in the Fiji plugins
@@ -106,7 +106,7 @@ The pipeline's core output is `.npy` files:
 
 The NPY writer (`NpyExporter`) is hand-rolled pure Java targeting the **NumPy v1.0 binary format**: 6-byte magic, header dict (`'<f8'`, `fortran_order: False`, shape), 64-byte alignment padding, little-endian `float64`, C-order. It **must stay byte-compatible with `numpy.load()`** — do not change layout, padding, or dtype. `NpyExporterTest` checks this directly (magic/version/dtype/fortran_order bytes, 64-byte header alignment across several row/column counts, exact little-endian float64 data, and `write2DTrack`/`write3DTrack`'s `[X,Y,T]`/`[X,Y,Z,T]` column order) using its own independent raw-byte reader, separate from `TrackExportManagerTest`'s — so a bug shared between the writer and one hand-rolled reader can't silently pass both suites. `TrackExportManagerTest.export_preservesInputXYCoordinatesIdenticallyAcrossEveryFormat` and `FijiPointsExporterTest`'s coordinate-preservation tests additionally confirm **X/Y** — the only coordinates actually present in the input CSV — survive unchanged through to `.npy` (both dimensions), Results Table CSV, and the ROI `.zip` (decoded back via `ij.io.RoiDecoder`), catching a column swap, wrong-index bug, or accidental unit conversion in any one format. Z is not an "input" in this sense — it's produced by `ZExtractor`, not read from the CSV — so these tests just confirm the already-computed Z value is written to the correct column/field, not that it round-trips from anywhere.
 
-Other outputs: `FijiPointsExporter` writes one `PointROI` per detection (named `<trackID>_f<frame>`) into a ROI Manager `.zip`, plus a results-table CSV.
+Other outputs: `FijiPointsExporter` writes one `PointROI` per detection (named `<trackID>_f<frame>`) into an XY ROI Manager `.zip`, plus a results-table CSV. It can also write XZ/YZ ROI `.zip` sets — `(X px, Z µm)`/`(Y px, Z µm)` per detection, Z unconverted, only for detections with a valid Z — via `ij.io.RoiEncoder` directly rather than through the on-screen `RoiManager`, which avoids a Swing list-rendering race the on-screen manager hit when all three ROI formats were written back-to-back (see README's p6.1 changelog entry).
 
 ## Architecture
 
@@ -139,7 +139,7 @@ Menu registration lives in `src/main/resources/plugins.config`.
 Detection data is held as **parallel arrays indexed by detection position**, not as per-detection objects:
 
 - `TrackData` — `double[] x, y`, `int[] frame`, `String[] trackId`, `double[] radius` (NaN if absent), plus the resolved column-name metadata and default radius.
-- `ExtractionResult` — `double[] z` (µm; NaN when extraction fails), `double[] zStd`, `int[] numSamples`, `int[] numUnmapped`.
+- `ExtractionResult` — `double[] z` (µm; NaN when extraction fails), `double[] zStd`, `int[] numSamples`, `int[] numUnmapped`, plus per-detection/per-run metadata (`sampleStatus`, `samplingMethod`, `aggregationMethod`, `pixelConvention`, and the `missingFrameCount`/`outOfBoundsCount`/`invalidXYCount` tallies — see below).
 - `TiffStackLoader`'s loaded stack — `int[][][] pixels` indexed `[stackIndex][y][x]` (16-bit or 32-bit indices), plus a `frame → stackIndex` map and sorted frame list (gaps are supported).
 
 When editing extraction or export code, preserve the array-parallelism invariant: all arrays share the same length and index.
