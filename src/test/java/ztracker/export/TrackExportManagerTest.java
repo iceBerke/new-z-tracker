@@ -244,6 +244,83 @@ class TrackExportManagerTest {
     }
 
     @Test
+    void export_unmappedIndexDrop_isReportedSeparatelyFromOtherReasons(
+            @TempDir Path outDir) throws IOException {
+        // 3 detections: frame 0 and 2 fully valid, frame 1 has valid X/Y and a sampled pixel
+        // but every sampled index lacked a Z-mapping entry (STATUS_UNMAPPED_INDEX) -- a third
+        // distinct NaN-Z cause, separate from a missing frame or an out-of-bounds position.
+        // This exercises TrackExportManager's own droppedUnmapped tally and report wiring,
+        // which ZExtractorTest doesn't reach (it only tests ZExtractor in isolation).
+        TrackData track = threeDetectionTrack();
+        ExtractionResult result = new ExtractionResult(
+                new double[]{10.0, Double.NaN, 12.0},
+                new double[]{0.1, Double.NaN, 0.1},
+                new int[]{5, 1, 5},
+                new int[]{0, 1, 0},
+                new String[]{
+                        ExtractionResult.STATUS_OK,
+                        ExtractionResult.STATUS_UNMAPPED_INDEX,
+                        ExtractionResult.STATUS_OK},
+                "Radius-based", "Median", 0, 0, 0);
+        ExportConfig config = new ExportConfig(2, null, true, false, false);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        // 2D is unaffected by Z -> all 3 points kept.
+        Path npy2D = outDir.resolve("tracks_2D").resolve("track_00001.npy");
+        assertEquals(3, npyRowCount(npy2D));
+
+        // 3D drops only the unmapped-index point -> 2 of 3 remain.
+        Path npy3D = outDir.resolve("tracks_3D").resolve("track_00001.npy");
+        assertEquals(2, npyRowCount(npy3D));
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains("3D ✓ (2/3 pt) — dropped 1: 1 unmapped index"),
+                "report should attribute the drop to unmapped index, not missing frame/out of bounds");
+        assertTrue(content.contains(
+                "Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=1"),
+                "aggregate counter should tally the unmapped-index drop distinctly");
+    }
+
+    @Test
+    void export_roiSetEnabled_writesZipAndNotesItInReport(@TempDir Path outDir) throws IOException {
+        TrackData track = threeDetectionTrack();
+        ExtractionResult result = validResult();
+        // npy off, ROI set on -- exercises exportRoiSet end-to-end through TrackExportManager,
+        // and the "Results Table+ROI"-style trailing report segment when only ROI is enabled.
+        ExportConfig config = new ExportConfig(3, null, false, false, true);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        assertTrue(Files.exists(outDir.resolve("fiji").resolve("track_rois.zip")));
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains(
+                "2D ✗ (npy export off) | 3D ✗ (npy export off) | ROI: 3/3 pt"),
+                "report should note the track's points landed in the ROI set despite npy being off");
+    }
+
+    @Test
+    void export_resultsTableAndRoiSetBothEnabled_reportCombinesBoth(
+            @TempDir Path outDir) throws IOException {
+        TrackData track = threeDetectionTrack();
+        ExtractionResult result = validResult();
+        ExportConfig config = new ExportConfig(3, null, true, true, true);
+
+        TrackExportManager.export(track, result, config, outDir, "");
+
+        assertTrue(Files.exists(outDir.resolve("fiji").resolve("results_table.csv")));
+        assertTrue(Files.exists(outDir.resolve("fiji").resolve("track_rois.zip")));
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains("Results Table+ROI: 3/3 pt"),
+                "report should combine both format names when both are enabled");
+    }
+
+    @Test
     void export_summaryLine_reportsInsufficientSkipsSeparatelyFor2DAnd3D(
             @TempDir Path outDir) throws IOException {
         // 3 detections, min length 3: two have invalid X -> only 1 valid-XY point remains,
