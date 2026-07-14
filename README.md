@@ -101,14 +101,64 @@ subfolder; a single chosen method still exports flat into `outputDir` as before.
 
 ### How sampling works, precisely
 
-- **Radius** samples every pixel within a circular disk (`radius` from the CSV or the
-  Step-2 default) around the detection, rounded to the nearest pixel center.
-- **4-Neighbor** samples the 4 bilinear corner pixels around the sub-pixel position
-  (`floor(x)/ceil(x)` × `floor(y)/ceil(y)`).
+Integer X/Y coordinates are pixel **centers** — a sub-pixel detection is rounded/floored/
+ceiled directly against that integer grid, not against pixel corners/edges.
+
 - **Single Pixel** rounds the sub-pixel `(x, y)` to the **nearest** integer pixel first
   (`Math.round`), *then* checks whether that rounded pixel is in bounds — a detection is
   only rejected for being out of the image after rounding, never for having a non-integer
   coordinate.
+
+  ```
+  Sub-pixel detection at (x=2.3, y=1.4) → rounds to pixel (2, 1)
+
+       x→ 0   1   2   3
+     y↓ ┌───┬───┬───┬───┐
+      0 │   │   │   │   │
+        ├───┼───┼───┼───┤
+      1 │   │   │ ● │   │   ← sampled pixel (2,1)
+        ├───┼───┼───┼───┤
+      2 │   │   │   │   │
+        └───┴───┴───┴───┘
+  ```
+
+- **4-Neighbor** samples the 4 bilinear corner pixels around the sub-pixel position
+  (`floor(x)/ceil(x)` × `floor(y)/ceil(y)`).
+
+  ```
+  Sub-pixel detection at (x=2.3, y=1.4) → 4 bilinear corners sampled
+
+       x→ 0   1   2   3
+     y↓ ┌───┬───┬───┬───┐
+      0 │   │   │   │   │
+        ├───┼───┼───┼───┤
+      1 │   │   │ ○ │ ○ │   ← floor(y)=1
+        ├───┼───┼───┼───┤
+      2 │   │   │ ○ │ ○ │   ← ceil(y)=2
+        └───┴───┴───┴───┘
+               ↑   ↑
+          floor(x)=2  ceil(x)=3
+  ```
+
+- **Radius** samples every pixel within a circular disk (`radius` from the CSV or the
+  Step-2 default) around the detection, rounded to the nearest pixel center.
+
+  ```
+  Detection at (x=2, y=2), radius=1.5 px → every pixel within the disk
+
+       x→ 0   1   2   3   4
+     y↓ ┌───┬───┬───┬───┬───┐
+      0 │   │   │ · │   │   │
+        ├───┼───┼───┼───┼───┤
+      1 │   │ · │ · │ · │   │
+        ├───┼───┼───┼───┼───┤
+      2 │ · │ · │ ● │ · │ · │   ← ● = center, · = sampled
+        ├───┼───┼───┼───┼───┤
+      3 │   │ · │ · │ · │   │
+        ├───┼───┼───┼───┼───┤
+      4 │   │   │ · │   │   │
+        └───┴───┴───┴───┴───┘
+  ```
 
 For all three methods, any sampled pixel that falls outside `[0, width) × [0, height)` is
 silently **dropped, not clamped** — near an image edge, Radius's disk and 4-Neighbor's
