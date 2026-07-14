@@ -20,6 +20,14 @@ import java.util.*;
  *   mvn dependency:build-classpath -Dmdep.outputFile=cp.txt
  *   java -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.Step4AlignmentDemo
  * </pre>
+ *
+ * <p>To save the full output to a file instead of (or in addition to) the console, redirect
+ * stdout to {@code Step4AlignmentDemo_output.txt} alongside this source file. Java's default
+ * stdout encoding on Windows is not UTF-8 — pass {@code -Dfile.encoding=UTF-8
+ * -Dstdout.encoding=UTF-8} in case any output ever carries non-ASCII characters:
+ * <pre>
+ *   java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.Step4AlignmentDemo &gt; src/test/java/ztracker/core/Step4AlignmentDemo_output.txt 2&gt;&amp;1
+ * </pre>
  */
 public class Step4AlignmentDemo {
 
