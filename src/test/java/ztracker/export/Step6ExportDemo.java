@@ -156,8 +156,9 @@ public class Step6ExportDemo {
 
     // ── 4) Full export across every format, then trace X/Y through all of them ─
 
-    private static void crossFormatCoordinateIdentity() throws IOException {
-        System.out.println("\n--- 4) One track exported to every format at once -- X/Y traced through each ---");
+    private static void crossFormatCoordinateIdentity(double[] x, double[] y, int[] frame)
+            throws IOException {
+        System.out.println("\n--- 4) The input track above, exported to every format at once -- X/Y traced through each ---");
         System.out.println("  X/Y are the only coordinates that actually come from the input CSV; Z here is"
                 + " a synthetic ZExtractor output (real Z always is), not something read from anywhere, so"
                 + " it has no \"input\" to match against -- only X/Y get the identity check below.");
@@ -167,9 +168,6 @@ public class Step6ExportDemo {
                 + " TrackExportManagerTest.export_preservesInputXYCoordinatesIdenticallyAcrossEveryFormat"
                 + " (which this section mirrors).");
 
-        double[] x = {10.25, 20.5, 30.75};
-        double[] y = {1.125, 2.5, 45.625};
-        int[]    frame = {0, 1, 2};
         TrackData track = new TrackData(
                 x, y, frame,
                 new double[]{3.5, 3.5, 3.5},
@@ -289,9 +287,21 @@ public class Step6ExportDemo {
         System.out.println("Step-6 demo: .npy byte format and cross-format X/Y identity");
         System.out.println("============================================================");
 
+        // The same input track (as if loaded from a tracking CSV: track ID 7, one detection
+        // per frame) is used throughout this demo -- printed once here so every section below
+        // can be checked against it directly, most importantly section 4's X/Y identity table.
+        double[] x     = {10.25, 20.5, 30.75};
+        double[] y     = {1.125, 2.5, 45.625};
+        int[]    frame = {0, 1, 2};
+        System.out.println("\nInput track (Track_ID=7, as if loaded from a tracking CSV):");
+        System.out.printf("  %-6s %-8s %10s %10s %10s%n", "point", "Track_ID", "Frame", "X", "Y");
+        for (int i = 0; i < x.length; i++) {
+            System.out.printf("  %-6d %-8s %10d %10.4f %10.4f%n", i, "7", frame[i], x[i], y[i]);
+        }
+
         npyByteAnatomy();
         headerAlignmentAcrossShapes();
         trackColumnOrder();
-        crossFormatCoordinateIdentity();
+        crossFormatCoordinateIdentity(x, y, frame);
     }
 }

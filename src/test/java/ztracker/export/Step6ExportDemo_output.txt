@@ -2,6 +2,12 @@
 Step-6 demo: .npy byte format and cross-format X/Y identity
 ============================================================
 
+Input track (Track_ID=7, as if loaded from a tracking CSV):
+  point  Track_ID      Frame          X          Y
+  0      7                 0    10.2500     1.1250
+  1      7                 1    20.5000     2.5000
+  2      7                 2    30.7500    45.6250
+
 --- 1) Anatomy of a .npy file written by NpyExporter ---
   CLAUDE.md requires this writer to stay byte-compatible with numpy.load() -- printing the raw bytes here makes that contract visible instead of just asserted in NpyExporterTest.
   magic bytes (hex): 93 4E 55 4D 50 59  (expect 93 4E 55 4D 50 59 = \x93NUMPY)
@@ -27,7 +33,7 @@ Step-6 demo: .npy byte format and cross-format X/Y identity
       20.500    2.500    0.000        5
       30.750   -3.000   75.500       12
 
---- 4) One track exported to every format at once -- X/Y traced through each ---
+--- 4) The input track above, exported to every format at once -- X/Y traced through each ---
   X/Y are the only coordinates that actually come from the input CSV; Z here is a synthetic ZExtractor output (real Z always is), not something read from anywhere, so it has no "input" to match against -- only X/Y get the identity check below.
   NOTE: this demo only PRINTS the comparison below -- it makes no assertions. The actual pass/fail check is in JUnit, run via `mvn test`: NpyExporterTest, FijiPointsExporterTest, and TrackExportManagerTest.export_preservesInputXYCoordinatesIdenticallyAcrossEveryFormat (which this section mirrors).
 [FijiPointsExporter] Results table written: results_table.csv
@@ -35,7 +41,7 @@ Step-6 demo: .npy byte format and cross-format X/Y identity
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track 7          2D ✓ (3 pt) — all points valid | 3D ✓ (3 pt) — all points valid | Results Table+ROI: 3/3 pt
 [TrackExportManager] Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
-  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step6-demo-export9734537145155935988
+  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step6-demo-export6228140486694391851
     export_report.txt
     fiji\results_table.csv
     fiji\track_rois.zip

@@ -63,7 +63,10 @@ step 6's export machinery — it lives in `ztracker.export`, not `ztracker.core`
 Step-N demos, since it's exercising `NpyExporter`/`FijiPointsExporter`/`TrackExportManager`
 directly rather than dialog-step logic. It complements rather than duplicates
 `ztracker.core.Step5MethodsDemo`'s export section (which shows the per-track report and
-multi-method folder layout). It prints the actual bytes of an `NpyExporter`-written `.npy` file
+multi-method folder layout). `main` prints the input track (Track_ID, Frame, X, Y — as if loaded
+from a tracking CSV) first thing, before any section runs, so it stays visible as a fixed
+reference point while section 4's traced-through values are read against it further down. It
+prints the actual bytes of an `NpyExporter`-written `.npy` file
 (magic, version, header dict, the 64-byte alignment padding, and a little-endian float64 value
 decoded back), confirms that padding stays aligned to a single 64-byte block across shapes from
 `(1, 1)` up to `(999999999, 999999999)` since the header dict's fixed text dominates its length,
