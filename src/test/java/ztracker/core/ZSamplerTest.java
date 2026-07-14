@@ -234,4 +234,25 @@ class ZSamplerTest {
         for (double v : cornerResult) cornerSum += v;
         assertEquals(144.0, cornerSum);
     }
+
+    @Test
+    void negativeCoordinate_isInBoundsUnderCenterButOutOfBoundsUnderCorner() {
+        // The documented p7.0 gotcha: near a zero/negative coordinate the two conventions
+        // disagree about whether the detection is even in bounds. x=-0.4 rounds to pixel 0
+        // (in bounds) under CENTER, but floors to pixel -1 (out of bounds) under CORNER --
+        // Math.round and Math.floor diverge for any negative non-integer. y=1.0 is an exact
+        // integer, so it maps to row 1 under both conventions, isolating the x-axis flip.
+        int[][] frame = {
+            {10, 11, 12},
+            {13, 14, 15},
+            {16, 17, 18}
+        };
+        LoadedStack stack = singleFrameStack(frame);
+
+        double[] centerResult = ZSampler.sample(stack, -0.4, 1.0, 0, 0, 1.0, ZSampler.Method.SINGLE_PIXEL, CENTER);
+        double[] cornerResult = ZSampler.sample(stack, -0.4, 1.0, 0, 0, 1.0, ZSampler.Method.SINGLE_PIXEL, CORNER);
+
+        assertArrayEquals(new double[]{13}, centerResult); // round(-0.4)=0 -> pixel (0,1)=13
+        assertEquals(0, cornerResult.length);              // floor(-0.4)=-1 -> out of bounds
+    }
 }

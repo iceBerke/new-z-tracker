@@ -64,10 +64,6 @@ import java.util.stream.Stream;
  *       and prints {@code export_report.txt} to show the report's new trailing segment — the
  *       2D/3D verdict reads "npy export off" either way, but the added segment makes clear the
  *       track's points still landed in the CSV rather than reading as a total export failure.</li>
- *   <li>Contrasts {@link ZSampler.PixelConvention#PIXEL_CORNER} (the new default) against
- *       {@link ZSampler.PixelConvention#PIXEL_CENTER} (the switchable alternate) for
- *       SINGLE_PIXEL and FOUR_NEIGHBOR at the same sub-pixel detection, showing which pixel(s)
- *       each convention actually samples.</li>
  *   <li>Plants a pixel value that has no entry in the Z JSON mapping and contrasts two
  *       detections against it: one that samples <b>only</b> the unmapped pixel (every sample
  *       lacks a mapping, so aggregation has nothing left and the detection fails with
@@ -76,6 +72,10 @@ import java.util.stream.Stream;
  *       of the unmapped pixel <b>and</b> mapped neighbors (partial unmapped still yields a
  *       valid aggregate over the remaining samples, per {@link ZAggregator}'s NaN-filtering, so
  *       the detection succeeds with {@code numUnmapped > 0} but status {@code STATUS_OK}).</li>
+ *   <li>Contrasts {@link ZSampler.PixelConvention#PIXEL_CORNER} (the new default) against
+ *       {@link ZSampler.PixelConvention#PIXEL_CENTER} (the switchable alternate) for
+ *       SINGLE_PIXEL and FOUR_NEIGHBOR at the same sub-pixel detection, showing which pixel(s)
+ *       each convention actually samples.</li>
  * </ol>
  *
  * <p>Run it manually (from the project root, after {@code mvn test-compile}):

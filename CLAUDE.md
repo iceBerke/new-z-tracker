@@ -47,16 +47,19 @@ in-bounds, contrasts a genuinely out-of-bounds detection against a genuinely mis
 `ExtractionResult.outOfBoundsCount` vs `missingFrameCount` being reported separately, and actually
 exports two combinations via `TrackExportManager` into a temp dir to print the resulting
 `<sampling>/<aggregation>/...` folder tree plus the full contents of the `export_report.txt`
-file written alongside the .npy output, and finally builds a track with both an invalid-X/Y
+file written alongside the .npy output, then builds a track with both an invalid-X/Y
 detection and a separate invalid-Z detection to print the asymmetry side by side (X/Y drops
 from both 2D and 3D; Z drops from 3D only), plants a marker pixel to prove `ZExtractor` never
 samples a NaN X/Y (rather than `Math.round(Double.NaN) == 0` silently treating it as `x=0`), and
 exports a track with `.npy` off but Results Table CSV on to show the report's trailing
-`"Results Table: N/M pt"` segment, and finally plants a pixel value absent from the Z mapping to
+`"Results Table: N/M pt"` segment, then plants a pixel value absent from the Z mapping to
 contrast a detection that samples *only* that unmapped pixel (fails with
 `STATUS_UNMAPPED_INDEX` — a third NaN-Z cause distinct from a missing frame or out-of-bounds
 position) against one that samples it alongside mapped neighbors (`ZAggregator`'s NaN-filtering
-lets the aggregate still succeed). Run instructions are in the class javadoc.
+lets the aggregate still succeed), and finally contrasts the `PIXEL_CORNER` (the p7.0 default)
+vs `PIXEL_CENTER` pixel coordinate conventions on the same sub-pixel detection (for
+`SINGLE_PIXEL` and `FOUR_NEIGHBOR`) to show which pixel(s) each convention actually samples.
+Run instructions are in the class javadoc.
 
 `src/test/java/ztracker/export/Step6ExportDemo.java` is the same kind of runnable walkthrough for
 step 6's export machinery — it lives in `ztracker.export`, not `ztracker.core` like the other
