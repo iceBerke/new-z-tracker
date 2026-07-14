@@ -50,7 +50,11 @@ detection and a separate invalid-Z detection to print the asymmetry side by side
 from both 2D and 3D; Z drops from 3D only), plants a marker pixel to prove `ZExtractor` never
 samples a NaN X/Y (rather than `Math.round(Double.NaN) == 0` silently treating it as `x=0`), and
 exports a track with `.npy` off but Results Table CSV on to show the report's trailing
-`"Results Table: N/M pt"` segment. Run instructions are in the class javadoc.
+`"Results Table: N/M pt"` segment, and finally plants a pixel value absent from the Z mapping to
+contrast a detection that samples *only* that unmapped pixel (fails with
+`STATUS_UNMAPPED_INDEX` — a third NaN-Z cause distinct from a missing frame or out-of-bounds
+position) against one that samples it alongside mapped neighbors (`ZAggregator`'s NaN-filtering
+lets the aggregate still succeed). Run instructions are in the class javadoc.
 
 ## Critical Constraints
 

@@ -62,6 +62,14 @@ import java.util.stream.Stream;
  *       and prints {@code export_report.txt} to show the report's new trailing segment — the
  *       2D/3D verdict reads "npy export off" either way, but the added segment makes clear the
  *       track's points still landed in the CSV rather than reading as a total export failure.</li>
+ *   <li>Plants a pixel value that has no entry in the Z JSON mapping and contrasts two
+ *       detections against it: one that samples <b>only</b> the unmapped pixel (every sample
+ *       lacks a mapping, so aggregation has nothing left and the detection fails with
+ *       {@link ExtractionResult#STATUS_UNMAPPED_INDEX} — a third distinct NaN-Z cause, separate
+ *       from a missing TIFF frame or an out-of-bounds position) versus one that samples a mix
+ *       of the unmapped pixel <b>and</b> mapped neighbors (partial unmapped still yields a
+ *       valid aggregate over the remaining samples, per {@link ZAggregator}'s NaN-filtering, so
+ *       the detection succeeds with {@code numUnmapped > 0} but status {@code STATUS_OK}).</li>
  * </ol>
  *
  * <p>Run it manually (from the project root, after {@code mvn test-compile}):
@@ -368,6 +376,55 @@ public class Step5MethodsDemo {
         System.out.println("  (temp directory cleaned up after printing)");
     }
 
+    private static void unmappedIndexComparison() {
+        System.out.println("\n--- 10) Unmapped pixel index: a third distinct NaN-Z cause ---");
+        System.out.println("  Pixel value 999 is planted with NO entry in the Z mapping (simulating a"
+                + " stray index the JSON mapping doesn't cover). This is different from a missing TIFF"
+                + " frame or an out-of-bounds position: the frame exists and the position is in-bounds,"
+                + " so sampling succeeds and numSamples > 0 -- it's the index-to-Z lookup that fails.");
+
+        int[][] frame = {
+            {7,   7,   7},
+            {7, 999,   7},   // center pixel has no Z-mapping entry
+            {7,   7,   7}
+        };
+        Map<Integer, Integer> frameToIdx = new HashMap<>();
+        frameToIdx.put(0, 0);
+        LoadedStack s = new LoadedStack(new int[][][]{frame}, frameToIdx,
+                new ArrayList<>(Collections.singletonList(0)), 3, 3);
+
+        Map<Integer, Double> zMap = new HashMap<>();
+        zMap.put(7, 1.0); // 999 is deliberately left out of the mapping
+
+        // Case A: SINGLE_PIXEL samples only the unmapped center pixel -- nothing left to
+        // aggregate once the lone sample is filtered out.
+        TrackData single = new TrackData(
+                new double[]{1.0}, new double[]{1.0}, new int[]{0},
+                new double[]{1.0}, new String[]{"E1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult singleResult = ZExtractor.extract(
+                single, s, zMap, 0, ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN);
+        System.out.printf("  Case A (SINGLE_PIXEL, only the unmapped pixel sampled):%n");
+        System.out.printf("     -> z=%s | numSamples=%d | numUnmapped=%d | sampleStatus=\"%s\"%n",
+                singleResult.z[0], singleResult.numSamples[0], singleResult.numUnmapped[0],
+                singleResult.sampleStatus[0]);
+
+        // Case B: RADIUS samples the unmapped center plus mapped neighbors -- the aggregate
+        // still succeeds over the remaining valid samples.
+        TrackData radius = new TrackData(
+                new double[]{1.0}, new double[]{1.0}, new int[]{0},
+                new double[]{1.0}, new String[]{"E2"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult radiusResult = ZExtractor.extract(
+                radius, s, zMap, 0, ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN);
+        System.out.printf("  Case B (RADIUS, unmapped pixel + mapped neighbors sampled):%n");
+        System.out.printf("     -> z=%s | numSamples=%d | numUnmapped=%d | sampleStatus=\"%s\"%n",
+                radiusResult.z[0], radiusResult.numSamples[0], radiusResult.numUnmapped[0],
+                radiusResult.sampleStatus[0]);
+        System.out.println("  (Case A fails: the ONLY sample was unmapped, nothing left to aggregate."
+                + " Case B succeeds: partial unmapped still leaves valid neighbors for the aggregate.)");
+    }
+
     private static void deleteRecursively(Path root) throws IOException {
         try (Stream<Path> walk = Files.walk(root)) {
             for (Path p : walk.sorted(Comparator.reverseOrder()).collect(Collectors.toList())) {
@@ -394,5 +451,6 @@ public class Step5MethodsDemo {
         invalidXYVsInvalidZComparison();
         nanXIsNeverSampledComparison();
         reportNotesOtherFormatsComparison();
+        unmappedIndexComparison();
     }
 }
