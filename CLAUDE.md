@@ -9,8 +9,9 @@ mvn install
 ```
 
 Produces `target/z-tracker-v4-pN.n.jar` (a fat JAR via `maven-assembly-plugin`), copies it
-automatically to the local Fiji plugins folder, and verifies both steps succeeded. The plugin
-appears under **Plugins > ZTracker > 3D Z-Coordinate Extractor** after restarting Fiji.
+automatically to the local Fiji plugins folder, removes any superseded `z-tracker-v4-*.jar`
+there, and verifies both steps succeeded. The tools appear under **Plugins > ZTracker**
+(**3D Z-Coordinate Extractor** and **Z-Projection + Origin Map**) after restarting Fiji.
 
 **Version number** — controlled by `<patch.version>` in `pom.xml` line 18. Increment the
 patch number (e.g. `p1.3` → `p2.0`) for a major new capability, or the minor version
@@ -19,9 +20,15 @@ patch number (e.g. `p1.3` → `p2.0`) for a major new capability, or the minor v
 **Auto-deploy path** — machine-specific. To use on a different machine, update
 `<outputDirectory>` in `pom.xml` line 126.
 
-**Build verification** — `maven-antrun-plugin` runs after the copy and fails the build with a
-clear message if either the fat JAR in `target/` or the deployed file in the Fiji plugins
-folder is missing.
+**Clean old JARs** — a `maven-antrun-plugin` `clean-old-jars` execution (install phase) deletes
+any `z-tracker-v4-*.jar` in the Fiji plugins folder **except the current `<patch.version>`**, so
+a version bump doesn't leave the previous JAR behind (which would make Fiji register the plugin
+twice). It excludes the current version, so it is safe regardless of order relative to the copy —
+it can never remove the freshly-built JAR.
+
+**Build verification** — a second `maven-antrun-plugin` execution (`verify-deploy`) runs after
+the copy and fails the build with a clear message if either the fat JAR in `target/` or the
+deployed file in the Fiji plugins folder is missing.
 
 Most testing is manual: build, install in Fiji, and run the dialog against sample JSON / TIFF /
 CSV inputs, inspecting the `.npy`, CSV, and ROI `.zip` outputs. UI/AWT code is manual-only — it

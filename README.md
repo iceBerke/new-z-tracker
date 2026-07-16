@@ -71,7 +71,9 @@ ZTracker_Fiji/
    - Or in the terminal: `mvn install`
 
 3. **Output**: `target/z-tracker-v4-pN.n.jar` — automatically copied to the local
-   Fiji plugins folder and verified. Restart Fiji to load the updated plugin.
+   Fiji plugins folder, with any superseded `z-tracker-v4-*.jar` there removed (so a
+   version bump never leaves an old JAR behind to load the plugin twice), then verified.
+   Restart Fiji to load the updated plugin.
 
 ### Versioning
 

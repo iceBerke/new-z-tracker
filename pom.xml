@@ -143,6 +143,26 @@
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
                 <executions>
+                    <!-- Remove superseded versions of this plugin's JAR from the Fiji
+                         plugins folder, so a version bump doesn't leave the old JAR behind
+                         (which would make Fiji register the plugin twice). Excludes the
+                         current version, so it is safe to run after copy-to-fiji — it can
+                         never delete the freshly-built JAR. -->
+                    <execution>
+                        <id>clean-old-jars</id>
+                        <phase>install</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <delete failonerror="false" verbose="true">
+                                    <fileset dir="C:/Users/berke.santos/Desktop/Fiji-Stable/plugins"
+                                             includes="z-tracker-v4-*.jar"
+                                             excludes="z-tracker-v4-${patch.version}.jar"/>
+                                </delete>
+                                <echo level="info" message="[clean-old-jars] Removed any z-tracker-v4-*.jar except the current z-tracker-v4-${patch.version}.jar."/>
+                            </target>
+                        </configuration>
+                    </execution>
                     <execution>
                         <id>verify-deploy</id>
                         <phase>install</phase>
