@@ -154,7 +154,15 @@ A single modeless AWT dialog (same folder pickers as the extractor's Step 1 / St
 
 For each timepoint, pixel-by-pixel: the min/max intensity **projection**, and a **z-origin
 index map** — for each pixel, which Z-layer won (`argmax`/`argmin`), stored as the integer
-index into the sorted layer list. Ties go to the first (lowest-index) layer, matching numpy.
+index into the sorted layer list.
+
+> **Note — tie-breaking.** When two or more layers share the exact same extreme intensity at a
+> pixel, the **first (lowest-index, i.e. shallowest) layer wins**. This is not a new choice made
+> by the plugin — it's inherited from the original Python scripts, where `np.argmax`/`np.argmin`
+> return the *first* occurrence of the max/min. The Java port reproduces it exactly (a strict
+> `>` / `<` comparison, so a later equal value never displaces the first) and locks it in with a
+> test. Exact ties are rare in real 16/32-bit intensity data, but can occur in flat or saturated
+> regions — where the recorded depth becomes the shallowest tied layer.
 
 ### Outputs (per dataset — matches the Python script exactly)
 
