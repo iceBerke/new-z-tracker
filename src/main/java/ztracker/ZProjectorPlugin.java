@@ -54,23 +54,29 @@ public class ZProjectorPlugin implements PlugIn {
             return;
         }
 
-        IJ.log(String.format("[ZProjector] Mode: %s | Scope: %s | %d dataset(s)",
-                cfg.mode, cfg.batch ? "batch" : "single", datasets.size()));
+        IJ.log(String.format("[ZProjector] Projection(s): %s | Scope: %s | %d dataset(s)",
+                cfg.modes, cfg.batch ? "batch" : "single", datasets.size()));
 
-        int datasetsDone = 0;
-        for (File datasetDir : datasets) {
-            try {
-                processDataset(datasetDir, cfg);
-                datasetsDone++;
-            } catch (Exception e) {
-                IJ.log("[ZProjector] SKIPPED dataset '" + datasetDir.getName() + "': " + e.getMessage());
+        // Each requested projection × each dataset is one unit of work. Running both
+        // projections writes into separate max_z / min_z output trees, so they never collide.
+        int unitsDone = 0;
+        int unitsTotal = datasets.size() * cfg.modes.size();
+        for (ZProjector.Mode mode : cfg.modes) {
+            for (File datasetDir : datasets) {
+                try {
+                    processDataset(datasetDir, cfg, mode);
+                    unitsDone++;
+                } catch (Exception e) {
+                    IJ.log("[ZProjector] SKIPPED " + mode + " for dataset '"
+                            + datasetDir.getName() + "': " + e.getMessage());
+                }
             }
         }
 
         IJ.showStatus("Z-Projection complete.");
         IJ.showProgress(1.0);
-        IJ.log(String.format("\n[ZProjector] Done. %d / %d dataset(s) processed. Output written under: %s",
-                datasetsDone, datasets.size(), cfg.outputDir.getAbsolutePath()));
+        IJ.log(String.format("\n[ZProjector] Done. %d / %d (dataset × projection) unit(s) processed. Output under: %s",
+                unitsDone, unitsTotal, cfg.outputDir.getAbsolutePath()));
         IJ.log("========================================\n");
     }
 
@@ -98,10 +104,11 @@ public class ZProjectorPlugin implements PlugIn {
         return out;
     }
 
-    private static void processDataset(File datasetDir, ZProjectorDialog.Config cfg) throws Exception {
+    private static void processDataset(File datasetDir, ZProjectorDialog.Config cfg, ZProjector.Mode mode)
+            throws Exception {
         DatasetScan scan = ProjectionInputScanner.scanDataset(datasetDir);
 
-        String modeFolder = (cfg.mode == ZProjector.Mode.MAX_Z) ? "max_z" : "min_z";
+        String modeFolder = (mode == ZProjector.Mode.MAX_Z) ? "max_z" : "min_z";
         String rawPrefix  = modeFolder + "_projection_";
 
         // Output tree: <outputDir>/<modeFolder>/<modeFolder>_<datasetName>/{raw,z_origin,z_origin_32bit}
@@ -112,11 +119,11 @@ public class ZProjectorPlugin implements PlugIn {
         File z32Dir = new File(datasetOutDir, "z_origin_32bit");
         z16Dir.mkdirs();
         z32Dir.mkdirs();
-        if (cfg.writeRaw) rawDir.mkdirs();
+        rawDir.mkdirs(); // raw projection is always written
 
         ProjectionExporter.writeMappings(datasetOutDir, scan.zValues);
-        IJ.log(String.format("[ZProjector] '%s': %d z-layers (%s … %s), %d timepoint(s) → %s",
-                datasetDir.getName(), scan.zLayerNames.size(),
+        IJ.log(String.format("[ZProjector] %s '%s': %d z-layers (%s … %s), %d timepoint(s) → %s",
+                mode, datasetDir.getName(), scan.zLayerNames.size(),
                 scan.zLayerNames.get(0), scan.zLayerNames.get(scan.zLayerNames.size() - 1),
                 scan.timepointFilenames.size(), datasetOutDir.getAbsolutePath()));
 
@@ -124,7 +131,7 @@ public class ZProjectorPlugin implements PlugIn {
         int skipped16 = 0;
         for (int t = 0; t < total; t++) {
             String filename = scan.timepointFilenames.get(t);
-            IJ.showStatus("Projecting " + datasetDir.getName() + " — " + filename);
+            IJ.showStatus("Projecting " + mode + " " + datasetDir.getName() + " — " + filename);
             IJ.showProgress(t, total);
 
             TimepointStack ts;
@@ -135,7 +142,7 @@ public class ZProjectorPlugin implements PlugIn {
                 continue;
             }
 
-            ZProjector.Result result = ZProjector.project(cfg.mode, ts.slices, ts.globalZIndex);
+            ZProjector.Result result = ZProjector.project(mode, ts.slices, ts.globalZIndex);
 
             boolean wrote16 = ProjectionExporter.write16BitOrigin(z16Dir, filename, result.zOriginIndex);
             if (!wrote16) {
@@ -144,16 +151,13 @@ public class ZProjectorPlugin implements PlugIn {
                         + "': an index exceeds the uint16 range (" + ProjectionExporter.UINT16_MAX + ")");
             }
             ProjectionExporter.write32BitOrigin(z32Dir, filename, result.zOriginIndex);
-
-            if (cfg.writeRaw) {
-                ProjectionExporter.writeRaw(rawDir, rawPrefix, filename,
-                        result.projection, ts.sourceBitDepth);
-            }
+            ProjectionExporter.writeRaw(rawDir, rawPrefix, filename,
+                    result.projection, ts.sourceBitDepth);
         }
         IJ.showProgress(1.0);
 
-        IJ.log(String.format("[ZProjector] '%s' done: %d timepoint(s)%s.",
-                datasetDir.getName(), total,
+        IJ.log(String.format("[ZProjector] %s '%s' done: %d timepoint(s)%s.",
+                mode, datasetDir.getName(), total,
                 skipped16 > 0 ? " (" + skipped16 + " without a 16-bit z-origin — 32-bit still written)" : ""));
     }
 }

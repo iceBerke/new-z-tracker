@@ -72,9 +72,12 @@
 <p>This second tool <strong>makes</strong> the two projection inputs the extractor needs, starting from a raw Z-stack. Open it via <strong>Plugins &gt; ZTracker &gt; Z-Projection + Origin Map</strong>.</p>
 <p><strong>What it needs:</strong> a <strong>dataset folder</strong> whose sub-folders are named by their depth in µm (e.g. <code>-300</code>, <code>-299</code>, …), each holding one TIFF per time frame (same filename across depths):</p>
 <p>``<code> dataset/ ├── -300/   frame_0001.tif, frame_0002.tif, ... ├── -299/   frame_0001.tif, ... └── ... </code>``</p>
-<p><strong>In the dialog</strong> you pick the input folder, the output folder, and:</p>
-<ul><li><strong>Scope</strong> — <em>Single dataset</em> (the folder above) or <em>Batch</em> (a folder holding many such datasets).</li><li><strong>Projection</strong> — <em>Max-Z</em> (keeps the <strong>brightest</strong> pixel at each position — the usual choice for</li></ul>
-<p>fluorescence) or <em>Min-Z</em> (keeps the <strong>darkest</strong>).</p>
+<p><strong>In the dialog</strong> you pick, top to bottom:</p>
+<ul><li><strong>Scope</strong> (asked first) — <em>Single dataset</em> (the folder above) or <em>Batch</em> (a folder holding many</li></ul>
+<p>such datasets). This tells you what the input folder should be.</p>
+<ul><li><strong>Input folder</strong> and <strong>Output folder</strong>.</li><li><strong>Projection</strong> — <em>Max-Z</em> (keeps the <strong>brightest</strong> pixel at each position — the usual choice for</li></ul>
+<p>fluorescence), <em>Min-Z</em> (keeps the <strong>darkest</strong>), or <em>Both</em> (runs both, into separate <code>max_z</code> and   <code>min_z</code> folders).</p>
+<p>The 8-bit "raw" preview picture is always saved — there's nothing to switch on.</p>
 <p><strong>What it makes</strong> (for each dataset, under a <code>max_z</code> or <code>min_z</code> folder):</p>
 <table><thead><tr><th>Output</th><th>What it is</th></tr></thead><tbody><tr><td><strong>z_origin/</strong> (16-bit) and <strong>z_origin_32bit/</strong> (32-bit)</td><td>The depth-coded projection TIFFs — point the extractor's <strong>Z-origin TIFF folder</strong> here.</td></tr><tr><td><strong>z_layer_mapping.json</strong></td><td>The pixel-code → depth map — this is the extractor's <strong>Z-mapping JSON</strong>.</td></tr><tr><td><strong>raw/</strong></td><td>A plain 8-bit projection picture for looking at (the extractor ignores it).</td></tr></tbody></table>
 <p>Then just run the extractor (Tool 1) and point it at the <code>z_origin</code> folder and the <code>z_layer_mapping.json</code> this tool produced.</p>

@@ -108,11 +108,16 @@ dataset/
 └── ...
 ```
 
-**In the dialog** you pick the input folder, the output folder, and:
+**In the dialog** you pick, top to bottom:
 
-- **Scope** — _Single dataset_ (the folder above) or _Batch_ (a folder holding many such datasets).
+- **Scope** (asked first) — _Single dataset_ (the folder above) or _Batch_ (a folder holding many
+  such datasets). This tells you what the input folder should be.
+- **Input folder** and **Output folder**.
 - **Projection** — _Max-Z_ (keeps the **brightest** pixel at each position — the usual choice for
-  fluorescence) or _Min-Z_ (keeps the **darkest**).
+  fluorescence), _Min-Z_ (keeps the **darkest**), or _Both_ (runs both, into separate `max_z` and
+  `min_z` folders).
+
+The 8-bit "raw" preview picture is always saved — there's nothing to switch on.
 
 **What it makes** (for each dataset, under a `max_z` or `min_z` folder):
 

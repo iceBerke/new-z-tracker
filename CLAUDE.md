@@ -146,7 +146,9 @@ skipping the tool's own `min_z`/`max_z` output roots) → for each dataset, `Pro
 discovers z-layers/timepoints, then **streams one timepoint at a time** (RAM-friendly, matching
 the Python script): load its z-stack, `ZProjector.project` computes the projection + z-origin
 index map, `ProjectionExporter` writes the 16-/32-bit z-origin TIFFs, both JSON mappings, and the
-optional 8-bit raw projection. It reuses no `ZTrackerPlugin`/`ZTrackerDialog` code (the shared
+8-bit raw projection (always written). The dialog can request **both** projections (Max-Z *and*
+Min-Z); the plugin loops projection × dataset, and since each projection writes into its own
+`max_z/`/`min_z/` output tree they never collide. It reuses no `ZTrackerPlugin`/`ZTrackerDialog` code (the shared
 folder-picker layout is deliberately **duplicated**, not extracted, so the extractor UI is
 untouched) but does reuse the `io`/`model` format contracts so its output loads straight back
 into Tool 1.
@@ -169,10 +171,12 @@ Keep the package layout clean — `model` / `io` / `core` / `project` / `export`
 
 - `ztracker` — `ZTrackerPlugin` (Tool 1) and `ZProjectorPlugin` (Tool 2) entry points (orchestration only).
 - `ztracker.ui` — `ZTrackerDialog`, the 6-step dialog wizard. **All steps are non-modal** so the ImageJ Log window stays interactive/resizable while any step is open (the Step-4 per-track table lives in the Log). Steps 1, 4, 5, and 6 are custom AWT `Dialog`s created modeless (`new Dialog(..., false)`) and block the plugin thread with a `CountDownLatch` counted down on OK/Cancel/close — Step 1 is the resizable file picker, Step 4 the live-updating frame-alignment box, Step 5 the sampling/aggregation/pixel-convention method picker (uses a live `ItemListener` to disable the aggregation `Choice` when Sampling is `SINGLE_PIXEL` alone — see the Pluggable methods section — plus a third `Choice` for `ZSampler.PixelConvention`, Corner listed first as the default, no "All" option), Step 6 the output-directory-and-format picker (same `addInputGroup` grid layout as Step 1, with a `DirectoryChooser`-backed browse button instead of `GenericDialog.addDirectoryField`). Steps 2 and 3 use `NonBlockingGenericDialog` (ImageJ's non-modal `GenericDialog`, whose `showDialog()` still blocks the caller so the existing `wasCanceled()`/`getNext*()` usage is unchanged). Plugins run off the EDT, so blocking the plugin thread doesn't freeze the UI.
-  `ZProjectorDialog` (Tool 2) is a single modeless AWT `Dialog` in the same style — input/output
-  `DirectoryChooser` pickers via a **copy** of `addInputGroup` (duplicated here on purpose so
-  `ZTrackerDialog` is byte-for-byte unchanged), plus `Choice`es for scope (single/batch) and
-  projection (Max-Z/Min-Z) and a raw-projection checkbox.
+  `ZProjectorDialog` (Tool 2) is a single modeless AWT `Dialog` in the same style — a scope
+  `Choice` (single/batch) asked **first**, then input/output `DirectoryChooser` pickers via a
+  **copy** of `addInputGroup` (duplicated here on purpose so `ZTrackerDialog` is byte-for-byte
+  unchanged; the input folder needs no description since scope already frames it), then a
+  projection `Choice` (Max-Z / Min-Z / **Both**). There is no raw-projection toggle — the 8-bit
+  raw is always written. `Config.modes` is a `List<ZProjector.Mode>` (one entry, or both).
 - `ztracker.io` — input loaders (`ZMappingLoader`, `TiffStackLoader`, `TrackCsvLoader`, and `ProjectionInputScanner` for Tool 2's z-layer/timepoint folder structure).
 - `ztracker.core` — extraction logic (`FrameAligner`, `ZSampler`, `ZAggregator`, `ZExtractor`).
 - `ztracker.project` — projection logic (`ZProjector`: I/O-free min/max projection + per-pixel z-origin index map). Tool 2's counterpart to `core`.

@@ -140,15 +140,20 @@ the winner's **global** layer index (its position in the full sorted list) is wh
 
 ### The dialog
 
-A single modeless AWT dialog (same folder pickers as the extractor's Step 1 / Step 6):
+A single modeless AWT dialog (same folder pickers as the extractor's Step 1 / Step 6),
+in top-to-bottom order:
 
 | Field | Choices |
 |-------|---------|
-| Input folder | **Single**: the dataset folder above. **Batch**: a parent holding many such datasets. |
+| Scope | **Single dataset** (the input folder is the dataset above) / **Batch** (the input folder holds many such datasets) — asked first, so it's clear what the input folder should point at |
+| Input folder | The folder matching the chosen scope. |
 | Output folder | Where the output tree is written. |
-| Scope | Single dataset / Batch |
-| Projection | **Max-Z** (brightest pixel per position wins) / **Min-Z** (darkest wins) |
-| Write raw projection | On by default — the 8-bit visualization image (extractor ignores it) |
+| Projection | **Max-Z** (brightest pixel per position wins) / **Min-Z** (darkest wins) / **Both** |
+
+The 8-bit raw projection is **always written** (it's cheap and handy for a quick look);
+there's no toggle for it. Choosing **Both** runs Max-Z *and* Min-Z, writing a full `max_z/…`
+tree and a full `min_z/…` tree side by side — in single or batch mode — which never collide
+since they live under different top folders.
 
 ### What it computes
 
@@ -171,7 +176,7 @@ outputDir/<max_z|min_z>/<max_z|min_z>_<datasetName>/
 ├── raw/                z_origin/                z_origin_32bit/
 │   <mode>_projection_  z_origin_<name>.tif      z_origin_32bit_<name>.tif
 │   <name>.tif          (16-bit indexed)         (32-bit indexed)
-│   (8-bit, opt.)
+│   (8-bit, always)
 ├── z_layer_mapping.json        ← {"0": -300.0, "1": -299.0, ...}  (index → Z µm)
 └── z_layer_mapping_32bit.json  ← identical copy, paired with the 32-bit TIFFs
 ```
@@ -470,5 +475,6 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p6.0 | Added optional **XZ/YZ ROI set export** (`fiji/track_rois_XZ.zip`, `fiji/track_rois_YZ.zip`) — `FijiPointsExporter.writeXZRoiSet`/`writeYZRoiSet` plot `(X px, Z µm)`/`(Y px, Z µm)` per detection, Z left unconverted (no pixel conversion); only detections with a valid (non-NaN) Z are included, since a NaN Z has nothing to plot on that axis. Two new `ExportConfig` flags and Step-6 checkboxes, off by default; the per-track report gets a trailing `XZ ROI+YZ ROI: N/M pt` segment mirroring the existing Results Table/ROI one |
 | p6.1 | Fixed a Swing/AWT rendering race in Fiji's ROI Manager list widget (`ArrayIndexOutOfBoundsException` from its renderer painting a row the list model had already dropped), surfaced by p6.0: running all three ROI formats in one export hammered `RoiManager.reset()`/`addRoi()`/save three times back-to-back on the same visible on-screen manager, faster than it could repaint. `writeXZRoiSet`/`writeYZRoiSet` now write their `.zip` directly via `ij.io.RoiEncoder`, bypassing the on-screen `RoiManager` entirely — architecturally more correct too, since X-vs-Z/Y-vs-Z points would look like nonsense image coordinates if added to the same interactive list as the real XY overlay. `writeRoiSet` (XY) is unchanged, still using `RoiManager` as before |
 | p6.2 | Reworded the Step-6 ROI checkboxes to a consistent `Export <plane> ROI point set .zip (<coords>)` style across XY/XZ/YZ; dropped the XY-only "Fiji ROI Manager" mention since all three ROI zips are equally openable there |
+| p8.1 | Z-Projection dialog refinements: **Scope is asked first** (before the input folder, so it's clear what to select) and the input-folder description was dropped as redundant; added a **Both** projection option that runs Max-Z *and* Min-Z into their separate `max_z/`/`min_z/` output trees (single or batch); and the 8-bit raw projection is **always written** now (removed the toggle). `Config` carries a `List<ZProjector.Mode>`; the plugin loops projection × dataset. `ZProjector`/`ProjectionInputScanner`/`ProjectionExporter` unchanged |
 | p8.0 | Added a **second tool**, `Z-Projection + Origin Map` (`ZProjectorPlugin`), the upstream producer of the extractor's inputs — a native-Java port of `max_z`/`min_z_projection_plus_z_tracking_v2.py`. New packages/classes: `project/ZProjector` (I/O-free core min/max projection + per-pixel z-origin index map, ties→first layer), `io/ProjectionInputScanner` (discovers z-layer/timepoint folders, streams one timepoint's stack at a time), `export/ProjectionExporter` (16/32-bit z-origin TIFFs, hand-rolled JSON mappings ×2, 8-bit raw projection), and `ui/ZProjectorDialog` (modeless AWT with single/batch scope + Max-Z/Min-Z, reusing the extractor's DirectoryChooser/`addInputGroup` pickers — duplicated so `ZTrackerDialog` stays untouched). The extractor (Tool 1) is unchanged. New tests: `ZProjectorTest` (projection logic, tie-break, missing-layer global-index remap) and `ProjectionExporterTest`, whose seam test writes the outputs and reads them back through the extractor's own `TiffStackLoader` + `ZMappingLoader` to prove the two tools interoperate |
 | p7.0 | Added a selectable **pixel coordinate convention** (`ZSampler.PixelConvention`) — whether integer X/Y mark a pixel's **corner** (`[i, i+1)`, center at `i+0.5`, a common 2D-tracking convention) or its **center** (`[i-0.5, i+0.5)`, this plugin's original behavior). **Corner is the new default** in Step 5 (Center remains fully available as the switchable alternate, no "All" option for either — it's always exactly one). The parameter is threaded explicitly through `ZSampler`/`ZExtractor`/`ExtractionResult` (no silent-default overload) so there's no risk of the UI defaulting to Corner while some internal path still assumed Center. Since this changes what the plugin does out of the box, near-zero/negative coordinates can now flip in/out of bounds differently than before (`x=-0.4` was in-bounds under the old Center default, is out-of-bounds under the new Corner default) — see the README's "Pixel coordinate convention" section and the new CLAUDE.md gotcha for details. `export_report.txt` gets a new "Pixel convention:" line |

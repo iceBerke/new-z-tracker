@@ -6,7 +6,6 @@ import ztracker.project.ZProjector;
 
 import java.awt.BorderLayout;
 import java.awt.Button;
-import java.awt.Checkbox;
 import java.awt.Choice;
 import java.awt.Color;
 import java.awt.Dialog;
@@ -21,6 +20,9 @@ import java.awt.Panel;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -42,16 +44,15 @@ public class ZProjectorDialog {
     public static final class Config {
         public final File inputDir;
         public final boolean batch;
-        public final ZProjector.Mode mode;
+        /** The projection(s) to run — one of Max-Z / Min-Z, or both (in run order). */
+        public final List<ZProjector.Mode> modes;
         public final File outputDir;
-        public final boolean writeRaw;
 
-        Config(File inputDir, boolean batch, ZProjector.Mode mode, File outputDir, boolean writeRaw) {
+        Config(File inputDir, boolean batch, List<ZProjector.Mode> modes, File outputDir) {
             this.inputDir  = inputDir;
             this.batch     = batch;
-            this.mode      = mode;
+            this.modes     = modes;
             this.outputDir = outputDir;
-            this.writeRaw  = writeRaw;
         }
     }
 
@@ -65,6 +66,7 @@ public class ZProjectorDialog {
     private static final String SCOPE_BATCH  = "Batch  (folder holds many datasets, each with its own Z-value sub-folders)";
     private static final String PROJ_MAX     = "Max-Z  (brightest pixel per position)";
     private static final String PROJ_MIN     = "Min-Z  (darkest pixel per position)";
+    private static final String PROJ_BOTH    = "Both  (Max-Z and Min-Z — separate max_z / min_z sub-folders)";
 
     /**
      * Shows the modeless dialog and blocks the plugin thread until OK / Cancel / close.
@@ -96,15 +98,28 @@ public class ZProjectorDialog {
 
         Panel grid = new Panel(new GridBagLayout());
         int row = 0;
-        row = addInputGroup(grid, row, true,
-                "Input folder",
-                "Single: the folder containing the numeric Z-value sub-folders (e.g. -300, -299, ...). "
-                        + "Batch: a folder containing many such datasets.",
-                inBtn, inPathLbl);
+
+        // Scope first — it tells the user what the input folder below should point at.
+        final Choice scopeChoice = new Choice();
+        scopeChoice.add(SCOPE_SINGLE);
+        scopeChoice.add(SCOPE_BATCH);
+        row = addChoiceGroup(grid, row, true, "Scope", scopeChoice);
+
+        // Input folder — no description; the Scope choice above already explains it.
+        row = addInputGroup(grid, row, false, "Input folder", null, inBtn, inPathLbl);
+
+        // Output folder.
         row = addInputGroup(grid, row, false,
                 "Output folder",
                 "Where the max_z / min_z output tree is written (raw projection, z_origin TIFFs, JSON mappings).",
                 outBtn, outPathLbl);
+
+        // Projection: Max-Z, Min-Z, or both.
+        final Choice modeChoice = new Choice();
+        modeChoice.add(PROJ_MAX);
+        modeChoice.add(PROJ_MIN);
+        modeChoice.add(PROJ_BOTH);
+        row = addChoiceGroup(grid, row, false, "Projection", modeChoice);
 
         inBtn.addActionListener(e -> {
             DirectoryChooser dc = new DirectoryChooser("Select input folder");
@@ -124,29 +139,6 @@ public class ZProjectorDialog {
                 outPathLbl.setForeground(Color.BLACK);
             }
         });
-
-        // Scope (single vs batch)
-        final Choice scopeChoice = new Choice();
-        scopeChoice.add(SCOPE_SINGLE);
-        scopeChoice.add(SCOPE_BATCH);
-        row = addChoiceGroup(grid, row, "Scope", scopeChoice);
-
-        // Projection mode (max vs min)
-        final Choice modeChoice = new Choice();
-        modeChoice.add(PROJ_MAX);
-        modeChoice.add(PROJ_MIN);
-        row = addChoiceGroup(grid, row, "Projection", modeChoice);
-
-        // Raw projection toggle (on by default — matches the script, which always writes it)
-        final Checkbox rawBox = new Checkbox(
-                "Also write the 8-bit raw projection  (visualization only; extractor ignores it)", true);
-        GridBagConstraints c = new GridBagConstraints();
-        c.gridx = 0; c.gridy = row++;
-        c.anchor = GridBagConstraints.WEST;
-        c.fill = GridBagConstraints.HORIZONTAL;
-        c.weightx = 1.0;
-        c.insets = new Insets(12, 8, 8, 8);
-        grid.add(rawBox, c);
 
         // OK / Cancel
         final boolean[] confirmed = {false};
@@ -197,12 +189,19 @@ public class ZProjectorDialog {
         }
 
         boolean batch = SCOPE_BATCH.equals(scopeChoice.getSelectedItem());
-        ZProjector.Mode mode = PROJ_MIN.equals(modeChoice.getSelectedItem())
-                ? ZProjector.Mode.MIN_Z
-                : ZProjector.Mode.MAX_Z;
+
+        String proj = modeChoice.getSelectedItem();
+        List<ZProjector.Mode> modes;
+        if (PROJ_BOTH.equals(proj)) {
+            modes = Arrays.asList(ZProjector.Mode.MAX_Z, ZProjector.Mode.MIN_Z);
+        } else if (PROJ_MIN.equals(proj)) {
+            modes = Collections.singletonList(ZProjector.Mode.MIN_Z);
+        } else {
+            modes = Collections.singletonList(ZProjector.Mode.MAX_Z);
+        }
 
         outputDir.mkdirs();
-        config = new Config(inputDir, batch, mode, outputDir, rawBox.getState());
+        config = new Config(inputDir, batch, modes, outputDir);
         return true;
     }
 
@@ -229,14 +228,17 @@ public class ZProjectorDialog {
         titleLabel.setFont(base.deriveFont(Font.BOLD));
         grid.add(titleLabel, c);
 
-        c = new GridBagConstraints();
-        c.gridx = 0; c.gridy = startRow++;
-        c.fill = GridBagConstraints.HORIZONTAL;
-        c.weightx = 1.0;
-        c.insets = new Insets(0, 8, 6, 8);
-        Label descLabel = new Label(description);
-        descLabel.setForeground(Color.DARK_GRAY);
-        grid.add(descLabel, c);
+        // Description row is optional — skipped entirely when null/empty (no blank gap).
+        if (description != null && !description.isEmpty()) {
+            c = new GridBagConstraints();
+            c.gridx = 0; c.gridy = startRow++;
+            c.fill = GridBagConstraints.HORIZONTAL;
+            c.weightx = 1.0;
+            c.insets = new Insets(0, 8, 6, 8);
+            Label descLabel = new Label(description);
+            descLabel.setForeground(Color.DARK_GRAY);
+            grid.add(descLabel, c);
+        }
 
         c = new GridBagConstraints();
         c.gridx = 0; c.gridy = startRow++;
@@ -255,12 +257,12 @@ public class ZProjectorDialog {
     }
 
     /** A bold label above a {@link Choice}, matching the group spacing of {@code addInputGroup}. */
-    private static int addChoiceGroup(Panel grid, int startRow, String title, Choice choice) {
+    private static int addChoiceGroup(Panel grid, int startRow, boolean isFirst, String title, Choice choice) {
         GridBagConstraints c = new GridBagConstraints();
         c.gridx = 0; c.gridy = startRow++;
         c.fill = GridBagConstraints.HORIZONTAL;
         c.weightx = 1.0;
-        c.insets = new Insets(16, 8, 2, 8);
+        c.insets = new Insets(isFirst ? 4 : 16, 8, 2, 8);
         Label titleLabel = new Label(title);
         Font base = titleLabel.getFont();
         if (base == null) base = new Font(Font.DIALOG, Font.PLAIN, 12);
