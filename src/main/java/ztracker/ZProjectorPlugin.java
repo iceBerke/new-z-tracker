@@ -104,6 +104,27 @@ public class ZProjectorPlugin implements PlugIn {
         return out;
     }
 
+    /**
+     * Resolves a dataset's output folder (which holds {@code raw/}, {@code z_origin/},
+     * {@code z_origin_32bit/} and the {@code z_layer_mapping*.json} files).
+     *
+     * <ul>
+     *   <li><b>Batch:</b> {@code <outputDir>/<modeFolder>/<modeFolder>_<datasetName>/} — the extra
+     *       {@code <modeFolder>/} level groups the many datasets tidily.</li>
+     *   <li><b>Single:</b> {@code <outputDir>/<modeFolder>_<datasetName>/} — there is only one
+     *       dataset, so that grouping level is redundant and dropped.</li>
+     * </ul>
+     *
+     * Either way the {@code <modeFolder>} prefix on the dataset folder name keeps the two
+     * projection types (max_z_* / min_z_*) from colliding when Both is chosen.
+     */
+    static File resolveDatasetOutDir(File outputDir, String modeFolder, String datasetName, boolean batch) {
+        String datasetFolderName = modeFolder + "_" + datasetName;
+        return batch
+                ? new File(new File(outputDir, modeFolder), datasetFolderName)
+                : new File(outputDir, datasetFolderName);
+    }
+
     private static void processDataset(File datasetDir, ZProjectorDialog.Config cfg, ZProjector.Mode mode)
             throws Exception {
         DatasetScan scan = ProjectionInputScanner.scanDataset(datasetDir);
@@ -111,9 +132,7 @@ public class ZProjectorPlugin implements PlugIn {
         String modeFolder = (mode == ZProjector.Mode.MAX_Z) ? "max_z" : "min_z";
         String rawPrefix  = modeFolder + "_projection_";
 
-        // Output tree: <outputDir>/<modeFolder>/<modeFolder>_<datasetName>/{raw,z_origin,z_origin_32bit}
-        File datasetOutDir = new File(new File(cfg.outputDir, modeFolder),
-                modeFolder + "_" + datasetDir.getName());
+        File datasetOutDir = resolveDatasetOutDir(cfg.outputDir, modeFolder, datasetDir.getName(), cfg.batch);
         File rawDir = new File(datasetOutDir, "raw");
         File z16Dir = new File(datasetOutDir, "z_origin");
         File z32Dir = new File(datasetOutDir, "z_origin_32bit");

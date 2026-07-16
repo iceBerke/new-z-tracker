@@ -154,8 +154,11 @@ discovers z-layers/timepoints, then **streams one timepoint at a time** (RAM-fri
 the Python script): load its z-stack, `ZProjector.project` computes the projection + z-origin
 index map, `ProjectionExporter` writes the 16-/32-bit z-origin TIFFs, both JSON mappings, and the
 8-bit raw projection (always written). The dialog can request **both** projections (Max-Z *and*
-Min-Z); the plugin loops projection × dataset, and since each projection writes into its own
-`max_z/`/`min_z/` output tree they never collide. It reuses no `ZTrackerPlugin`/`ZTrackerDialog` code (the shared
+Min-Z); the plugin loops projection × dataset. Output nesting depends on scope: **batch** groups
+each dataset under a projection-type folder (`<out>/max_z/max_z_<dataset>/`), while **single**
+drops that redundant grouping level and writes `<out>/max_z_<dataset>/` directly (only one
+dataset). Either way the `max_z`/`min_z` prefix keeps both projections' folders from colliding.
+It reuses no `ZTrackerPlugin`/`ZTrackerDialog` code (the shared
 folder-picker layout is deliberately **duplicated**, not extracted, so the extractor UI is
 untouched) but does reuse the `io`/`model` format contracts so its output loads straight back
 into Tool 1.
