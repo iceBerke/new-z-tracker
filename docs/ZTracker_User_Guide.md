@@ -1,6 +1,6 @@
 # ZTracker — Quick User Guide
 
-_3D Z-Coordinate Extractor · Fiji / ImageJ plugin_
+_Fiji / ImageJ plugin · two tools: 3D Z-Coordinate Extractor + Z-Projection maker_
 
 ## What this plugin does
 
@@ -15,6 +15,11 @@ It reads depth from special **Z-origin projection TIFF images**, where each pixe
 | **Z-mapping JSON** | A `.json` file that maps pixel codes to depths in µm, e.g. `{"0": -600.0, "1": -599.0, ...}`. |
 | **Z-origin TIFF folder** | A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images. |
 | **Tracking CSV** | Your tracks exported from TrackMate (or another tracker). Must contain X, Y, Frame, and Track ID columns. |
+
+:::note
+Don't have the **Z-mapping JSON** and **Z-origin TIFF folder** yet? The companion tool
+**Z-Projection + Origin Map** makes both from a raw Z-stack — see the last section.
+:::
 
 ## Opening the plugin
 
@@ -87,6 +92,43 @@ X and Y are in **pixels**, Z is in **micrometers**, and T is the frame number.
 | Columns detected wrong | Fix them manually in **Step 3**. |
 | Plugin not in the menu | Restart Fiji, or use `Help > Refresh Menus`. |
 | Nothing seems to export | Make sure at least one format is ticked in **Step 6**, and read `export_report.txt`. |
+
+## Companion tool: Z-Projection + Origin Map
+
+This second tool **makes** the two projection inputs the extractor needs, starting from a raw
+Z-stack. Open it via **Plugins > ZTracker > Z-Projection + Origin Map**.
+
+**What it needs:** a **dataset folder** whose sub-folders are named by their depth in µm (e.g.
+`-300`, `-299`, …), each holding one TIFF per time frame (same filename across depths):
+
+```
+dataset/
+├── -300/   frame_0001.tif, frame_0002.tif, ...
+├── -299/   frame_0001.tif, ...
+└── ...
+```
+
+**In the dialog** you pick the input folder, the output folder, and:
+
+- **Scope** — _Single dataset_ (the folder above) or _Batch_ (a folder holding many such datasets).
+- **Projection** — _Max-Z_ (keeps the **brightest** pixel at each position — the usual choice for
+  fluorescence) or _Min-Z_ (keeps the **darkest**).
+
+**What it makes** (for each dataset, under a `max_z` or `min_z` folder):
+
+| Output | What it is |
+| --- | --- |
+| **z_origin/** (16-bit) and **z_origin_32bit/** (32-bit) | The depth-coded projection TIFFs — point the extractor's **Z-origin TIFF folder** here. |
+| **z_layer_mapping.json** | The pixel-code → depth map — this is the extractor's **Z-mapping JSON**. |
+| **raw/** | A plain 8-bit projection picture for looking at (the extractor ignores it). |
+
+Then just run the extractor (Tool 1) and point it at the `z_origin` folder and the
+`z_layer_mapping.json` this tool produced.
+
+:::tip
+The 16-bit and 32-bit depth images hold the same information — use 16-bit unless you have more
+than ~65,000 Z-layers (essentially never), in which case use the 32-bit set.
+:::
 
 ---
 

@@ -29,12 +29,13 @@
 </head>
 <body>
 <h1>ZTracker — Quick User Guide</h1>
-<p><em>3D Z-Coordinate Extractor · Fiji / ImageJ plugin</em></p>
+<p><em>Fiji / ImageJ plugin · two tools: 3D Z-Coordinate Extractor + Z-Projection maker</em></p>
 <h2>What this plugin does</h2>
 <p>ZTracker takes your <strong>2D cell tracks</strong> (from TrackMate or another tracker) and adds the <strong>Z (depth) coordinate</strong> to every detection, turning 2D tracks into 3D tracks.</p>
 <p>It reads depth from special <strong>Z-origin projection TIFF images</strong>, where each pixel's value is a code that looks up a real depth in micrometers from a <code>.json</code> file. For each tracked point, the plugin looks at the pixel(s) under it, converts them to depth, and saves the result.</p>
 <h2>What you need before you start</h2>
 <table><thead><tr><th>File</th><th>What it is</th></tr></thead><tbody><tr><td><strong>Z-mapping JSON</strong></td><td>A <code>.json</code> file that maps pixel codes to depths in µm, e.g. <code>{"0": -600.0, "1": -599.0, ...}</code>.</td></tr><tr><td><strong>Z-origin TIFF folder</strong></td><td>A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images.</td></tr><tr><td><strong>Tracking CSV</strong></td><td>Your tracks exported from TrackMate (or another tracker). Must contain X, Y, Frame, and Track ID columns.</td></tr></tbody></table>
+<div class="note">Don't have the <strong>Z-mapping JSON</strong> and <strong>Z-origin TIFF folder</strong> yet? The companion tool <strong>Z-Projection + Origin Map</strong> makes both from a raw Z-stack — see the last section.</div>
 <h2>Opening the plugin</h2>
 <p>In Fiji, go to <strong>Plugins &gt; ZTracker &gt; 3D Z-Coordinate Extractor</strong>. The plugin runs as a simple 6-step wizard. You can move, resize, and read the Fiji <strong>Log</strong> window at any time while a step is open — it stays usable.</p>
 <h2>The 6 steps</h2>
@@ -67,6 +68,17 @@
 <ul><li><strong>No track is thrown away.</strong> If one point is bad (e.g. its frame is missing or it falls outside the image), only that single point is dropped — the rest of the track is still exported.</li><li><strong>Dropped points leave a gap</strong> in the frame numbers rather than renumbering — this is intentional.</li><li><strong>Check the Log window</strong> after running. It reports how many points were extracted and how many were skipped, and why.</li><li>If you picked <strong>All</strong> in Step 5, each method gets its own sub-folder inside your output folder.</li></ul>
 <h2>Quick troubleshooting</h2>
 <table><thead><tr><th>Symptom</th><th>Likely fix</th></tr></thead><tbody><tr><td>Lots of points show "missing frame"</td><td>Revisit <strong>Step 4</strong> — the frame offset is probably wrong (try +1 or 0).</td></tr><tr><td>Lots of points show "out of bounds"</td><td>Check your CSV X/Y match the TIFF image size, and check the pixel convention in Step 5.</td></tr><tr><td>Columns detected wrong</td><td>Fix them manually in <strong>Step 3</strong>.</td></tr><tr><td>Plugin not in the menu</td><td>Restart Fiji, or use <code>Help &gt; Refresh Menus</code>.</td></tr><tr><td>Nothing seems to export</td><td>Make sure at least one format is ticked in <strong>Step 6</strong>, and read <code>export_report.txt</code>.</td></tr></tbody></table>
+<h2>Companion tool: Z-Projection + Origin Map</h2>
+<p>This second tool <strong>makes</strong> the two projection inputs the extractor needs, starting from a raw Z-stack. Open it via <strong>Plugins &gt; ZTracker &gt; Z-Projection + Origin Map</strong>.</p>
+<p><strong>What it needs:</strong> a <strong>dataset folder</strong> whose sub-folders are named by their depth in µm (e.g. <code>-300</code>, <code>-299</code>, …), each holding one TIFF per time frame (same filename across depths):</p>
+<p>``<code> dataset/ ├── -300/   frame_0001.tif, frame_0002.tif, ... ├── -299/   frame_0001.tif, ... └── ... </code>``</p>
+<p><strong>In the dialog</strong> you pick the input folder, the output folder, and:</p>
+<ul><li><strong>Scope</strong> — <em>Single dataset</em> (the folder above) or <em>Batch</em> (a folder holding many such datasets).</li><li><strong>Projection</strong> — <em>Max-Z</em> (keeps the <strong>brightest</strong> pixel at each position — the usual choice for</li></ul>
+<p>fluorescence) or <em>Min-Z</em> (keeps the <strong>darkest</strong>).</p>
+<p><strong>What it makes</strong> (for each dataset, under a <code>max_z</code> or <code>min_z</code> folder):</p>
+<table><thead><tr><th>Output</th><th>What it is</th></tr></thead><tbody><tr><td><strong>z_origin/</strong> (16-bit) and <strong>z_origin_32bit/</strong> (32-bit)</td><td>The depth-coded projection TIFFs — point the extractor's <strong>Z-origin TIFF folder</strong> here.</td></tr><tr><td><strong>z_layer_mapping.json</strong></td><td>The pixel-code → depth map — this is the extractor's <strong>Z-mapping JSON</strong>.</td></tr><tr><td><strong>raw/</strong></td><td>A plain 8-bit projection picture for looking at (the extractor ignores it).</td></tr></tbody></table>
+<p>Then just run the extractor (Tool 1) and point it at the <code>z_origin</code> folder and the <code>z_layer_mapping.json</code> this tool produced.</p>
+<div class="tip">The 16-bit and 32-bit depth images hold the same information — use 16-bit unless you have more than ~65,000 Z-layers (essentially never), in which case use the 32-bit set.</div>
 <hr>
 <p><em>For full technical detail, see the project README.</em></p>
 </body>

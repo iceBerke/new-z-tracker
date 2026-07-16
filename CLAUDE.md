@@ -26,9 +26,14 @@ folder is missing.
 Most testing is manual: build, install in Fiji, and run the dialog against sample JSON / TIFF /
 CSV inputs, inspecting the `.npy`, CSV, and ROI `.zip` outputs. UI/AWT code is manual-only — it
 requires a live display and has no testable business logic. Core algorithmic logic
-(`ztracker.core`, `ztracker.io`, `ztracker.export`) has a growing JUnit 5 suite under
-`src/test/java` (test-scoped dependency only — this does not violate the no-runtime-deps rule
-below). Run with `mvn test`.
+(`ztracker.core`, `ztracker.io`, `ztracker.project`, `ztracker.export`) has a growing JUnit 5
+suite under `src/test/java` (test-scoped dependency only — this does not violate the
+no-runtime-deps rule below). Run with `mvn test`. Tool 2's suite is `ztracker.project.ZProjectorTest`
+(projection logic: min/max selection, ties→first layer, missing-layer global-index remap — all
+I/O-free) and `ztracker.export.ProjectionExporterTest`, whose **seam test** writes the z-origin
+TIFFs + JSON mapping and reads them back through the extractor's own `TiffStackLoader` +
+`ZMappingLoader`, proving the project→extract round-trip actually holds (it also uses ImageJ's
+real TIFF read/write headlessly, confirming that works in the test JVM).
 
 `src/test/java/ztracker/core/Step4AlignmentDemo.java` is a **runnable walkthrough** (not a test —
 it has a `main`, no `@Test`, so Surefire ignores it but it stays compiled against the real
@@ -95,7 +100,27 @@ makes no assertions itself**; the real pass/fail check is `NpyExporterTest`,
 
 ## What the Plugin Does
 
-Extracts 3D Z-coordinates from 16-bit or 32-bit *indexed* TIFF projection stacks and exports cell tracks. Each TIFF pixel value is an index into a JSON Z-mapping (`index → Z in µm`). Given 2D detections from a tracking CSV (X, Y, frame, track ID), it samples pixel indices around each detection, maps them to Z, aggregates, and exports 3D tracks. It is a native-Java port of `3D_tracking_Jay_app_unified_v1.py`.
+The JAR registers **two tools** under `Plugins > ZTracker`:
+
+**Tool 1 — 3D Z-Coordinate Extractor (`ZTrackerPlugin`).** Extracts 3D Z-coordinates from
+16-bit or 32-bit *indexed* TIFF projection stacks and exports cell tracks. Each TIFF pixel
+value is an index into a JSON Z-mapping (`index → Z in µm`). Given 2D detections from a
+tracking CSV (X, Y, frame, track ID), it samples pixel indices around each detection, maps
+them to Z, aggregates, and exports 3D tracks. Native-Java port of
+`3D_tracking_Jay_app_unified_v1.py`.
+
+**Tool 2 — Z-Projection + Origin Map (`ZProjectorPlugin`, added p8.0).** The upstream
+*producer* of Tool 1's inputs. From a raw Z-stack (a folder of Z-layer sub-folders named by
+their physical Z value, each holding one TIFF per timepoint), it computes a min-Z or max-Z
+intensity projection and, per pixel, tracks **which Z-layer won** (`argmax`/`argmin`) as an
+integer index. It writes the indexed z-origin TIFFs (16- and 32-bit) plus the
+`index → Z` JSON mapping — i.e. exactly what Tool 1 loads. Native-Java port of
+`max_z_projection_plus_z_tracking_v2.py` / `min_z_projection_plus_z_tracking_v2.py` (the two
+scripts differ only in min vs max, captured by one `ZProjector.Mode`). **The two tools share
+the indexed-TIFF and JSON-mapping formats**, so the round-trip (project → extract) is a
+first-class invariant, locked in by `ProjectionExporterTest`'s seam test (writes the outputs,
+reads them back through the extractor's own `TiffStackLoader` + `ZMappingLoader`). Tool 1's
+code path is entirely unchanged by Tool 2's addition.
 
 ## Data Format Conventions
 
@@ -113,7 +138,21 @@ Other outputs: `FijiPointsExporter` writes one `PointROI` per detection (named `
 
 ## Architecture
 
-The entry point is `ZTrackerPlugin` (implements ImageJ's `PlugIn`). It is a **thin orchestrator with no business logic** — it wires together the pipeline and the dialog, **interleaving the multi-step dialog with I/O** so each user choice is validated against loaded data before the next step is shown:
+There are **two `PlugIn` entry points**, both thin orchestrators with no business logic.
+
+`ZProjectorPlugin` (Tool 2, added p8.0) is the simpler one: show `ZProjectorDialog` → resolve
+the dataset(s) (single = the picked folder; batch = each sub-folder that scans as a dataset,
+skipping the tool's own `min_z`/`max_z` output roots) → for each dataset, `ProjectionInputScanner`
+discovers z-layers/timepoints, then **streams one timepoint at a time** (RAM-friendly, matching
+the Python script): load its z-stack, `ZProjector.project` computes the projection + z-origin
+index map, `ProjectionExporter` writes the 16-/32-bit z-origin TIFFs, both JSON mappings, and the
+optional 8-bit raw projection. It reuses no `ZTrackerPlugin`/`ZTrackerDialog` code (the shared
+folder-picker layout is deliberately **duplicated**, not extracted, so the extractor UI is
+untouched) but does reuse the `io`/`model` format contracts so its output loads straight back
+into Tool 1.
+
+`ZTrackerPlugin` (Tool 1) wires together the extraction pipeline and dialog, **interleaving the
+multi-step dialog with I/O** so each user choice is validated against loaded data before the next step is shown:
 
 1. **Dialog steps 1–2** — collect file paths + CSV format options.
 2. **Load inputs** — `ZMappingLoader` (JSON regex), `TiffStackLoader` (TIFF folder → indexed stack), `TrackCsvLoader` (auto-detect CSV columns).
@@ -126,16 +165,21 @@ The entry point is `ZTrackerPlugin` (implements ImageJ's `PlugIn`). It is a **th
 
 ### Package structure & philosophy
 
-Keep the package layout clean — `model` / `io` / `core` / `export` / `ui`, each with a **single responsibility**. Prefer small, focused classes over large ones. Keep business logic out of `ZTrackerPlugin`.
+Keep the package layout clean — `model` / `io` / `core` / `project` / `export` / `ui`, each with a **single responsibility**. Prefer small, focused classes over large ones. Keep business logic out of the entry-point classes.
 
-- `ztracker` — `ZTrackerPlugin` entry point (orchestration only).
+- `ztracker` — `ZTrackerPlugin` (Tool 1) and `ZProjectorPlugin` (Tool 2) entry points (orchestration only).
 - `ztracker.ui` — `ZTrackerDialog`, the 6-step dialog wizard. **All steps are non-modal** so the ImageJ Log window stays interactive/resizable while any step is open (the Step-4 per-track table lives in the Log). Steps 1, 4, 5, and 6 are custom AWT `Dialog`s created modeless (`new Dialog(..., false)`) and block the plugin thread with a `CountDownLatch` counted down on OK/Cancel/close — Step 1 is the resizable file picker, Step 4 the live-updating frame-alignment box, Step 5 the sampling/aggregation/pixel-convention method picker (uses a live `ItemListener` to disable the aggregation `Choice` when Sampling is `SINGLE_PIXEL` alone — see the Pluggable methods section — plus a third `Choice` for `ZSampler.PixelConvention`, Corner listed first as the default, no "All" option), Step 6 the output-directory-and-format picker (same `addInputGroup` grid layout as Step 1, with a `DirectoryChooser`-backed browse button instead of `GenericDialog.addDirectoryField`). Steps 2 and 3 use `NonBlockingGenericDialog` (ImageJ's non-modal `GenericDialog`, whose `showDialog()` still blocks the caller so the existing `wasCanceled()`/`getNext*()` usage is unchanged). Plugins run off the EDT, so blocking the plugin thread doesn't freeze the UI.
-- `ztracker.io` — input loaders (`ZMappingLoader`, `TiffStackLoader`, `TrackCsvLoader`).
+  `ZProjectorDialog` (Tool 2) is a single modeless AWT `Dialog` in the same style — input/output
+  `DirectoryChooser` pickers via a **copy** of `addInputGroup` (duplicated here on purpose so
+  `ZTrackerDialog` is byte-for-byte unchanged), plus `Choice`es for scope (single/batch) and
+  projection (Max-Z/Min-Z) and a raw-projection checkbox.
+- `ztracker.io` — input loaders (`ZMappingLoader`, `TiffStackLoader`, `TrackCsvLoader`, and `ProjectionInputScanner` for Tool 2's z-layer/timepoint folder structure).
 - `ztracker.core` — extraction logic (`FrameAligner`, `ZSampler`, `ZAggregator`, `ZExtractor`).
-- `ztracker.export` — output writers (`NpyExporter`, `FijiPointsExporter`, `TrackExportManager`).
+- `ztracker.project` — projection logic (`ZProjector`: I/O-free min/max projection + per-pixel z-origin index map). Tool 2's counterpart to `core`.
+- `ztracker.export` — output writers (`NpyExporter`, `FijiPointsExporter`, `TrackExportManager`, and `ProjectionExporter` for Tool 2's z-origin TIFFs + JSON mappings + raw projection).
 - `ztracker.model` — data containers (`TrackData`, `ExtractionResult`).
 
-Menu registration lives in `src/main/resources/plugins.config`.
+Menu registration for both tools lives in `src/main/resources/plugins.config`.
 
 ### Data model: parallel arrays
 

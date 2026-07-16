@@ -1,8 +1,18 @@
 # ZTracker Fiji Plugin
 
-A Fiji/ImageJ plugin that extracts Z-coordinates from 16-bit or 32-bit indexed
-TIFF projection stacks and exports 3D cell tracks. Ports the functionality of
-`3D_tracking_Jay_app_unified_v1.py` into a native Fiji plugin.
+A Fiji/ImageJ plugin with **two tools** under `Plugins > ZTracker`:
+
+1. **3D Z-Coordinate Extractor** — extracts Z-coordinates from 16-bit or 32-bit indexed
+   TIFF projection stacks and exports 3D cell tracks. Ports
+   `3D_tracking_Jay_app_unified_v1.py`.
+2. **Z-Projection + Origin Map** — the upstream *producer*: builds those indexed TIFF
+   projections and their JSON Z-mappings from a raw Z-stack (min-Z or max-Z projection
+   with per-pixel z-origin tracking). Ports `max_z_projection_plus_z_tracking_v2.py` /
+   `min_z_projection_plus_z_tracking_v2.py`.
+
+The two are a matched pair: the projection tool's `z_origin/` folder + `z_layer_mapping.json`
+are exactly what the extractor reads as input, so you can generate projections in Fiji and
+feed them straight into extraction.
 
 ---
 
@@ -13,25 +23,32 @@ ZTracker_Fiji/
 ├── pom.xml
 └── src/main/
     ├── java/ztracker/
-    │   ├── ZTrackerPlugin.java          ← plugin entry point
-    │   ├── ui/ZTrackerDialog.java       ← 6-step dialog wizard, all non-modal (Steps 1, 4, 5, 6: custom AWT; Steps 2, 3: NonBlockingGenericDialog) so the Log stays usable
+    │   ├── ZTrackerPlugin.java          ← extractor entry point
+    │   ├── ZProjectorPlugin.java        ← projection tool entry point (produces extractor inputs)
+    │   ├── ui/
+    │   │   ├── ZTrackerDialog.java      ← 6-step extractor wizard, all non-modal (Steps 1, 4, 5, 6: custom AWT; Steps 2, 3: NonBlockingGenericDialog) so the Log stays usable
+    │   │   └── ZProjectorDialog.java    ← projection tool dialog (modeless AWT; same DirectoryChooser/addInputGroup pickers, duplicated so ZTrackerDialog is untouched)
     │   ├── io/
     │   │   ├── ZMappingLoader.java      ← JSON index→Z parsing (no external lib)
     │   │   ├── TiffStackLoader.java     ← TIFF folder loader with frame→index map
-    │   │   └── TrackCsvLoader.java      ← TrackMate CSV parser + column auto-detect
+    │   │   ├── TrackCsvLoader.java      ← TrackMate CSV parser + column auto-detect
+    │   │   └── ProjectionInputScanner.java ← discovers z-layer/timepoint folders; streams one timepoint's stack at a time
     │   ├── core/
     │   │   ├── FrameAligner.java        ← CSV-to-TIFF offset suggestion + per-track alignment reporting
     │   │   ├── ZSampler.java            ← radius / 4-neighbor / single-pixel sampling
     │   │   ├── ZAggregator.java         ← median / mean aggregation
     │   │   └── ZExtractor.java          ← orchestrates sampling + mapping + aggregation; `extractAll` runs the sampling × aggregation cross product (Single Pixel deduped to one run); `resolveComboOutputDir` picks each combo's export folder
+    │   ├── project/
+    │   │   └── ZProjector.java          ← core min/max projection + per-pixel z-origin index map (I/O-free)
     │   ├── export/
     │   │   ├── NpyExporter.java         ← writes [X,Y,Z,T] .npy (pure Java, no Python)
     │   │   ├── FijiPointsExporter.java  ← Results Table CSV + ROI Manager .zip
-    │   │   └── TrackExportManager.java  ← groups by track, dispatches to exporters
+    │   │   ├── TrackExportManager.java  ← groups by track, dispatches to exporters
+    │   │   └── ProjectionExporter.java  ← writes 16/32-bit z-origin TIFFs + JSON mappings + 8-bit raw projection
     │   └── model/
     │       ├── TrackData.java           ← parallel arrays for all CSV detections
     │       └── ExtractionResult.java    ← per-detection Z result + quality stats
-    └── resources/plugins.config         ← Fiji menu registration
+    └── resources/plugins.config         ← Fiji menu registration (both tools)
 ```
 
 ---
@@ -73,7 +90,9 @@ to point to your local `Fiji.app/plugins/` folder.
 
 The build step handles deployment automatically — no manual copy needed.
 After `mvn install` completes successfully, restart Fiji (or `Help > Refresh Menus`).
-The plugin appears under `Plugins > ZTracker > 3D Z-Coordinate Extractor`.
+Both tools appear under `Plugins > ZTracker`:
+- `3D Z-Coordinate Extractor`
+- `Z-Projection + Origin Map`
 
 ---
 
@@ -96,9 +115,71 @@ writes the `.html`/`.txt` and just skips the PDF.
 
 ---
 
+## Tool 2 — Z-Projection + Origin Map
+
+Produces the indexed TIFF projections + JSON Z-mapping that the extractor consumes, from a
+raw Z-stack. Native-Java port of `max_z_projection_plus_z_tracking_v2.py` /
+`min_z_projection_plus_z_tracking_v2.py` (the two scripts differ only in min vs max, captured
+here by one `ZProjector.Mode`).
+
+### Input layout
+
+A **dataset** is a folder whose sub-folders are named by their physical Z value, each
+containing one `.tif` per timepoint (the filename is the timepoint id, shared across layers):
+
+```
+dataset/
+├── -300/   frame_0001.tif, frame_0002.tif, ...
+├── -299/   frame_0001.tif, ...
+└── ...
+```
+
+Sub-folder names are parsed as numbers and sorted numerically (negatives and gaps are fine).
+A timepoint absent from some layers is supported — only the present layers are stacked, and
+the winner's **global** layer index (its position in the full sorted list) is what gets recorded.
+
+### The dialog
+
+A single modeless AWT dialog (same folder pickers as the extractor's Step 1 / Step 6):
+
+| Field | Choices |
+|-------|---------|
+| Input folder | **Single**: the dataset folder above. **Batch**: a parent holding many such datasets. |
+| Output folder | Where the output tree is written. |
+| Scope | Single dataset / Batch |
+| Projection | **Max-Z** (brightest pixel per position wins) / **Min-Z** (darkest wins) |
+| Write raw projection | On by default — the 8-bit visualization image (extractor ignores it) |
+
+### What it computes
+
+For each timepoint, pixel-by-pixel: the min/max intensity **projection**, and a **z-origin
+index map** — for each pixel, which Z-layer won (`argmax`/`argmin`), stored as the integer
+index into the sorted layer list. Ties go to the first (lowest-index) layer, matching numpy.
+
+### Outputs (per dataset — matches the Python script exactly)
+
+```
+outputDir/<max_z|min_z>/<max_z|min_z>_<datasetName>/
+├── raw/                z_origin/                z_origin_32bit/
+│   <mode>_projection_  z_origin_<name>.tif      z_origin_32bit_<name>.tif
+│   <name>.tif          (16-bit indexed)         (32-bit indexed)
+│   (8-bit, opt.)
+├── z_layer_mapping.json        ← {"0": -300.0, "1": -299.0, ...}  (index → Z µm)
+└── z_layer_mapping_32bit.json  ← identical copy, paired with the 32-bit TIFFs
+```
+
+- The **16-bit** z-origin TIFF is skipped for a timepoint (with a logged note) if any index
+  exceeds the uint16 range (65535) — refusing the silent `uint16` wrap the script guards
+  against; the **32-bit** TIFF is always written.
+- Feed `z_origin/` (or `z_origin_32bit/`) + the matching `z_layer_mapping*.json` straight into
+  the extractor (Tool 1). The seam is covered by `ProjectionExporterTest`, which writes these
+  outputs and reads them back through the extractor's own `TiffStackLoader` + `ZMappingLoader`.
+
+---
+
 ## Usage
 
-The plugin runs as a 6-step dialog wizard:
+The extractor runs as a 6-step dialog wizard:
 
 | Step | What you configure |
 |------|--------------------|
@@ -381,4 +462,5 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p6.0 | Added optional **XZ/YZ ROI set export** (`fiji/track_rois_XZ.zip`, `fiji/track_rois_YZ.zip`) — `FijiPointsExporter.writeXZRoiSet`/`writeYZRoiSet` plot `(X px, Z µm)`/`(Y px, Z µm)` per detection, Z left unconverted (no pixel conversion); only detections with a valid (non-NaN) Z are included, since a NaN Z has nothing to plot on that axis. Two new `ExportConfig` flags and Step-6 checkboxes, off by default; the per-track report gets a trailing `XZ ROI+YZ ROI: N/M pt` segment mirroring the existing Results Table/ROI one |
 | p6.1 | Fixed a Swing/AWT rendering race in Fiji's ROI Manager list widget (`ArrayIndexOutOfBoundsException` from its renderer painting a row the list model had already dropped), surfaced by p6.0: running all three ROI formats in one export hammered `RoiManager.reset()`/`addRoi()`/save three times back-to-back on the same visible on-screen manager, faster than it could repaint. `writeXZRoiSet`/`writeYZRoiSet` now write their `.zip` directly via `ij.io.RoiEncoder`, bypassing the on-screen `RoiManager` entirely — architecturally more correct too, since X-vs-Z/Y-vs-Z points would look like nonsense image coordinates if added to the same interactive list as the real XY overlay. `writeRoiSet` (XY) is unchanged, still using `RoiManager` as before |
 | p6.2 | Reworded the Step-6 ROI checkboxes to a consistent `Export <plane> ROI point set .zip (<coords>)` style across XY/XZ/YZ; dropped the XY-only "Fiji ROI Manager" mention since all three ROI zips are equally openable there |
+| p8.0 | Added a **second tool**, `Z-Projection + Origin Map` (`ZProjectorPlugin`), the upstream producer of the extractor's inputs — a native-Java port of `max_z`/`min_z_projection_plus_z_tracking_v2.py`. New packages/classes: `project/ZProjector` (I/O-free core min/max projection + per-pixel z-origin index map, ties→first layer), `io/ProjectionInputScanner` (discovers z-layer/timepoint folders, streams one timepoint's stack at a time), `export/ProjectionExporter` (16/32-bit z-origin TIFFs, hand-rolled JSON mappings ×2, 8-bit raw projection), and `ui/ZProjectorDialog` (modeless AWT with single/batch scope + Max-Z/Min-Z, reusing the extractor's DirectoryChooser/`addInputGroup` pickers — duplicated so `ZTrackerDialog` stays untouched). The extractor (Tool 1) is unchanged. New tests: `ZProjectorTest` (projection logic, tie-break, missing-layer global-index remap) and `ProjectionExporterTest`, whose seam test writes the outputs and reads them back through the extractor's own `TiffStackLoader` + `ZMappingLoader` to prove the two tools interoperate |
 | p7.0 | Added a selectable **pixel coordinate convention** (`ZSampler.PixelConvention`) — whether integer X/Y mark a pixel's **corner** (`[i, i+1)`, center at `i+0.5`, a common 2D-tracking convention) or its **center** (`[i-0.5, i+0.5)`, this plugin's original behavior). **Corner is the new default** in Step 5 (Center remains fully available as the switchable alternate, no "All" option for either — it's always exactly one). The parameter is threaded explicitly through `ZSampler`/`ZExtractor`/`ExtractionResult` (no silent-default overload) so there's no risk of the UI defaulting to Corner while some internal path still assumed Center. Since this changes what the plugin does out of the box, near-zero/negative coordinates can now flip in/out of bounds differently than before (`x=-0.4` was in-bounds under the old Center default, is out-of-bounds under the new Corner default) — see the README's "Pixel coordinate convention" section and the new CLAUDE.md gotcha for details. `export_report.txt` gets a new "Pixel convention:" line |
