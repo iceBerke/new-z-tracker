@@ -1,8 +1,8 @@
 ========================================================================
-  ZTracker - Quick User Guide
-  3D Z-Coordinate Extractor  |  Fiji / ImageJ plugin
+ZTRACKER — QUICK USER GUIDE
 ========================================================================
 
+3D Z-Coordinate Extractor · Fiji / ImageJ plugin
 
 WHAT THIS PLUGIN DOES
 ------------------------------------------------------------------------
@@ -10,111 +10,110 @@ ZTracker takes your 2D cell tracks (from TrackMate or another tracker)
 and adds the Z (depth) coordinate to every detection, turning 2D tracks
 into 3D tracks.
 
-It reads depth from special "Z-origin" projection TIFF images, where
-each pixel's value is a code that looks up a real depth in micrometers
-from a .json file. For each tracked point, the plugin looks at the
-pixel(s) under it, converts them to depth, and saves the result.
-
+It reads depth from special Z-origin projection TIFF images, where each
+pixel's value is a code that looks up a real depth in micrometers from a
+.json file. For each tracked point, the plugin looks at the pixel(s)
+under it, converts them to depth, and saves the result.
 
 WHAT YOU NEED BEFORE YOU START
 ------------------------------------------------------------------------
-1. Z-mapping JSON  - a .json file mapping pixel codes to depths in um,
-                     e.g. {"0": -600.0, "1": -599.0, ...}
-2. Z-origin TIFF folder - a folder of TIFF images (one per time frame),
-                     16-bit or 32-bit, the depth-coded projections.
-3. Tracking CSV    - your tracks from TrackMate (or another tracker).
-                     Must contain X, Y, Frame, and Track ID columns.
-
+File                  What it is
+--------------------  ------------------------------------------------------------------------------------------------------------
+Z-mapping JSON        A .json file that maps pixel codes to depths in µm, e.g. {"0": -600.0, "1": -599.0, ...}.
+Z-origin TIFF folder  A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images.
+Tracking CSV          Your tracks exported from TrackMate (or another tracker). Must contain X, Y, Frame, and Track ID columns.
 
 OPENING THE PLUGIN
 ------------------------------------------------------------------------
-In Fiji:  Plugins > ZTracker > 3D Z-Coordinate Extractor
-
-It runs as a 6-step wizard. You can move, resize, and read the Fiji Log
-window at any time while a step is open.
-
+In Fiji, go to Plugins > ZTracker > 3D Z-Coordinate Extractor. The
+plugin runs as a simple 6-step wizard. You can move, resize, and read
+the Fiji Log window at any time while a step is open — it stays usable.
 
 THE 6 STEPS
 ------------------------------------------------------------------------
-STEP 1 - Pick your 3 input files
-  Use the "..." browse buttons to select the Z-mapping JSON, the
-  Z-origin TIFF folder, and the tracking CSV. Click OK.
 
-STEP 2 - Confirm the CSV format
-  Set how to read your CSV (header row, rows to skip, default radius).
-  TrackMate exports have 3 extra info rows under the header - the
-  defaults usually handle this. If unsure, keep the defaults.
+Step 1 — Pick your 3 input files
+Use the ... browse buttons to select the Z-mapping JSON, the Z-origin
+TIFF folder, and the tracking CSV. Click OK.
 
-STEP 3 - Confirm the columns
-  The plugin auto-detects X, Y, Frame, and Track ID columns and shows
-  its guess. Check they look right, fix any wrong ones, continue.
+Step 2 — Confirm the CSV format
+The plugin asks how to read your CSV (header row, rows to skip, default
+cell radius). TrackMate exports have 3 extra info rows under the header
+— the defaults usually handle this. If you're unsure, leave the defaults
+and continue.
 
-STEP 4 - Line up the frames (offset)
-  Trackers often number frames from 0, while TIFF files often start at
-  1. This step shifts the CSV frames to match the TIFFs. A suggested
-  value is pre-filled (+1 is the most common correct value).
-  As you change the number, the box shows a live per-track verdict and
-  a full table is printed to the Log. When it says all tracks map
-  correctly, confirm.
-  WHY IT MATTERS: a wrong offset silently pairs each point with the
-  wrong image, giving wrong depths. Confirm the verdict looks good.
+Step 3 — Confirm the columns
+The plugin auto-detects which columns are X, Y, Frame, and Track ID and
+shows its guess. Check they look right and correct any that are wrong,
+then continue.
 
-STEP 5 - Choose how to sample depth
-  - Sampling method: Radius (average a small disk - good default),
-    4-Neighbor, or Single Pixel. "All" runs every method.
-  - Aggregation: Median (robust - recommended) or Mean.
-    (Disabled for Single Pixel, since there's only one value.)
-  - Pixel convention: leave on Corner (default) unless you have a
-    specific reason to use Center.
-  NOT SURE? Radius + Median + Corner is a solid default.
+Step 4 — Line up the frames (offset)
+Trackers often number frames starting at 0, while TIFF files often start
+at 1. This step lets you shift the CSV frames so they match the TIFF
+files. A suggested offset is already filled in (+1 is the most common
+correct value).
 
-STEP 6 - Choose output folder & formats
-  Pick where to save, tick the formats you want, click OK to run.
+As you change the number, the box shows a live per-track verdict, and a
+full table is printed to the Fiji Log so you can check that every track
+lands on a real TIFF frame. When the box says all tracks map correctly,
+confirm.
 
+  NOTE: Why it matters: a wrong offset silently pairs each track point
+  with the wrong image, giving wrong depths. Take a moment to confirm
+  the verdict looks good.
+
+Step 5 — Choose how to sample depth
+Pick how the plugin reads pixels under each detection:
+
+  - Sampling method: Radius (average a small disk — good default),
+  4-Neighbor, or Single Pixel. You can also choose All to run every
+  method.
+  - Aggregation: Median (robust to odd pixels — recommended) or Mean.
+  (Disabled automatically for Single Pixel, since there's only one
+  value.)
+  - Pixel convention: leave on Corner (the default) unless you have a
+  specific reason to use Center.
+  TIP: Not sure? Radius + Median + Corner is a solid default for most
+  users.
+
+Step 6 — Choose output folder & formats
+Pick where to save results and tick the formats you want (see the next
+section). Click OK to run.
 
 WHAT YOU GET OUT
 ------------------------------------------------------------------------
-- .npy files (tracks_2D/, tracks_3D/) - for Python analysis/plotting.
-     3D files hold [X, Y, Z, T].
-- Results Table CSV - open in Fiji via Analyze > Import > Results...,
-     or in Excel.
-- ROI set (.zip) - open in Fiji's ROI Manager (More >> Open...) to
-     overlay points on your image. Optional XZ/YZ side-view sets too.
-- export_report.txt - plain-text summary of every track: how many
-     points kept or dropped, and why. Check this if numbers look off.
+Format                               What it's for
+-----------------------------------  -----------------------------------------------------------------------------------------------------------------------------
+.npy files (tracks_2D/, tracks_3D/)  For Python analysis/plotting. 3D files hold [X, Y, Z, T].
+Results Table CSV                    Open in Fiji via Analyze > Import > Results…, or in Excel.
+ROI set (.zip)                       Open in Fiji's ROI Manager (More >> Open…) to overlay points on your image. Optional XZ/YZ side-view sets are also available.
+export_report.txt                    A plain-text summary of every track — how many points were kept or dropped, and why. Check this if numbers look off.
 
-X and Y are in PIXELS, Z is in MICROMETERS, T is the frame number.
-
+X and Y are in pixels, Z is in micrometers, and T is the frame number.
 
 GOOD TO KNOW
 ------------------------------------------------------------------------
-- No track is thrown away. If one point is bad (missing frame, outside
-  the image), only that single point is dropped - the rest of the
-  track is still exported.
-- Dropped points leave a gap in the frame numbers rather than
-  renumbering - this is intentional.
-- Check the Log window after running. It reports how many points were
-  extracted and how many skipped, and why.
-- If you picked "All" in Step 5, each method gets its own sub-folder
+  - No track is thrown away. If one point is bad (e.g. its frame is
+  missing or it falls outside the image), only that single point is
+  dropped — the rest of the track is still exported.
+  - Dropped points leave a gap in the frame numbers rather than
+  renumbering — this is intentional.
+  - Check the Log window after running. It reports how many points were
+  extracted and how many were skipped, and why.
+  - If you picked All in Step 5, each method gets its own sub-folder
   inside your output folder.
-
 
 QUICK TROUBLESHOOTING
 ------------------------------------------------------------------------
-Many points show "missing frame"
-    -> Revisit Step 4, the frame offset is probably wrong (try +1 or 0).
-Many points show "out of bounds"
-    -> Check CSV X/Y match the TIFF image size; check pixel convention
-       in Step 5.
-Columns detected wrong
-    -> Fix them manually in Step 3.
-Plugin not in the menu
-    -> Restart Fiji, or use Help > Refresh Menus.
-Nothing seems to export
-    -> Make sure at least one format is ticked in Step 6; read
-       export_report.txt.
+Symptom                              Likely fix
+-----------------------------------  ---------------------------------------------------------------------------------------
+Lots of points show "missing frame"  Revisit Step 4 — the frame offset is probably wrong (try +1 or 0).
+Lots of points show "out of bounds"  Check your CSV X/Y match the TIFF image size, and check the pixel convention in Step 5.
+Columns detected wrong               Fix them manually in Step 3.
+Plugin not in the menu               Restart Fiji, or use Help > Refresh Menus.
+Nothing seems to export              Make sure at least one format is ticked in Step 6, and read export_report.txt.
 
+------------------------------------------------------------------------
 
-========================================================================
 For full technical detail, see the project README.
-========================================================================
+

@@ -6,202 +6,68 @@
 <style>
   @page { size: A4; margin: 18mm 16mm; }
   * { box-sizing: border-box; }
-  body {
-    font-family: "Segoe UI", Arial, sans-serif;
-    color: #1c1c1c;
-    line-height: 1.5;
-    font-size: 11pt;
-    margin: 0;
-  }
-  h1 {
-    font-size: 22pt;
-    margin: 0 0 4px 0;
-    color: #14406b;
-  }
-  .subtitle { color: #555; font-size: 11pt; margin: 0 0 18px 0; }
-  h2 {
-    font-size: 14pt;
-    color: #14406b;
-    border-bottom: 2px solid #d6e2f0;
-    padding-bottom: 4px;
-    margin: 26px 0 10px 0;
-  }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1c1c1c; line-height: 1.5; font-size: 11pt; margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 4px 0; color: #14406b; }
+  h1 + p em { color: #555; font-style: normal; }
+  h2 { font-size: 14pt; color: #14406b; border-bottom: 2px solid #d6e2f0; padding-bottom: 4px; margin: 26px 0 10px 0; }
   h3 { font-size: 12pt; margin: 16px 0 4px 0; color: #222; }
   p { margin: 6px 0; }
-  ul, ol { margin: 6px 0 6px 0; padding-left: 22px; }
+  ul, ol { margin: 6px 0; padding-left: 22px; }
   li { margin: 4px 0; }
-  code {
-    background: #f2f4f7;
-    border: 1px solid #e2e6eb;
-    border-radius: 3px;
-    padding: 1px 5px;
-    font-family: "Consolas", monospace;
-    font-size: 9.5pt;
-  }
-  .step {
-    background: #f7f9fc;
-    border: 1px solid #dde6f1;
-    border-left: 4px solid #2f6db5;
-    border-radius: 4px;
-    padding: 10px 14px;
-    margin: 12px 0;
-    page-break-inside: avoid;
-  }
+  code { background: #f2f4f7; border: 1px solid #e2e6eb; border-radius: 3px; padding: 1px 5px; font-family: "Consolas", monospace; font-size: 9.5pt; }
+  .step { background: #f7f9fc; border: 1px solid #dde6f1; border-left: 4px solid #2f6db5; border-radius: 4px; padding: 10px 14px; margin: 12px 0; page-break-inside: avoid; }
   .step h3 { margin-top: 0; color: #14406b; }
-  .stepnum {
-    display: inline-block;
-    background: #2f6db5;
-    color: #fff;
-    border-radius: 50%;
-    width: 22px; height: 22px;
-    text-align: center;
-    line-height: 22px;
-    font-weight: bold;
-    font-size: 10pt;
-    margin-right: 6px;
-  }
+  .stepnum { display: inline-block; background: #2f6db5; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-weight: bold; font-size: 10pt; margin-right: 6px; }
   table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 10pt; }
   th, td { border: 1px solid #d6dbe1; padding: 6px 9px; text-align: left; vertical-align: top; }
   th { background: #eaf0f7; color: #14406b; }
-  .note {
-    background: #fff8e6;
-    border: 1px solid #f0e0a8;
-    border-left: 4px solid #e0b000;
-    border-radius: 4px;
-    padding: 8px 12px;
-    margin: 12px 0;
-    font-size: 10pt;
-  }
-  .tip {
-    background: #edf7ee;
-    border: 1px solid #c3e2c6;
-    border-left: 4px solid #46a04e;
-    border-radius: 4px;
-    padding: 8px 12px;
-    margin: 12px 0;
-    font-size: 10pt;
-  }
-  .footer { margin-top: 30px; padding-top: 8px; border-top: 1px solid #ddd; color: #888; font-size: 9pt; }
+  .note { background: #fff8e6; border: 1px solid #f0e0a8; border-left: 4px solid #e0b000; border-radius: 4px; padding: 8px 12px; margin: 12px 0; font-size: 10pt; }
+  .tip { background: #edf7ee; border: 1px solid #c3e2c6; border-left: 4px solid #46a04e; border-radius: 4px; padding: 8px 12px; margin: 12px 0; font-size: 10pt; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 26px 0 8px 0; }
   strong { color: #14406b; }
 </style>
 </head>
 <body>
-
 <h1>ZTracker — Quick User Guide</h1>
-<p class="subtitle">3D Z-Coordinate Extractor · Fiji / ImageJ plugin</p>
-
+<p><em>3D Z-Coordinate Extractor · Fiji / ImageJ plugin</em></p>
 <h2>What this plugin does</h2>
-<p>
-ZTracker takes your <strong>2D cell tracks</strong> (from TrackMate or another tracker) and adds the
-<strong>Z (depth) coordinate</strong> to every detection, turning 2D tracks into 3D tracks.
-</p>
-<p>
-It reads the Z-depth from special <strong>Z-origin projection TIFF images</strong>, where each pixel's
-value is a code that looks up a real depth in micrometers from a <code>.json</code> file. For each
-tracked point, the plugin looks at the pixel(s) under it, converts them to depth, and saves the result.
-</p>
-
+<p>ZTracker takes your <strong>2D cell tracks</strong> (from TrackMate or another tracker) and adds the <strong>Z (depth) coordinate</strong> to every detection, turning 2D tracks into 3D tracks.</p>
+<p>It reads depth from special <strong>Z-origin projection TIFF images</strong>, where each pixel's value is a code that looks up a real depth in micrometers from a <code>.json</code> file. For each tracked point, the plugin looks at the pixel(s) under it, converts them to depth, and saves the result.</p>
 <h2>What you need before you start</h2>
-<table>
-  <tr><th>File</th><th>What it is</th></tr>
-  <tr><td><strong>Z-mapping JSON</strong></td><td>A <code>.json</code> file that maps pixel codes to depths in µm, e.g. <code>{"0": -600.0, "1": -599.0, ...}</code>.</td></tr>
-  <tr><td><strong>Z-origin TIFF folder</strong></td><td>A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images.</td></tr>
-  <tr><td><strong>Tracking CSV</strong></td><td>Your tracks exported from TrackMate (or another tracker). Must contain X, Y, Frame, and Track ID columns.</td></tr>
-</table>
-
+<table><thead><tr><th>File</th><th>What it is</th></tr></thead><tbody><tr><td><strong>Z-mapping JSON</strong></td><td>A <code>.json</code> file that maps pixel codes to depths in µm, e.g. <code>{"0": -600.0, "1": -599.0, ...}</code>.</td></tr><tr><td><strong>Z-origin TIFF folder</strong></td><td>A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images.</td></tr><tr><td><strong>Tracking CSV</strong></td><td>Your tracks exported from TrackMate (or another tracker). Must contain X, Y, Frame, and Track ID columns.</td></tr></tbody></table>
 <h2>Opening the plugin</h2>
-<p>
-In Fiji, go to <strong>Plugins &gt; ZTracker &gt; 3D Z-Coordinate Extractor</strong>.
-The plugin runs as a simple 6-step wizard. You can move, resize, and read the Fiji <strong>Log</strong>
-window at any time while a step is open — it stays usable.
-</p>
-
+<p>In Fiji, go to <strong>Plugins &gt; ZTracker &gt; 3D Z-Coordinate Extractor</strong>. The plugin runs as a simple 6-step wizard. You can move, resize, and read the Fiji <strong>Log</strong> window at any time while a step is open — it stays usable.</p>
 <h2>The 6 steps</h2>
-
-<div class="step">
-  <h3><span class="stepnum">1</span>Pick your 3 input files</h3>
-  <p>Use the <code>...</code> browse buttons to select the <strong>Z-mapping JSON</strong>, the
-  <strong>Z-origin TIFF folder</strong>, and the <strong>tracking CSV</strong>. Click OK.</p>
+<div class="step"><h3><span class="stepnum">1</span>Pick your 3 input files</h3>
+<p>Use the <code>...</code> browse buttons to select the <strong>Z-mapping JSON</strong>, the <strong>Z-origin TIFF folder</strong>, and the <strong>tracking CSV</strong>. Click OK.</p>
 </div>
-
-<div class="step">
-  <h3><span class="stepnum">2</span>Confirm the CSV format</h3>
-  <p>The plugin asks how to read your CSV (header row, rows to skip, default cell radius).
-  TrackMate exports have 3 extra info rows under the header — the defaults usually handle this.
-  If you're unsure, leave the defaults and continue.</p>
+<div class="step"><h3><span class="stepnum">2</span>Confirm the CSV format</h3>
+<p>The plugin asks how to read your CSV (header row, rows to skip, default cell radius). TrackMate exports have 3 extra info rows under the header — the defaults usually handle this. If you're unsure, leave the defaults and continue.</p>
 </div>
-
-<div class="step">
-  <h3><span class="stepnum">3</span>Confirm the columns</h3>
-  <p>The plugin auto-detects which columns are X, Y, Frame, and Track ID and shows its guess.
-  Check they look right and correct any that are wrong, then continue.</p>
+<div class="step"><h3><span class="stepnum">3</span>Confirm the columns</h3>
+<p>The plugin auto-detects which columns are X, Y, Frame, and Track ID and shows its guess. Check they look right and correct any that are wrong, then continue.</p>
 </div>
-
-<div class="step">
-  <h3><span class="stepnum">4</span>Line up the frames (offset)</h3>
-  <p>Trackers often number frames starting at 0, while TIFF files often start at 1. This step lets you
-  shift the CSV frames so they match the TIFF files. A suggested offset is already filled in
-  (<strong>+1 is the most common correct value</strong>).</p>
-  <p>As you change the number, the box shows a live <strong>per-track verdict</strong>, and a full table
-  is printed to the Fiji <strong>Log</strong> so you can check that every track lands on a real TIFF frame.
-  When the box says all tracks map correctly, confirm.</p>
-  <div class="note"><strong>Why it matters:</strong> a wrong offset silently pairs each track point with
-  the wrong image, giving wrong depths. Take a moment to confirm the verdict looks good.</div>
+<div class="step"><h3><span class="stepnum">4</span>Line up the frames (offset)</h3>
+<p>Trackers often number frames starting at 0, while TIFF files often start at 1. This step lets you shift the CSV frames so they match the TIFF files. A suggested offset is already filled in (<strong>+1 is the most common correct value</strong>).</p>
+<p>As you change the number, the box shows a live <strong>per-track verdict</strong>, and a full table is printed to the Fiji <strong>Log</strong> so you can check that every track lands on a real TIFF frame. When the box says all tracks map correctly, confirm.</p>
+<div class="note"><strong>Why it matters:</strong> a wrong offset silently pairs each track point with the wrong image, giving wrong depths. Take a moment to confirm the verdict looks good.</div>
 </div>
-
-<div class="step">
-  <h3><span class="stepnum">5</span>Choose how to sample depth</h3>
-  <p>Pick how the plugin reads pixels under each detection:</p>
-  <ul>
-    <li><strong>Sampling method:</strong> <em>Radius</em> (average a small disk — good default),
-    <em>4-Neighbor</em>, or <em>Single Pixel</em>. You can also choose <strong>All</strong> to run every method.</li>
-    <li><strong>Aggregation:</strong> <em>Median</em> (robust to odd pixels — recommended) or <em>Mean</em>.
-    (Disabled automatically for Single Pixel, since there's only one value.)</li>
-    <li><strong>Pixel convention:</strong> leave on <em>Corner</em> (the default) unless you have a
-    specific reason to use <em>Center</em>.</li>
-  </ul>
-  <div class="tip"><strong>Not sure?</strong> Radius + Median + Corner is a solid default for most users.</div>
+<div class="step"><h3><span class="stepnum">5</span>Choose how to sample depth</h3>
+<p>Pick how the plugin reads pixels under each detection:</p>
+<ul><li><strong>Sampling method:</strong> <em>Radius</em> (average a small disk — good default), <em>4-Neighbor</em>, or <em>Single Pixel</em>. You can also choose <strong>All</strong> to run every method.</li><li><strong>Aggregation:</strong> <em>Median</em> (robust to odd pixels — recommended) or <em>Mean</em>. (Disabled automatically for Single Pixel, since there's only one value.)</li><li><strong>Pixel convention:</strong> leave on <em>Corner</em> (the default) unless you have a specific reason to use <em>Center</em>.</li></ul>
+<div class="tip"><strong>Not sure?</strong> Radius + Median + Corner is a solid default for most users.</div>
 </div>
-
-<div class="step">
-  <h3><span class="stepnum">6</span>Choose output folder &amp; formats</h3>
-  <p>Pick where to save results and tick the formats you want (see the next section). Click OK to run.</p>
+<div class="step"><h3><span class="stepnum">6</span>Choose output folder &amp; formats</h3>
+<p>Pick where to save results and tick the formats you want (see the next section). Click OK to run.</p>
 </div>
-
 <h2>What you get out</h2>
-<table>
-  <tr><th>Format</th><th>What it's for</th></tr>
-  <tr><td><strong>.npy files</strong> (<code>tracks_2D/</code>, <code>tracks_3D/</code>)</td><td>For Python analysis/plotting. 3D files hold [X, Y, Z, T].</td></tr>
-  <tr><td><strong>Results Table CSV</strong></td><td>Open in Fiji via <code>Analyze &gt; Import &gt; Results…</code>, or in Excel.</td></tr>
-  <tr><td><strong>ROI set (.zip)</strong></td><td>Open in Fiji's ROI Manager (<code>More &gt;&gt; Open…</code>) to overlay points on your image. Optional XZ/YZ side-view sets are also available.</td></tr>
-  <tr><td><strong>export_report.txt</strong></td><td>A plain-text summary of every track — how many points were kept or dropped, and why. Check this if numbers look off.</td></tr>
-</table>
+<table><thead><tr><th>Format</th><th>What it's for</th></tr></thead><tbody><tr><td><strong>.npy files</strong> (<code>tracks_2D/</code>, <code>tracks_3D/</code>)</td><td>For Python analysis/plotting. 3D files hold [X, Y, Z, T].</td></tr><tr><td><strong>Results Table CSV</strong></td><td>Open in Fiji via <code>Analyze &gt; Import &gt; Results…</code>, or in Excel.</td></tr><tr><td><strong>ROI set (.zip)</strong></td><td>Open in Fiji's ROI Manager (<code>More &gt;&gt; Open…</code>) to overlay points on your image. Optional XZ/YZ side-view sets are also available.</td></tr><tr><td><strong>export_report.txt</strong></td><td>A plain-text summary of every track — how many points were kept or dropped, and why. Check this if numbers look off.</td></tr></tbody></table>
 <p>X and Y are in <strong>pixels</strong>, Z is in <strong>micrometers</strong>, and T is the frame number.</p>
-
 <h2>Good to know</h2>
-<ul>
-  <li><strong>No track is thrown away.</strong> If one point is bad (e.g. its frame is missing or it falls
-  outside the image), only that single point is dropped — the rest of the track is still exported.</li>
-  <li><strong>Dropped points leave a gap</strong> in the frame numbers rather than renumbering — this is intentional.</li>
-  <li><strong>Check the Log window</strong> after running. It reports how many points were extracted and how
-  many were skipped, and why.</li>
-  <li>If you picked <strong>All</strong> in Step 5, each method gets its own sub-folder inside your output folder.</li>
-</ul>
-
+<ul><li><strong>No track is thrown away.</strong> If one point is bad (e.g. its frame is missing or it falls outside the image), only that single point is dropped — the rest of the track is still exported.</li><li><strong>Dropped points leave a gap</strong> in the frame numbers rather than renumbering — this is intentional.</li><li><strong>Check the Log window</strong> after running. It reports how many points were extracted and how many were skipped, and why.</li><li>If you picked <strong>All</strong> in Step 5, each method gets its own sub-folder inside your output folder.</li></ul>
 <h2>Quick troubleshooting</h2>
-<table>
-  <tr><th>Symptom</th><th>Likely fix</th></tr>
-  <tr><td>Lots of points show "missing frame"</td><td>Revisit <strong>Step 4</strong> — the frame offset is probably wrong (try +1 or 0).</td></tr>
-  <tr><td>Lots of points show "out of bounds"</td><td>Check your CSV X/Y match the TIFF image size, and check the pixel convention in Step 5.</td></tr>
-  <tr><td>Columns detected wrong</td><td>Fix them manually in <strong>Step 3</strong>.</td></tr>
-  <tr><td>Plugin not in the menu</td><td>Restart Fiji, or use <code>Help &gt; Refresh Menus</code>.</td></tr>
-  <tr><td>Nothing seems to export</td><td>Make sure at least one format is ticked in <strong>Step 6</strong>, and read <code>export_report.txt</code>.</td></tr>
-</table>
-
-<div class="footer">
-  ZTracker 3D Z-Coordinate Extractor · Quick user guide for lab colleagues.
-  For full technical detail, see the project README.
-</div>
-
+<table><thead><tr><th>Symptom</th><th>Likely fix</th></tr></thead><tbody><tr><td>Lots of points show "missing frame"</td><td>Revisit <strong>Step 4</strong> — the frame offset is probably wrong (try +1 or 0).</td></tr><tr><td>Lots of points show "out of bounds"</td><td>Check your CSV X/Y match the TIFF image size, and check the pixel convention in Step 5.</td></tr><tr><td>Columns detected wrong</td><td>Fix them manually in <strong>Step 3</strong>.</td></tr><tr><td>Plugin not in the menu</td><td>Restart Fiji, or use <code>Help &gt; Refresh Menus</code>.</td></tr><tr><td>Nothing seems to export</td><td>Make sure at least one format is ticked in <strong>Step 6</strong>, and read <code>export_report.txt</code>.</td></tr></tbody></table>
+<hr>
+<p><em>For full technical detail, see the project README.</em></p>
 </body>
 </html>

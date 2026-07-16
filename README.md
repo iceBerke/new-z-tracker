@@ -77,6 +77,25 @@ The plugin appears under `Plugins > ZTracker > 3D Z-Coordinate Extractor`.
 
 ---
 
+## User guide for colleagues
+
+A short, non-technical guide for end users lives in `docs/`:
+`ZTracker_User_Guide.pdf` (hand to colleagues), plus `.txt` and `.html` copies.
+
+**All three are generated from a single source — never edit them by hand.**
+Edit `docs/ZTracker_User_Guide.md` (plain Markdown), then run:
+
+```bash
+node docs/build-guide.mjs
+```
+
+This overwrites the `.html`, `.txt`, and `.pdf` together so they can never drift
+apart. The script has **no dependencies** — it uses a small built-in Markdown
+parser and Microsoft Edge (headless) for the PDF. If Edge isn't found it still
+writes the `.html`/`.txt` and just skips the PDF.
+
+---
+
 ## Usage
 
 The plugin runs as a 6-step dialog wizard:
