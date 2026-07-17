@@ -9,7 +9,7 @@
 // (headless) for the PDF. If Edge isn't found, the .html and .txt are still
 // written and only the PDF step is skipped.
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -267,12 +267,26 @@ function findEdge() {
 function buildPdf() {
   const edge = findEdge();
   if (!edge) { console.log("  · PDF skipped (Microsoft Edge not found)"); return false; }
+
+  // Record the existing PDF's mtime so we can tell a genuine (re)write from a
+  // silent no-op that leaves a STALE file in place. `existsSync` alone is not
+  // enough: if the PDF is open in a viewer, Edge can't overwrite it and exits
+  // without error, and the old file still "exists" — which would otherwise be
+  // reported as success.
+  const mtimeBefore = existsSync(pdfPath) ? statSync(pdfPath).mtimeMs : 0;
+
   const fileUrl = "file:///" + htmlPath.replace(/\\/g, "/");
   const res = spawnSync(edge, [
     "--headless", "--disable-gpu", "--no-pdf-header-footer",
     `--print-to-pdf=${pdfPath}`, fileUrl,
   ], { stdio: "ignore" });
+
   if (res.error || !existsSync(pdfPath)) { console.log("  · PDF step failed"); return false; }
+  if (statSync(pdfPath).mtimeMs <= mtimeBefore) {
+    console.log("  · PDF NOT updated — the existing " + BASENAME + ".pdf is locked "
+      + "(is it open in a viewer?). Close it and re-run. The .html/.txt are current.");
+    return false;
+  }
   return true;
 }
 
