@@ -1,18 +1,17 @@
 # ZTracker Fiji Plugin
 
-A Fiji/ImageJ plugin with **two tools** under `Plugins > ZTracker`:
+A Fiji/ImageJ plugin with **two tools** under `Plugins > ZTracker`, one per step of the pipeline:
 
-1. **3D Z-Coordinate Extractor** — extracts Z-coordinates from 16-bit or 32-bit indexed
-   TIFF projection stacks and exports 3D cell tracks. Ports
-   `3D_tracking_Jay_app_unified_v1.py`.
-2. **Z-Projection + Origin Map** — the upstream *producer*: builds those indexed TIFF
-   projections and their JSON Z-mappings from a raw Z-stack (min-Z or max-Z projection
-   with per-pixel z-origin tracking). Ports `max_z_projection_plus_z_tracking_v2.py` /
+1. **Z-Projection + Origin Map** — *step 1 (produce)*: builds the indexed TIFF projections and
+   their JSON Z-mappings from a raw Z-stack (min-Z or max-Z projection with per-pixel z-origin
+   tracking). Ports `max_z_projection_plus_z_tracking_v2.py` /
    `min_z_projection_plus_z_tracking_v2.py`.
+2. **3D Z-Coordinate Extractor** — *step 2 (extract)*: reads those 16-bit or 32-bit indexed TIFF
+   projection stacks and, given 2D tracks, extracts the Z-coordinate for every detection and
+   exports 3D cell tracks. Ports `3D_tracking_Jay_app_unified_v1.py`.
 
-The two are a matched pair: the projection tool's `z_origin/` folder + `z_layer_mapping.json`
-are exactly what the extractor reads as input, so you can generate projections in Fiji and
-feed them straight into extraction.
+The two are a matched pair: step 1's `z_origin/` folder + `z_layer_mapping.json` are exactly what
+step 2 reads as input, so you generate projections in Fiji and feed them straight into extraction.
 
 ---
 
@@ -92,9 +91,9 @@ to point to your local `Fiji.app/plugins/` folder.
 
 The build step handles deployment automatically — no manual copy needed.
 After `mvn install` completes successfully, restart Fiji (or `Help > Refresh Menus`).
-Both tools appear under `Plugins > ZTracker`:
-- `3D Z-Coordinate Extractor`
-- `Z-Projection + Origin Map`
+Both tools appear under `Plugins > ZTracker` (in pipeline order):
+- `Z-Projection + Origin Map` — step 1 (produce the projections)
+- `3D Z-Coordinate Extractor` — step 2 (extract Z)
 
 ---
 
@@ -117,10 +116,10 @@ writes the `.html`/`.txt` and just skips the PDF.
 
 ---
 
-## Tool 2 — Z-Projection + Origin Map
+## Pipeline step 1 — Z-Projection + Origin Map
 
-Produces the indexed TIFF projections + JSON Z-mapping that the extractor consumes, from a
-raw Z-stack. Native-Java port of `max_z_projection_plus_z_tracking_v2.py` /
+Produces the indexed TIFF projections + JSON Z-mapping that the extractor (step 2) consumes,
+from a raw Z-stack. Native-Java port of `max_z_projection_plus_z_tracking_v2.py` /
 `min_z_projection_plus_z_tracking_v2.py` (the two scripts differ only in min vs max, captured
 here by one `ZProjector.Mode`).
 
@@ -243,7 +242,7 @@ folder (`max_z/` or `min_z/`), so the many datasets stay tidy:
 next to `max_z_<dataset>/` (Single), or a `min_z/` tree next to the `max_z/` tree (Batch). They
 never collide, since the `max_z`/`min_z` prefix keeps them apart.
 
-**Feeding the extractor (Tool 1):** point its *Z-origin TIFF folder* at a `z_origin/` (or
+**Feeding the extractor (step 2):** point its *Z-origin TIFF folder* at a `z_origin/` (or
 `z_origin_32bit/`) folder, and its *Z-mapping JSON* at the sibling `z_layer_mapping.json` (or
 `z_layer_mapping_32bit.json`) — pick one bit depth and use its matching JSON.
 
@@ -259,7 +258,7 @@ never collide, since the `max_z`/`min_z` prefix keeps them apart.
 
 ---
 
-## Usage
+## Pipeline step 2 — 3D Z-Coordinate Extractor
 
 The extractor runs as a 6-step dialog wizard:
 
