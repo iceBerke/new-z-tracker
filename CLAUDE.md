@@ -120,8 +120,8 @@ them to Z, aggregates, and exports 3D tracks. Native-Java port of
 *producer* of Tool 1's inputs. From a raw Z-stack (a folder of Z-layer sub-folders named by
 their physical Z value, each holding one TIFF per timepoint), it computes a min-Z or max-Z
 intensity projection and, per pixel, tracks **which Z-layer won** (`argmax`/`argmin`) as an
-integer index. It writes the indexed z-origin TIFFs (16- and 32-bit) plus the
-`index → Z` JSON mapping — i.e. exactly what Tool 1 loads. Native-Java port of
+integer index. It writes the indexed z-origin TIFFs (16-bit and/or 32-bit, user-selectable —
+default 16-bit) plus the matching `index → Z` JSON mapping — i.e. exactly what Tool 1 loads. Native-Java port of
 `max_z_projection_plus_z_tracking_v2.py` / `min_z_projection_plus_z_tracking_v2.py` (the two
 scripts differ only in min vs max, captured by one `ZProjector.Mode`). **The two tools share
 the indexed-TIFF and JSON-mapping formats**, so the round-trip (project → extract) is a
@@ -152,8 +152,11 @@ the dataset(s) (single = the picked folder; batch = each sub-folder that scans a
 skipping the tool's own `min_z`/`max_z` output roots) → for each dataset, `ProjectionInputScanner`
 discovers z-layers/timepoints, then **streams one timepoint at a time** (RAM-friendly, matching
 the Python script): load its z-stack, `ZProjector.project` computes the projection + z-origin
-index map, `ProjectionExporter` writes the 16-/32-bit z-origin TIFFs, both JSON mappings, and the
-8-bit raw projection (always written). The dialog can request **both** projections (Max-Z *and*
+index map, `ProjectionExporter` writes the z-origin TIFF(s) at the selected bit depth(s) (16-bit
+and/or 32-bit — default 16-bit; a single depth ~halves the per-timepoint write work), the matching
+JSON mapping(s), and the 8-bit raw projection (always written). If 16-bit is chosen alone and an
+index exceeds the uint16 range there's no 32-bit fallback and the timepoint gets no z-origin file
+(logged). The dialog can request **both** projections (Max-Z *and*
 Min-Z); the plugin loops projection × dataset. Output nesting depends on scope: **batch** groups
 each dataset under a projection-type folder (`<out>/max_z/max_z_<dataset>/`), while **single**
 drops that redundant grouping level and writes `<out>/max_z_<dataset>/` directly (only one
@@ -185,8 +188,10 @@ Keep the package layout clean — `model` / `io` / `core` / `project` / `export`
   `Choice` (single/batch) asked **first**, then input/output `DirectoryChooser` pickers via a
   **copy** of `addInputGroup` (duplicated here on purpose so `ZTrackerDialog` is byte-for-byte
   unchanged; the input folder needs no description since scope already frames it), then a
-  projection `Choice` (Max-Z / Min-Z / **Both**). There is no raw-projection toggle — the 8-bit
-  raw is always written. `Config.modes` is a `List<ZProjector.Mode>` (one entry, or both).
+  projection `Choice` (Max-Z / Min-Z / **Both**) and a Z-origin bit-depth `Choice` (16-bit /
+  32-bit / **Both**, default 16-bit). There is no raw-projection toggle — the 8-bit raw is always
+  written. `Config.modes` is a `List<ZProjector.Mode>` (one entry, or both); `Config.write16Bit`/
+  `write32Bit` carry the bit-depth selection (at least one always true).
 - `ztracker.io` — input loaders (`ZMappingLoader`, `TiffStackLoader`, `TrackCsvLoader`, and `ProjectionInputScanner` for Tool 2's z-layer/timepoint folder structure).
 - `ztracker.core` — extraction logic (`FrameAligner`, `ZSampler`, `ZAggregator`, `ZExtractor`).
 - `ztracker.project` — projection logic (`ZProjector`: I/O-free min/max projection + per-pixel z-origin index map). Tool 2's counterpart to `core`.

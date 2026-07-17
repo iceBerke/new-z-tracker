@@ -42,13 +42,16 @@ public final class ProjectionExporter {
     // ── JSON mapping ──────────────────────────────────────────────────────────
 
     /**
-     * Writes both z-layer mapping JSONs (16-bit-paired and 32-bit-paired, identical
-     * content) into {@code datasetOutDir}.
+     * Writes the z-layer mapping JSON(s) into {@code datasetOutDir} — the 16-bit-paired
+     * {@code z_layer_mapping.json} and/or the 32-bit-paired {@code z_layer_mapping_32bit.json}
+     * (identical content), only for the bit depth(s) actually being written, so a
+     * single-depth run doesn't leave an orphan mapping for the depth it skipped.
      */
-    public static void writeMappings(File datasetOutDir, double[] zValues) throws IOException {
+    public static void writeMappings(File datasetOutDir, double[] zValues,
+                                     boolean write16, boolean write32) throws IOException {
         String json = buildMappingJson(zValues);
-        writeText(new File(datasetOutDir, "z_layer_mapping.json"), json);
-        writeText(new File(datasetOutDir, "z_layer_mapping_32bit.json"), json);
+        if (write16) writeText(new File(datasetOutDir, "z_layer_mapping.json"), json);
+        if (write32) writeText(new File(datasetOutDir, "z_layer_mapping_32bit.json"), json);
     }
 
     /**

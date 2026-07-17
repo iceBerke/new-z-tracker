@@ -173,11 +173,20 @@ in top-to-bottom order:
 | Input folder | The folder matching the chosen scope. |
 | Output folder | Where the output tree is written. |
 | Projection | **Max-Z** (brightest pixel per position wins) / **Min-Z** (darkest wins) / **Both** |
+| Z-origin bit depth | **16-bit** (default — smaller & faster; indices up to 65,535) / **32-bit** (always safe) / **Both** |
 
 The 8-bit raw projection is **always written** (it's cheap and handy for a quick look);
-there's no toggle for it. Choosing **Both** runs Max-Z *and* Min-Z, writing a full `max_z/…`
-tree and a full `min_z/…` tree side by side — in single or batch mode — which never collide
-since they live under different top folders.
+there's no toggle for it. Choosing **Both** projections runs Max-Z *and* Min-Z, writing a full
+`max_z/…` tree and a full `min_z/…` tree side by side — in single or batch mode — which never
+collide since they live under different top folders.
+
+The **Z-origin bit depth** choice controls which indexed TIFFs (and matching JSON mapping) are
+written: pick a single depth to roughly halve the per-timepoint write work and keep the output
+focused. **16-bit is the default** — its 65,535-index ceiling covers any realistic Z-layer
+count. Only pick **32-bit** if you truly have more layers than that (astronomically unlikely) or
+a downstream tool that requires 32-bit; **Both** reproduces the original always-write-both
+behavior. If 16-bit is chosen *alone* and some index exceeds 65,535, that timepoint gets no
+z-origin file at all (no 32-bit fallback) — the Log flags it clearly so you can re-run with 32-bit.
 
 ### What it computes
 
@@ -238,9 +247,13 @@ never collide, since the `max_z`/`min_z` prefix keeps them apart.
 `z_origin_32bit/`) folder, and its *Z-mapping JSON* at the sibling `z_layer_mapping.json` (or
 `z_layer_mapping_32bit.json`) — pick one bit depth and use its matching JSON.
 
+- Only the selected **Z-origin bit depth**'s folder(s) and JSON mapping appear: 16-bit →
+  `z_origin/` + `z_layer_mapping.json`; 32-bit → `z_origin_32bit/` + `z_layer_mapping_32bit.json`;
+  Both → all of the above (as drawn). The `raw/` preview is always present.
 - The **16-bit** z-origin TIFF is skipped for a timepoint (with a logged note) if any index
-  exceeds the uint16 range (65535) — refusing the silent `uint16` wrap the script guards
-  against; the **32-bit** TIFF is always written.
+  exceeds the uint16 range (65535) — refusing the silent `uint16` wrap the script guards against.
+  When 32-bit is also selected it's written as a fallback; when 16-bit is the *only* depth, that
+  timepoint gets no z-origin file and the Log says so.
 - This produce → consume seam is covered by `ProjectionExporterTest`, which writes these outputs
   and reads them back through the extractor's own `TiffStackLoader` + `ZMappingLoader`.
 
@@ -531,6 +544,7 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p6.0 | Added optional **XZ/YZ ROI set export** (`fiji/track_rois_XZ.zip`, `fiji/track_rois_YZ.zip`) — `FijiPointsExporter.writeXZRoiSet`/`writeYZRoiSet` plot `(X px, Z µm)`/`(Y px, Z µm)` per detection, Z left unconverted (no pixel conversion); only detections with a valid (non-NaN) Z are included, since a NaN Z has nothing to plot on that axis. Two new `ExportConfig` flags and Step-6 checkboxes, off by default; the per-track report gets a trailing `XZ ROI+YZ ROI: N/M pt` segment mirroring the existing Results Table/ROI one |
 | p6.1 | Fixed a Swing/AWT rendering race in Fiji's ROI Manager list widget (`ArrayIndexOutOfBoundsException` from its renderer painting a row the list model had already dropped), surfaced by p6.0: running all three ROI formats in one export hammered `RoiManager.reset()`/`addRoi()`/save three times back-to-back on the same visible on-screen manager, faster than it could repaint. `writeXZRoiSet`/`writeYZRoiSet` now write their `.zip` directly via `ij.io.RoiEncoder`, bypassing the on-screen `RoiManager` entirely — architecturally more correct too, since X-vs-Z/Y-vs-Z points would look like nonsense image coordinates if added to the same interactive list as the real XY overlay. `writeRoiSet` (XY) is unchanged, still using `RoiManager` as before |
 | p6.2 | Reworded the Step-6 ROI checkboxes to a consistent `Export <plane> ROI point set .zip (<coords>)` style across XY/XZ/YZ; dropped the XY-only "Fiji ROI Manager" mention since all three ROI zips are equally openable there |
+| p8.3 | Z-Projection **Z-origin bit depth** choice (16-bit / 32-bit / **Both**), defaulting to **16-bit** — a single-depth run writes only that depth's `z_origin*` TIFFs and matching JSON mapping, roughly halving per-timepoint write work (previously both were always written). `Config` carries `write16Bit`/`write32Bit`; `ProjectionExporter.writeMappings` takes the two flags so it doesn't leave an orphan mapping. When 16-bit is chosen alone and an index exceeds 65,535 there's no 32-bit fallback — the Log flags the timepoint clearly. New `ProjectionExporterTest` case covers selective mapping output |
 | p8.2 | Z-Projection output layout: in **Single** scope the redundant projection-type grouping level is dropped — the per-dataset folder now sits directly in the output folder (`<out>/max_z_<dataset>/…` instead of `<out>/max_z/max_z_<dataset>/…`). **Batch** is unchanged (`<out>/max_z/max_z_<dataset>/…`), since it groups many datasets. Both projections still separate cleanly via the `max_z`/`min_z` prefix. Also clarified the input/output folder trees in the README |
 | p8.1 | Z-Projection dialog refinements: **Scope is asked first** (before the input folder, so it's clear what to select) and the input-folder description was dropped as redundant; added a **Both** projection option that runs Max-Z *and* Min-Z into their separate `max_z/`/`min_z/` output trees (single or batch); and the 8-bit raw projection is **always written** now (removed the toggle). `Config` carries a `List<ZProjector.Mode>`; the plugin loops projection × dataset. `ZProjector`/`ProjectionInputScanner`/`ProjectionExporter` unchanged |
 | p8.0 | Added a **second tool**, `Z-Projection + Origin Map` (`ZProjectorPlugin`), the upstream producer of the extractor's inputs — a native-Java port of `max_z`/`min_z_projection_plus_z_tracking_v2.py`. New packages/classes: `project/ZProjector` (I/O-free core min/max projection + per-pixel z-origin index map, ties→first layer), `io/ProjectionInputScanner` (discovers z-layer/timepoint folders, streams one timepoint's stack at a time), `export/ProjectionExporter` (16/32-bit z-origin TIFFs, hand-rolled JSON mappings ×2, 8-bit raw projection), and `ui/ZProjectorDialog` (modeless AWT with single/batch scope + Max-Z/Min-Z, reusing the extractor's DirectoryChooser/`addInputGroup` pickers — duplicated so `ZTrackerDialog` stays untouched). The extractor (Tool 1) is unchanged. New tests: `ZProjectorTest` (projection logic, tie-break, missing-layer global-index remap) and `ProjectionExporterTest`, whose seam test writes the outputs and reads them back through the extractor's own `TiffStackLoader` + `ZMappingLoader` to prove the two tools interoperate |

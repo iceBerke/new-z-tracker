@@ -47,12 +47,18 @@ public class ZProjectorDialog {
         /** The projection(s) to run — one of Max-Z / Min-Z, or both (in run order). */
         public final List<ZProjector.Mode> modes;
         public final File outputDir;
+        /** Which z-origin TIFF depth(s) to write; at least one is always true. */
+        public final boolean write16Bit;
+        public final boolean write32Bit;
 
-        Config(File inputDir, boolean batch, List<ZProjector.Mode> modes, File outputDir) {
-            this.inputDir  = inputDir;
-            this.batch     = batch;
-            this.modes     = modes;
-            this.outputDir = outputDir;
+        Config(File inputDir, boolean batch, List<ZProjector.Mode> modes, File outputDir,
+               boolean write16Bit, boolean write32Bit) {
+            this.inputDir   = inputDir;
+            this.batch      = batch;
+            this.modes      = modes;
+            this.outputDir  = outputDir;
+            this.write16Bit = write16Bit;
+            this.write32Bit = write32Bit;
         }
     }
 
@@ -67,6 +73,10 @@ public class ZProjectorDialog {
     private static final String PROJ_MAX     = "Max-Z  (brightest pixel per position)";
     private static final String PROJ_MIN     = "Min-Z  (darkest pixel per position)";
     private static final String PROJ_BOTH    = "Both  (Max-Z and Min-Z — separate max_z / min_z sub-folders)";
+
+    private static final String DEPTH_16     = "16-bit  (smaller & faster — Z-layer indices up to 65,535)";
+    private static final String DEPTH_32     = "32-bit  (larger — always safe, any index)";
+    private static final String DEPTH_BOTH   = "Both  (16-bit and 32-bit)";
 
     /**
      * Shows the modeless dialog and blocks the plugin thread until OK / Cancel / close.
@@ -120,6 +130,13 @@ public class ZProjectorDialog {
         modeChoice.add(PROJ_MIN);
         modeChoice.add(PROJ_BOTH);
         row = addChoiceGroup(grid, row, false, "Projection", modeChoice);
+
+        // Z-origin bit depth: pick one to run faster, or Both. 16-bit is the default.
+        final Choice depthChoice = new Choice();
+        depthChoice.add(DEPTH_16);
+        depthChoice.add(DEPTH_32);
+        depthChoice.add(DEPTH_BOTH);
+        row = addChoiceGroup(grid, row, false, "Z-origin bit depth", depthChoice);
 
         inBtn.addActionListener(e -> {
             DirectoryChooser dc = new DirectoryChooser("Select input folder");
@@ -200,8 +217,12 @@ public class ZProjectorDialog {
             modes = Collections.singletonList(ZProjector.Mode.MAX_Z);
         }
 
+        String depth = depthChoice.getSelectedItem();
+        boolean write16 = DEPTH_16.equals(depth) || DEPTH_BOTH.equals(depth);
+        boolean write32 = DEPTH_32.equals(depth) || DEPTH_BOTH.equals(depth);
+
         outputDir.mkdirs();
-        config = new Config(inputDir, batch, modes, outputDir);
+        config = new Config(inputDir, batch, modes, outputDir, write16, write32);
         return true;
     }
 

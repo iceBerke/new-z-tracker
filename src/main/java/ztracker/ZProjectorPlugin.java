@@ -54,8 +54,10 @@ public class ZProjectorPlugin implements PlugIn {
             return;
         }
 
-        IJ.log(String.format("[ZProjector] Projection(s): %s | Scope: %s | %d dataset(s)",
-                cfg.modes, cfg.batch ? "batch" : "single", datasets.size()));
+        String depthStr = (cfg.write16Bit && cfg.write32Bit) ? "16+32-bit"
+                        : cfg.write16Bit ? "16-bit" : "32-bit";
+        IJ.log(String.format("[ZProjector] Projection(s): %s | Scope: %s | Z-origin: %s | %d dataset(s)",
+                cfg.modes, cfg.batch ? "batch" : "single", depthStr, datasets.size()));
 
         // Each requested projection × each dataset is one unit of work. Running both
         // projections writes into separate max_z / min_z output trees, so they never collide.
@@ -136,11 +138,11 @@ public class ZProjectorPlugin implements PlugIn {
         File rawDir = new File(datasetOutDir, "raw");
         File z16Dir = new File(datasetOutDir, "z_origin");
         File z32Dir = new File(datasetOutDir, "z_origin_32bit");
-        z16Dir.mkdirs();
-        z32Dir.mkdirs();
+        if (cfg.write16Bit) z16Dir.mkdirs();
+        if (cfg.write32Bit) z32Dir.mkdirs();
         rawDir.mkdirs(); // raw projection is always written
 
-        ProjectionExporter.writeMappings(datasetOutDir, scan.zValues);
+        ProjectionExporter.writeMappings(datasetOutDir, scan.zValues, cfg.write16Bit, cfg.write32Bit);
         IJ.log(String.format("[ZProjector] %s '%s': %d z-layers (%s … %s), %d timepoint(s) → %s",
                 mode, datasetDir.getName(), scan.zLayerNames.size(),
                 scan.zLayerNames.get(0), scan.zLayerNames.get(scan.zLayerNames.size() - 1),
@@ -163,20 +165,33 @@ public class ZProjectorPlugin implements PlugIn {
 
             ZProjector.Result result = ZProjector.project(mode, ts.slices, ts.globalZIndex);
 
-            boolean wrote16 = ProjectionExporter.write16BitOrigin(z16Dir, filename, result.zOriginIndex);
-            if (!wrote16) {
-                skipped16++;
-                IJ.log("[ZProjector]   16-bit z-origin skipped for '" + filename
-                        + "': an index exceeds the uint16 range (" + ProjectionExporter.UINT16_MAX + ")");
+            if (cfg.write16Bit) {
+                boolean wrote16 = ProjectionExporter.write16BitOrigin(z16Dir, filename, result.zOriginIndex);
+                if (!wrote16) {
+                    skipped16++;
+                    String fallback = cfg.write32Bit
+                            ? "32-bit still written"
+                            : "NO z-origin written for this timepoint — re-run with 32-bit or Both";
+                    IJ.log("[ZProjector]   16-bit z-origin skipped for '" + filename
+                            + "': an index exceeds the uint16 range (" + ProjectionExporter.UINT16_MAX
+                            + ") — " + fallback);
+                }
             }
-            ProjectionExporter.write32BitOrigin(z32Dir, filename, result.zOriginIndex);
+            if (cfg.write32Bit) {
+                ProjectionExporter.write32BitOrigin(z32Dir, filename, result.zOriginIndex);
+            }
             ProjectionExporter.writeRaw(rawDir, rawPrefix, filename,
                     result.projection, ts.sourceBitDepth);
         }
         IJ.showProgress(1.0);
 
+        String skipNote = "";
+        if (skipped16 > 0) {
+            skipNote = cfg.write32Bit
+                    ? " (" + skipped16 + " without a 16-bit z-origin — 32-bit still written)"
+                    : " (" + skipped16 + " with NO z-origin — indices exceed uint16 and 32-bit was not selected)";
+        }
         IJ.log(String.format("[ZProjector] %s '%s' done: %d timepoint(s)%s.",
-                mode, datasetDir.getName(), total,
-                skipped16 > 0 ? " (" + skipped16 + " without a 16-bit z-origin — 32-bit still written)" : ""));
+                mode, datasetDir.getName(), total, skipNote));
     }
 }

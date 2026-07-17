@@ -116,6 +116,9 @@ dataset/
 - **Projection** — _Max-Z_ (keeps the **brightest** pixel at each position — the usual choice for
   fluorescence), _Min-Z_ (keeps the **darkest**), or _Both_ (runs both, into separate `max_z` and
   `min_z` folders).
+- **Z-origin bit depth** — _16-bit_ (the default; smaller and faster), _32-bit_, or _Both_.
+  Leave it on **16-bit** unless a downstream tool specifically needs 32-bit — it's the faster
+  choice and handles any realistic number of Z-layers.
 
 The 8-bit "raw" preview picture is always saved — there's nothing to switch on.
 
@@ -124,7 +127,7 @@ output folder; in Batch these are grouped one level down under a `max_z` / `min_
 
 | Output | What it is |
 | --- | --- |
-| **z_origin/** (16-bit) and **z_origin_32bit/** (32-bit) | The depth-coded projection TIFFs — point the extractor's **Z-origin TIFF folder** here. |
+| **z_origin/** (16-bit) and/or **z_origin_32bit/** (32-bit) | The depth-coded projection TIFFs — point the extractor's **Z-origin TIFF folder** here. Only the bit depth you chose is written (16-bit by default). |
 | **z_layer_mapping.json** | The pixel-code → depth map — this is the extractor's **Z-mapping JSON**. |
 | **raw/** | A plain 8-bit projection picture for looking at (the extractor ignores it). |
 

@@ -30,7 +30,7 @@ class ProjectionExporterTest {
             throws Exception {
         double[] zValues = { -300.0, -299.5, 0.0, 12.25 };
         File out = dir.toFile();
-        ProjectionExporter.writeMappings(out, zValues);
+        ProjectionExporter.writeMappings(out, zValues, true, true);
 
         // Both the 16-bit-paired and 32-bit-paired mappings must exist and be identical.
         File m16 = new File(out, "z_layer_mapping.json");
@@ -46,6 +46,23 @@ class ProjectionExporterTest {
         assertEquals(-299.5, parsed.get(1));
         assertEquals(0.0,    parsed.get(2));
         assertEquals(12.25,  parsed.get(3));
+    }
+
+    @Test
+    void writeMappings_onlyWritesTheSelectedDepthsMapping(@TempDir Path dir) throws Exception {
+        double[] zValues = { 0.0, 1.0 };
+
+        File only16 = new File(dir.toFile(), "only16");
+        assertTrue(only16.mkdirs());
+        ProjectionExporter.writeMappings(only16, zValues, true, false);
+        assertTrue(new File(only16, "z_layer_mapping.json").isFile());
+        assertFalse(new File(only16, "z_layer_mapping_32bit.json").isFile());
+
+        File only32 = new File(dir.toFile(), "only32");
+        assertTrue(only32.mkdirs());
+        ProjectionExporter.writeMappings(only32, zValues, false, true);
+        assertFalse(new File(only32, "z_layer_mapping.json").isFile());
+        assertTrue(new File(only32, "z_layer_mapping_32bit.json").isFile());
     }
 
     // ── z-origin TIFF round-trips ─────────────────────────────────────────────
@@ -125,7 +142,7 @@ class ProjectionExporterTest {
         File z16 = new File(datasetOut, "z_origin");
         assertTrue(z16.mkdirs());
 
-        ProjectionExporter.writeMappings(datasetOut, zValues);
+        ProjectionExporter.writeMappings(datasetOut, zValues, true, true);
         ProjectionExporter.write16BitOrigin(z16, "0001.tif", zOrigin);
 
         // Consume exactly as the extractor plugin would.
