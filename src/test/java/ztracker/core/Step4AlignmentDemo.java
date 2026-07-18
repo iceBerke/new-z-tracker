@@ -1,7 +1,7 @@
 package ztracker.core;
 
 import ztracker.core.FrameAligner.AlignmentReport;
-import ztracker.io.TiffStackLoader.LoadedStack;
+import ztracker.io.extractor.TiffStackLoader.LoadedStack;
 import ztracker.model.TrackData;
 
 import java.util.*;

@@ -3,7 +3,7 @@ package ztracker.export;
 import ij.gui.Roi;
 import ij.io.RoiDecoder;
 import ij.process.FloatPolygon;
-import ztracker.core.ZSampler;
+import ztracker.core.extractor.ZSampler;
 import ztracker.export.TrackExportManager.ExportConfig;
 import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
@@ -44,7 +44,7 @@ import java.util.zip.ZipInputStream;
  *   <li>A single track's X/Y values traced through <em>all four</em> export outputs at once
  *       (2D {@code .npy}, 3D {@code .npy}, Results Table CSV, ROI {@code .zip}) side by side,
  *       making explicit that X/Y are the only coordinates that actually originate in the input
- *       CSV — Z is computed by {@link ztracker.core.ZExtractor}, not read from anywhere, so
+ *       CSV — Z is computed by {@link ztracker.core.extractor.ZExtractor}, not read from anywhere, so
  *       there's nothing for it to "round-trip" from.</li>
  * </ol>
  *

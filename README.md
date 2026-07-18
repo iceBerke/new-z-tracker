@@ -24,42 +24,46 @@ offset, sampling, and export, only the depth source differs (float pixel vs. ind
 
 ## Project structure
 
+Tool-exclusive classes live in per-tool subpackages — `projector` (Tool 1), `extractor`
+(Tool 2), `topoj` (Tool 3) — while classes shared across tools stay at the
+responsibility-package root (`io` / `core` / `export` / `model`).
+
 ```
 ZTracker_Fiji/
 ├── pom.xml
 └── src/main/
     ├── java/ztracker/
-    │   ├── ZTrackerPlugin.java          ← extractor entry point
-    │   ├── TopoJTrackerPlugin.java      ← TopoJ / direct-Z extractor entry point (Tool 3; Tool 1 minus the JSON lookup)
-    │   ├── ZProjectorPlugin.java        ← projection tool entry point (produces extractor inputs)
+    │   ├── projector/ZProjectorPlugin.java       ← Tool 1 entry point (Z-Projection + Origin Map)
+    │   ├── extractor/ZTrackerPlugin.java          ← Tool 2 entry point (indexed 3D Z-extractor)
+    │   ├── topoj/TopoJTrackerPlugin.java          ← Tool 3 entry point (TopoJ / direct-Z; Tool 2 minus the JSON lookup)
     │   ├── ui/
-    │   │   ├── ZTrackerDialog.java      ← 6-step extractor wizard, all non-modal (Steps 1, 4, 5, 6: custom AWT; Steps 2, 3: NonBlockingGenericDialog) so the Log stays usable
-    │   │   ├── TopoJTrackerDialog.java  ← Tool 3 wizard; duplicate of ZTrackerDialog minus the Step-1 JSON picker (so ZTrackerDialog is untouched)
-    │   │   └── ZProjectorDialog.java    ← projection tool dialog (modeless AWT; same DirectoryChooser/addInputGroup pickers, duplicated so ZTrackerDialog is untouched)
+    │   │   ├── projector/ZProjectorDialog.java    ← Tool 1 dialog (modeless AWT; addInputGroup pickers, duplicated so ZTrackerDialog is untouched)
+    │   │   ├── extractor/ZTrackerDialog.java      ← Tool 2 6-step wizard, all non-modal (Steps 1,4,5,6 custom AWT; 2,3 NonBlockingGenericDialog)
+    │   │   └── topoj/TopoJTrackerDialog.java      ← Tool 3 wizard; duplicate of ZTrackerDialog minus the Step-1 JSON picker
     │   ├── io/
-    │   │   ├── ZMappingLoader.java      ← JSON index→Z parsing (no external lib)
-    │   │   ├── TiffStackLoader.java     ← TIFF folder loader with frame→index map (int pixels)
-    │   │   ├── TopoJStackLoader.java    ← 32-bit float TIFF loader (Z in µm, un-rounded); frameView() adapts to LoadedStack for FrameAligner reuse
-    │   │   ├── TrackCsvLoader.java      ← TrackMate CSV parser + column auto-detect
-    │   │   └── ProjectionInputScanner.java ← discovers z-layer/timepoint folders; streams one timepoint's stack at a time
+    │   │   ├── TrackCsvLoader.java                ← shared: TrackMate CSV parser + column auto-detect
+    │   │   ├── extractor/ZMappingLoader.java      ← Tool 2: JSON index→Z parsing (no external lib)
+    │   │   ├── extractor/TiffStackLoader.java     ← Tool 2: indexed TIFF folder loader with frame→index map (int pixels)
+    │   │   ├── topoj/TopoJStackLoader.java        ← Tool 3: 32-bit float TIFF loader (Z in µm, un-rounded); frameView() adapts to LoadedStack for FrameAligner reuse
+    │   │   └── projector/ProjectionInputScanner.java ← Tool 1: discovers z-layer/timepoint folders; streams one timepoint at a time
     │   ├── core/
-    │   │   ├── FrameAligner.java        ← CSV-to-TIFF offset suggestion + per-track alignment reporting
-    │   │   ├── ZSampler.java            ← radius / 4-neighbor / single-pixel sampling
-    │   │   ├── TopoJSampler.java        ← same sampling geometry over a float stack; sampled value is Z directly (Tool 3)
-    │   │   ├── ZAggregator.java         ← median / mean aggregation
-    │   │   ├── ZExtractor.java          ← orchestrates sampling + mapping + aggregation; `extractAll` runs the sampling × aggregation cross product (Single Pixel deduped to one run); `resolveComboOutputDir` picks each combo's export folder
-    │   │   └── TopoJExtractor.java      ← Tool 3 orchestrator: identity Z (no index→Z lookup); reuses ZExtractor.MethodCombo/resolveComboOutputDir
+    │   │   ├── FrameAligner.java                  ← shared: CSV-to-TIFF offset suggestion + per-track alignment reporting
+    │   │   ├── ZAggregator.java                   ← shared: median / mean aggregation
+    │   │   ├── extractor/ZSampler.java            ← Tool 2: radius / 4-neighbor / single-pixel sampling
+    │   │   ├── extractor/ZExtractor.java          ← Tool 2: sampling + mapping + aggregation; extractAll cross product; resolveComboOutputDir
+    │   │   ├── topoj/TopoJSampler.java            ← Tool 3: same geometry over a float stack; sampled value is Z directly
+    │   │   └── topoj/TopoJExtractor.java          ← Tool 3: identity Z (no index→Z lookup); reuses ZExtractor.MethodCombo/resolveComboOutputDir
     │   ├── project/
-    │   │   └── ZProjector.java          ← core min/max projection + per-pixel z-origin index map (I/O-free)
+    │   │   └── ZProjector.java                    ← Tool 1: min/max projection + per-pixel z-origin index map (I/O-free)
     │   ├── export/
-    │   │   ├── NpyExporter.java         ← writes [X,Y,Z,T] .npy (pure Java, no Python)
-    │   │   ├── FijiPointsExporter.java  ← Results Table CSV + ROI Manager .zip
-    │   │   ├── TrackExportManager.java  ← groups by track, dispatches to exporters
-    │   │   └── ProjectionExporter.java  ← writes 16/32-bit z-origin TIFFs + JSON mappings + 8-bit raw projection
+    │   │   ├── NpyExporter.java                   ← shared: writes [X,Y,Z,T] .npy (pure Java, no Python)
+    │   │   ├── FijiPointsExporter.java            ← shared: Results Table CSV + ROI Manager .zip
+    │   │   ├── TrackExportManager.java            ← shared: groups by track, dispatches to exporters
+    │   │   └── projector/ProjectionExporter.java  ← Tool 1: 16/32-bit z-origin TIFFs + JSON mappings + 8-bit raw projection
     │   └── model/
-    │       ├── TrackData.java           ← parallel arrays for all CSV detections
-    │       └── ExtractionResult.java    ← per-detection Z result + quality stats
-    └── resources/plugins.config         ← Fiji menu registration (both tools)
+    │       ├── TrackData.java                     ← shared: parallel arrays for all CSV detections
+    │       └── ExtractionResult.java              ← shared: per-detection Z result + quality stats
+    └── resources/plugins.config                   ← Fiji menu registration (all three tools)
 ```
 
 ---
@@ -515,8 +519,11 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 
 ## Patch history
 
+> **Note on tool numbers:** since **p9.1**, tools are numbered in **pipeline order** — Tool 1 = Z-Projection generator, Tool 2 = indexed 3D Z-extractor, Tool 3 = TopoJ / direct-Z extractor. Entries below from **before p9.1** used creation order (Tool 1 = extractor, Tool 2 = generator), so a "Tool N" in an older entry refers to the numbering as it stood then.
+
 | Version | Description |
 |---------|-------------|
+| p9.1 | Internal reorganization + doc renumber (no behavior change; all 129 tests pass unchanged). Tool-exclusive classes moved into per-tool subpackages — `projector` (Tool 1), `extractor` (Tool 2), `topoj` (Tool 3) — under `ztracker`, `ui`, `io`, `core`, and `export`; classes shared across tools stay at the responsibility-package root (`FrameAligner`, `ZAggregator`, `TrackCsvLoader`, `NpyExporter`, `FijiPointsExporter`, `TrackExportManager`, `TrackData`, `ExtractionResult`). `project` (all Tool 1) and `model` (all shared) keep no subpackage. `plugins.config` class paths and all imports updated; a few `topoj → extractor` references remain by design (Tool 3 reuses `TiffStackLoader.LoadedStack` and `ZExtractor.MethodCombo`/`resolveComboOutputDir`). Docs (CLAUDE.md, README) renumbered to pipeline order to match the new folder names |
 | p1.0 | Auto-deploy enabled via `maven-resources-plugin`; versioned JAR filename introduced (`z-tracker-v4-pN.n`) |
 | p1.1 | Fixed auto-deploy filename mismatch; suppressed duplicate thin JAR (`ZTracker_Fiji-1.0.0.jar`) |
 | p1.2 | Added post-install build verification via `maven-antrun-plugin`; fixed missing version tags on Maven plugins |

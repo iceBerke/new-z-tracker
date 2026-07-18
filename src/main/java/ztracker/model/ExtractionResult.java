@@ -17,8 +17,8 @@ public class ExtractionResult {
     public static final String STATUS_UNMAPPED_INDEX = "unmapped index";
     /** {@link #sampleStatus} value: pixels were sampled, but every sampled value was NaN
      *  (a "no-data" pixel in a direct-Z / TopoJ float map). The direct-Z counterpart of
-     *  {@link #STATUS_UNMAPPED_INDEX} — produced by {@link ztracker.core.TopoJExtractor},
-     *  never by {@link ztracker.core.ZExtractor} (Tool 1 has no NaN pixel indices). */
+     *  {@link #STATUS_UNMAPPED_INDEX} — produced by {@link ztracker.core.topoj.TopoJExtractor},
+     *  never by {@link ztracker.core.extractor.ZExtractor} (Tool 1 has no NaN pixel indices). */
     public static final String STATUS_NO_DATA = "no data";
     /** {@link #sampleStatus} value: the detection's X or Y itself is missing/unparseable
      *  (NaN) — sampling is never attempted for these (see {@link #invalidXYCount}). */
@@ -48,7 +48,7 @@ public class ExtractionResult {
     public final String aggregationMethod;
 
     /** Pixel coordinate convention label used (center vs. corner — see {@link
-     *  ztracker.core.ZSampler.PixelConvention}). */
+     *  ztracker.core.extractor.ZSampler.PixelConvention}). */
     public final String pixelConvention;
 
     /** Detections whose TIFF frame doesn't exist in the loaded stack at all. */
