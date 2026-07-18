@@ -131,7 +131,7 @@ public class TopoJTrackerDialog {
         int row = 0;
         row = addInputGroup(grid, row, true,
                 "TopoJ Z-map TIFF folder",
-                "Folder with one 32-bit float TIFF per timepoint whose pixel values are Z depth in µm (TopoJ output), sorted by the trailing frame number in filename (e.g. 0001.tif)",
+                "Folder with one 32-bit float TIFF per timepoint whose pixel values are Z depth in µm (TopoJ output). Each filename must end with its frame number — any prefix, any zero-padding width (e.g. frame7.tif, topoj_0007.tif); names not ending in a number are rejected",
                 tiffBtn, tiffPathLbl);
         row = addInputGroup(grid, row, false,
                 "Tracking CSV",
