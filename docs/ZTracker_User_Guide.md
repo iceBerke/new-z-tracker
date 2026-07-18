@@ -11,6 +11,15 @@ ZTracker turns your **2D cell tracks** into **3D tracks** by adding a Z (depth) 
 
 If a colleague or an earlier run already gave you the depth-coded images and the `.json` map, you can skip Part 1 and go straight to Part 2.
 
+:::note
+**Two flavours of Part 2.** Which extractor you use depends on what your depth images hold:
+
+- **Indexed images + a JSON map** (what Part 1 makes) → use **3D Z-Coordinate Extractor**. Each pixel is a *code* that looks up a real depth in the `.json` file.
+- **Direct-Z images, no JSON** (e.g. Fiji's **TopoJ** output) → use **3D Z-Extractor (TopoJ / direct-Z)**. Each pixel value *is* the depth in µm, so there's no map to load and no JSON to pick.
+
+Both share every other step (frame offset, sampling, export). Pick the one that matches your images.
+:::
+
 ## Part 1 — Z-Projection + Origin Map
 
 Makes the two inputs Part 2 needs, starting from a raw Z-stack. Open it via **Plugins > ZTracker > Z-Projection + Origin Map**.
@@ -131,6 +140,23 @@ X and Y are in **pixels**, Z is in **micrometers**, and T is the frame number.
 - **Check the Log window** after running. It reports how many points were extracted and how many were skipped, and why.
 - If you picked **All** in Step 5, each method gets its own sub-folder inside your output folder.
 
+## Part 2 (alternative) — 3D Z-Extractor (TopoJ / direct-Z)
+
+Use this instead of the standard extractor when your depth images come from **Fiji's TopoJ** (or any tool that writes the depth straight into the pixel value). Here each pixel of the projection TIFF **is** the depth in µm — there is no pixel-code and no `.json` map.
+
+Open it via **Plugins > ZTracker > 3D Z-Extractor (TopoJ / direct-Z)**.
+
+**What's different from the standard extractor:**
+
+- **No Z-mapping JSON.** Step 1 asks for just **two** inputs — the **TopoJ Z-map TIFF folder** and your **tracking CSV**.
+- **32-bit float images only.** The depth is stored as a real number per pixel, so the TIFFs must be 32-bit float. (16-bit/8-bit images are rejected with a clear message — those belong to the standard, indexed extractor.)
+
+**Everything else is identical** to the standard extractor: the same CSV format/column steps, the same live frame-offset check (Step 4), the same sampling/aggregation/pixel-convention choices (Step 5), the same output folder and formats (Step 6), and the same per-point drop behaviour and reports. X/Y stay in pixels, Z is in µm, T is the frame number.
+
+:::tip
+Not sure which one you have? If your projection folder came with a `z_layer_mapping.json`, use the **standard** extractor. If it's a bare folder of 32-bit float TIFFs from TopoJ with no JSON, use this **direct-Z** one.
+:::
+
 ## Quick troubleshooting
 
 | Symptom | Likely fix |
@@ -140,6 +166,7 @@ X and Y are in **pixels**, Z is in **micrometers**, and T is the frame number.
 | Columns detected wrong | Fix them manually in **Step 3**. |
 | Plugin not in the menu | Restart Fiji, or use `Help > Refresh Menus`. |
 | Nothing seems to export | Make sure at least one format is ticked in **Step 6**, and read `export_report.txt`. |
+| "requires 32-bit float TIFFs" error | You opened the **TopoJ / direct-Z** extractor with indexed images — use the standard **3D Z-Coordinate Extractor** (with its JSON map) instead. |
 
 ---
 

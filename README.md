@@ -1,6 +1,6 @@
 # ZTracker Fiji Plugin
 
-A Fiji/ImageJ plugin with **two tools** under `Plugins > ZTracker`, one per step of the pipeline:
+A Fiji/ImageJ plugin with **three tools** under `Plugins > ZTracker`, covering the pipeline:
 
 1. **Z-Projection + Origin Map** — *step 1 (produce)*: builds the indexed TIFF projections and
    their JSON Z-mappings from a raw Z-stack (min-Z or max-Z projection with per-pixel z-origin
@@ -9,9 +9,16 @@ A Fiji/ImageJ plugin with **two tools** under `Plugins > ZTracker`, one per step
 2. **3D Z-Coordinate Extractor** — *step 2 (extract)*: reads those 16-bit or 32-bit indexed TIFF
    projection stacks and, given 2D tracks, extracts the Z-coordinate for every detection and
    exports 3D cell tracks. Ports `3D_tracking_Jay_app_unified_v1.py`.
+3. **3D Z-Extractor (TopoJ / direct-Z)** — *step 2, alternative*: the same extraction for
+   projection images whose **pixel value is the Z depth in µm directly** (32-bit float, e.g.
+   Fiji's **TopoJ** output) — no index, no JSON mapping. Ports `3D_tracking_Jay_app_v2.py`,
+   superseding that script's old frame-check/filtering with the current `FrameAligner` offset and
+   per-point drop logic.
 
-The two are a matched pair: step 1's `z_origin/` folder + `z_layer_mapping.json` are exactly what
-step 2 reads as input, so you generate projections in Fiji and feed them straight into extraction.
+Tools 1 and 2 are a matched pair: step 1's `z_origin/` folder + `z_layer_mapping.json` are exactly
+what step 2 reads as input, so you generate projections in Fiji and feed them straight into
+extraction. Tool 3 is a drop-in variant of step 2 for direct-Z (TopoJ) images — same CSV, frame
+offset, sampling, and export, only the depth source differs (float pixel vs. indexed pixel + JSON).
 
 ---
 
@@ -23,20 +30,25 @@ ZTracker_Fiji/
 └── src/main/
     ├── java/ztracker/
     │   ├── ZTrackerPlugin.java          ← extractor entry point
+    │   ├── TopoJTrackerPlugin.java      ← TopoJ / direct-Z extractor entry point (Tool 3; Tool 1 minus the JSON lookup)
     │   ├── ZProjectorPlugin.java        ← projection tool entry point (produces extractor inputs)
     │   ├── ui/
     │   │   ├── ZTrackerDialog.java      ← 6-step extractor wizard, all non-modal (Steps 1, 4, 5, 6: custom AWT; Steps 2, 3: NonBlockingGenericDialog) so the Log stays usable
+    │   │   ├── TopoJTrackerDialog.java  ← Tool 3 wizard; duplicate of ZTrackerDialog minus the Step-1 JSON picker (so ZTrackerDialog is untouched)
     │   │   └── ZProjectorDialog.java    ← projection tool dialog (modeless AWT; same DirectoryChooser/addInputGroup pickers, duplicated so ZTrackerDialog is untouched)
     │   ├── io/
     │   │   ├── ZMappingLoader.java      ← JSON index→Z parsing (no external lib)
-    │   │   ├── TiffStackLoader.java     ← TIFF folder loader with frame→index map
+    │   │   ├── TiffStackLoader.java     ← TIFF folder loader with frame→index map (int pixels)
+    │   │   ├── TopoJStackLoader.java    ← 32-bit float TIFF loader (Z in µm, un-rounded); frameView() adapts to LoadedStack for FrameAligner reuse
     │   │   ├── TrackCsvLoader.java      ← TrackMate CSV parser + column auto-detect
     │   │   └── ProjectionInputScanner.java ← discovers z-layer/timepoint folders; streams one timepoint's stack at a time
     │   ├── core/
     │   │   ├── FrameAligner.java        ← CSV-to-TIFF offset suggestion + per-track alignment reporting
     │   │   ├── ZSampler.java            ← radius / 4-neighbor / single-pixel sampling
+    │   │   ├── TopoJSampler.java        ← same sampling geometry over a float stack; sampled value is Z directly (Tool 3)
     │   │   ├── ZAggregator.java         ← median / mean aggregation
-    │   │   └── ZExtractor.java          ← orchestrates sampling + mapping + aggregation; `extractAll` runs the sampling × aggregation cross product (Single Pixel deduped to one run); `resolveComboOutputDir` picks each combo's export folder
+    │   │   ├── ZExtractor.java          ← orchestrates sampling + mapping + aggregation; `extractAll` runs the sampling × aggregation cross product (Single Pixel deduped to one run); `resolveComboOutputDir` picks each combo's export folder
+    │   │   └── TopoJExtractor.java      ← Tool 3 orchestrator: identity Z (no index→Z lookup); reuses ZExtractor.MethodCombo/resolveComboOutputDir
     │   ├── project/
     │   │   └── ZProjector.java          ← core min/max projection + per-pixel z-origin index map (I/O-free)
     │   ├── export/
@@ -91,9 +103,10 @@ to point to your local `Fiji.app/plugins/` folder.
 
 The build step handles deployment automatically — no manual copy needed.
 After `mvn install` completes successfully, restart Fiji (or `Help > Refresh Menus`).
-Both tools appear under `Plugins > ZTracker` (in pipeline order):
+All three tools appear under `Plugins > ZTracker` (in pipeline order):
 - `Z-Projection + Origin Map` — step 1 (produce the projections)
-- `3D Z-Coordinate Extractor` — step 2 (extract Z)
+- `3D Z-Coordinate Extractor` — step 2 (extract Z from indexed TIFF + JSON)
+- `3D Z-Extractor (TopoJ / direct-Z)` — step 2, alternative (extract Z from 32-bit float TopoJ images)
 
 ---
 
@@ -543,6 +556,7 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 | p6.0 | Added optional **XZ/YZ ROI set export** (`fiji/track_rois_XZ.zip`, `fiji/track_rois_YZ.zip`) — `FijiPointsExporter.writeXZRoiSet`/`writeYZRoiSet` plot `(X px, Z µm)`/`(Y px, Z µm)` per detection, Z left unconverted (no pixel conversion); only detections with a valid (non-NaN) Z are included, since a NaN Z has nothing to plot on that axis. Two new `ExportConfig` flags and Step-6 checkboxes, off by default; the per-track report gets a trailing `XZ ROI+YZ ROI: N/M pt` segment mirroring the existing Results Table/ROI one |
 | p6.1 | Fixed a Swing/AWT rendering race in Fiji's ROI Manager list widget (`ArrayIndexOutOfBoundsException` from its renderer painting a row the list model had already dropped), surfaced by p6.0: running all three ROI formats in one export hammered `RoiManager.reset()`/`addRoi()`/save three times back-to-back on the same visible on-screen manager, faster than it could repaint. `writeXZRoiSet`/`writeYZRoiSet` now write their `.zip` directly via `ij.io.RoiEncoder`, bypassing the on-screen `RoiManager` entirely — architecturally more correct too, since X-vs-Z/Y-vs-Z points would look like nonsense image coordinates if added to the same interactive list as the real XY overlay. `writeRoiSet` (XY) is unchanged, still using `RoiManager` as before |
 | p6.2 | Reworded the Step-6 ROI checkboxes to a consistent `Export <plane> ROI point set .zip (<coords>)` style across XY/XZ/YZ; dropped the XY-only "Fiji ROI Manager" mention since all three ROI zips are equally openable there |
+| p9.0 | Added a **third tool**, `3D Z-Extractor (TopoJ / direct-Z)` (`TopoJTrackerPlugin`), for projection images whose pixel value **is** the Z depth in µm directly (32-bit float, e.g. Fiji's TopoJ output) — no index, no JSON mapping. A native-Java port of `3D_tracking_Jay_app_v2.py` that deliberately supersedes that script's crude "TIFF must start at 0" check and whole-track NaN/min-length/max-Z-std filtering with the current `FrameAligner` offset and per-point drop logic. New classes duplicate only the genuinely-different pieces so Tools 1/2 stay byte-for-byte untouched: `io/TopoJStackLoader` (loads 32-bit float TIFFs un-rounded; rejects 16/8-bit; exposes `LoadedFloatStack.frameView()`, a pixel-less `LoadedStack` adapter so `FrameAligner` is reused unchanged), `core/TopoJSampler` (same sampling geometry as `ZSampler`, values taken as Z), `core/TopoJExtractor` (identity Z, no lookup), and `ui/TopoJTrackerDialog` (Tool 1's wizard minus the JSON picker). Everything else — CSV handling, Steps 2–6, all export formats, per-track report — is shared. New `ExtractionResult.STATUS_NO_DATA` marks an all-NaN (no-data) sample, the direct-Z analogue of `STATUS_UNMAPPED_INDEX`. New tests: `TopoJSamplerTest`, `TopoJExtractorTest`, `TopoJStackLoaderTest` (float round-trip via real headless TIFF I/O + 32-bit-only enforcement) |
 | p8.3 | Z-Projection **Z-origin bit depth** choice (16-bit / 32-bit / **Both**), defaulting to **16-bit** — a single-depth run writes only that depth's `z_origin*` TIFFs and matching JSON mapping, roughly halving per-timepoint write work (previously both were always written). `Config` carries `write16Bit`/`write32Bit`; `ProjectionExporter.writeMappings` takes the two flags so it doesn't leave an orphan mapping. When 16-bit is chosen alone and an index exceeds 65,535 there's no 32-bit fallback — the Log flags the timepoint clearly. New `ProjectionExporterTest` case covers selective mapping output |
 | p8.2 | Z-Projection output layout: in **Single** scope the redundant projection-type grouping level is dropped — the per-dataset folder now sits directly in the output folder (`<out>/max_z_<dataset>/…` instead of `<out>/max_z/max_z_<dataset>/…`). **Batch** is unchanged (`<out>/max_z/max_z_<dataset>/…`), since it groups many datasets. Both projections still separate cleanly via the `max_z`/`min_z` prefix. Also clarified the input/output folder trees in the README |
 | p8.1 | Z-Projection dialog refinements: **Scope is asked first** (before the input folder, so it's clear what to select) and the input-folder description was dropped as redundant; added a **Both** projection option that runs Max-Z *and* Min-Z into their separate `max_z/`/`min_z/` output trees (single or batch); and the 8-bit raw projection is **always written** now (removed the toggle). `Config` carries a `List<ZProjector.Mode>`; the plugin loops projection × dataset. `ZProjector`/`ProjectionInputScanner`/`ProjectionExporter` unchanged |
