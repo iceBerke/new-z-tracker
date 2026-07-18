@@ -475,6 +475,16 @@ actually breaks:
   genuine gap in the sequence (e.g. `0,1,3` if frame 2 was dropped) — never a shift or
   compaction (never `0,1,2`). This is intentional: it distinguishes "this cell wasn't
   trackable here" from "the recording only ran this long."
+- **Reported frame numbers stay in the CSV's convention, even when a frame offset is applied.**
+  The Step-4 CSV↔TIFF offset (e.g. `+1` for a 0-indexed CSV against 1-based TIFFs) is used
+  **only** to locate which TIFF slice to sample (`track.frame[i] + offset`) — it is **never**
+  written into any output. Every output reports each detection's **raw CSV frame**
+  (`track.frame[i]`): the 2D/3D `.npy` `T` column, the Results Table CSV frame column, and the
+  ROI names (`<trackID>_f<frame>`, including the XZ/YZ sets). So a detection at CSV frame `0`
+  that sampled TIFF slice `1` is still reported as `T=0` everywhere. This is **consistent across
+  every output file** and holds for both the indexed extractor (Tool 2) and the TopoJ / direct-Z
+  extractor (Tool 3), since both share the same export path — keeping the results traceable
+  straight back to the input CSV rather than to the internal TIFF slice numbering.
 - A per-track report is logged to the Fiji Log on **every** export run — regardless of
   which Step-6 formats you actually chose — (capped at 50 rows for on-screen readability)
   and written in full, uncapped, to `export_report.txt` alongside the `.npy` output — one
