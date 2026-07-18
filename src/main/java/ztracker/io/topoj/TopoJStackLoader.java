@@ -26,10 +26,24 @@ import java.util.regex.Pattern;
  * gaps in frame numbering are supported. Only 32-bit float TIFFs are accepted (8-bit,
  * 16-bit, and 24-bit RGB are rejected with a clear message), matching the Python
  * script's {@code float32}-only requirement.
+ *
+ * <p><b>Filename flexibility (Tool 3 only).</b> The frame index is taken from the
+ * integer the filename <i>ends with</i> — any prefix text is allowed and any
+ * zero-padding width is accepted (the padding is not hard-coded: {@code frame7.tif},
+ * {@code topoj_0007.tif}, and {@code height_map_00000007.tif} all resolve to frame 7).
+ * Unlike {@link TiffStackLoader} (which takes the last digit run <i>anywhere</i> in the
+ * name and silently falls back to frame 0), this loader anchors the match to the end of
+ * the base name and <b>rejects</b> any file that does not end with an integer, rather
+ * than silently collapsing it to frame 0 (where several such files would clobber each
+ * other in the {@code frame → stackIndex} map).
  */
 public class TopoJStackLoader {
 
-    private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+");
+    /** The integer the base filename (extension stripped) ends with — any zero-padding width. */
+    private static final Pattern TRAILING_NUMBER = Pattern.compile("(\\d+)$");
+
+    /** Sentinel returned by {@link #extractFrameNumber} when a name has no trailing integer. */
+    private static final int NO_FRAME_NUMBER = -1;
 
     // ── Public result container ───────────────────────────────────────────────
 
@@ -91,6 +105,22 @@ public class TopoJStackLoader {
             throw new IOException("No TIFF files found in: " + folder.getAbsolutePath());
         }
 
+        // Every file must end with an integer (the frame index). Reject up front with a
+        // clear message rather than silently mapping a non-conforming name to frame 0
+        // (where several such files would clobber each other in frameToIdx).
+        List<String> badNames = new ArrayList<>();
+        for (File f : tifFiles) {
+            if (extractFrameNumber(f) == NO_FRAME_NUMBER) badNames.add(f.getName());
+        }
+        if (!badNames.isEmpty()) {
+            throw new IOException(
+                    "These TIFF filenames do not end with a frame number: " + badNames
+                    + "\nThe TopoJ / direct-Z extractor takes the frame index from the integer"
+                    + " the filename ends with (any prefix, any zero-padding width — e.g."
+                    + " frame7.tif, topoj_0007.tif). Rename so each file ends with its frame"
+                    + " number before the .tif extension.");
+        }
+
         // Sort by the trailing integer in the filename (natural sort)
         Arrays.sort(tifFiles, Comparator.comparingInt(TopoJStackLoader::extractFrameNumber));
 
@@ -147,15 +177,22 @@ public class TopoJStackLoader {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
-     * Extracts the last integer found in a filename (used for sorting and mapping).
-     * Falls back to 0 if none found. Uses the last match rather than the first because
-     * filenames can carry incidental numbers before the trailing frame index.
+     * Extracts the integer the filename <b>ends with</b> — the frame index (used for
+     * sorting and mapping). The extension is stripped first, then the trailing digit run
+     * is parsed, so any prefix and any zero-padding width are accepted
+     * ({@code height_map_00000007.tif} → 7). Anchoring to the end also sidesteps incidental
+     * numbers earlier in the name (e.g. a "32bit" tag) without relying on the extension
+     * being digit-free.
+     *
+     * @return the trailing integer, or {@link #NO_FRAME_NUMBER} if the base name has none
+     *         (the caller rejects such files with a clear message)
      */
     static int extractFrameNumber(File file) {
-        Matcher m = NUMBER_PATTERN.matcher(file.getName());
-        String last = null;
-        while (m.find()) last = m.group();
-        return last != null ? Integer.parseInt(last) : 0;
+        String name = file.getName();
+        int dot = name.lastIndexOf('.');
+        String base = (dot >= 0) ? name.substring(0, dot) : name;
+        Matcher m = TRAILING_NUMBER.matcher(base);
+        return m.find() ? Integer.parseInt(m.group(1)) : NO_FRAME_NUMBER;
     }
 
     /**

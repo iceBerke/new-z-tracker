@@ -89,6 +89,35 @@ class TopoJStackLoaderTest {
     }
 
     @Test
+    void load_acceptsAnyPrefixAndAnyZeroPaddingWidth(@TempDir Path dir) throws Exception {
+        // Frame index is the integer each name *ends with* — arbitrary prefix, arbitrary
+        // padding width. All three resolve to distinct frames (7, 42, 100) with no padding
+        // width hard-coded: unpadded, 4-wide, and 8-wide all parse correctly.
+        writeFloatTiff(new File(dir.toFile(), "frame7.tif"),                new float[][]{{7.0f}});
+        writeFloatTiff(new File(dir.toFile(), "topoj_0042.tif"),           new float[][]{{42.0f}});
+        writeFloatTiff(new File(dir.toFile(), "height_map_00000100.tif"),  new float[][]{{100.0f}});
+
+        LoadedFloatStack stack = TopoJStackLoader.load(dir.toFile());
+
+        assertEquals(3, stack.frameCount());
+        assertEquals(7,   stack.firstFrame());
+        assertEquals(100, stack.lastFrame());
+        assertEquals(7.0f,   stack.pixels[stack.frameToIdx.get(7)][0][0],   0.0f);
+        assertEquals(42.0f,  stack.pixels[stack.frameToIdx.get(42)][0][0],  0.0f);
+        assertEquals(100.0f, stack.pixels[stack.frameToIdx.get(100)][0][0], 0.0f);
+    }
+
+    @Test
+    void load_rejectsFileNotEndingWithInteger(@TempDir Path dir) throws Exception {
+        // A trailing non-numeric suffix means the name does not *end* with a frame number.
+        // Rather than silently mapping it to frame 0 (colliding with topoj_0000), it is rejected.
+        writeFloatTiff(new File(dir.toFile(), "topoj_0000.tif"),        new float[][]{{1.0f}});
+        writeFloatTiff(new File(dir.toFile(), "topoj_0007_final.tif"),  new float[][]{{2.0f}});
+
+        assertThrows(Exception.class, () -> TopoJStackLoader.load(dir.toFile()));
+    }
+
+    @Test
     void load_rejects16BitTiff(@TempDir Path dir) throws Exception {
         ShortProcessor sp = new ShortProcessor(2, 2);
         sp.set(0, 0, 5);
