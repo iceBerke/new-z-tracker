@@ -1,0 +1,95 @@
+==============================================================================
+  EXTRACTOR EQUIVALENCE — indexed (Tool 2) vs. direct-Z / TopoJ (Tool 3)
+==============================================================================
+
+Both tools run the SAME pipeline (sample → aggregate → classify → export).
+The ONLY difference is how a sampled pixel becomes a Z:
+  Tool 2: pixel is an INDEX  → look it up in the JSON index→Z map
+  Tool 3: pixel is the Z (µm) → use it directly (no map)
+
+To compare them fairly we build ONE index grid + map, then derive the
+float grid Tool 3 would see: floatPixel = map.get(index), or NaN if unmapped.
+
+index grid (what Tool 2 samples):
+       0    1    2    3    4
+       5    6    7    8    9
+      10   11   12   13   99
+      15   16   17   18   19
+      20   21   22   23   24
+
+index → Z mapping (µm):  {0:-3.0, 1:-2.5, … , 24:9.0}
+   (index 99 is deliberately absent → 'unmapped')
+
+float grid (what Tool 3 samples) = each index resolved to its Z, NaN if unmapped:
+       -3.0    -2.5    -2.0    -1.5    -1.0
+       -0.5     0.0     0.5     1.0     1.5
+        2.0     2.5     3.0     3.5     NaN
+        4.5     5.0     5.5     6.0     6.5
+        7.0     7.5     8.0     8.5     9.0
+
+detections (offset +1 → tiff frame; frames 1,2 exist):
+  d0 (2.0, 2.0) f0  — interior, all mapped
+  d1 (4.0, 2.0) f0  — sits on the unmapped index 99
+  d2 (50 , 50 ) f0  — out of bounds
+  d3 (2.0, 2.0) f5  — frame 6 missing
+  d4 (NaN, 2.0) f0  — invalid X/Y
+
+[ZExtractor] Starting extraction: 5 detections | Single Pixel + Median | Pixel = corner (floor to containing cell) | offset=+1
+[ZExtractor] Done: 1 / 5 valid Z values | 1 missing frames | 1 out-of-bounds positions | 1 invalid X/Y
+[TopoJExtractor] Starting extraction: 5 detections | Single Pixel + Median | Pixel = corner (floor to containing cell) | offset=+1
+[TopoJExtractor] Done: 1 / 5 valid Z values | 1 missing frames | 1 out-of-bounds positions | 1 invalid X/Y
+------------------------------------------------------------------------------
+combo: Single Pixel + Median + Pixel = corner (floor to containing cell)
+------------------------------------------------------------------------------
+det  | Tool 2 (indexed+JSON)      | Tool 3 (TopoJ direct-Z)    | Z match?
+     | z(µm)     nUnmap status    | z(µm)     nUnmap status    |
+d0   | 3.000     0      OK        | 3.000     0      OK        | ✓
+d1   | NaN       1      unmapped  | NaN       0      noData    | ✓
+d2   | NaN       0      oob       | NaN       0      oob       | ✓
+d3   | NaN       0      missFrame | NaN       0      missFrame | ✓
+d4   | NaN       0      invalidXY | NaN       0      invalidXY | ✓
+counts: missingFrame=1/1  outOfBounds=1/1  invalidXY=1/1  (Tool2/Tool3)
+
+[ZExtractor] Starting extraction: 5 detections | Radius-based + Median | Pixel = corner (floor to containing cell) | offset=+1
+[ZExtractor] Done: 2 / 5 valid Z values | 1 missing frames | 1 out-of-bounds positions | 1 invalid X/Y
+[TopoJExtractor] Starting extraction: 5 detections | Radius-based + Median | Pixel = corner (floor to containing cell) | offset=+1
+[TopoJExtractor] Done: 2 / 5 valid Z values | 1 missing frames | 1 out-of-bounds positions | 1 invalid X/Y
+------------------------------------------------------------------------------
+combo: Radius-based + Median + Pixel = corner (floor to containing cell)
+------------------------------------------------------------------------------
+det  | Tool 2 (indexed+JSON)      | Tool 3 (TopoJ direct-Z)    | Z match?
+     | z(µm)     nUnmap status    | z(µm)     nUnmap status    |
+d0   | 3.000     0      OK        | 3.000     0      OK        | ✓
+d1   | 3.500     1      OK        | 3.500     0      OK        | ✓
+d2   | NaN       0      oob       | NaN       0      oob       | ✓
+d3   | NaN       0      missFrame | NaN       0      missFrame | ✓
+d4   | NaN       0      invalidXY | NaN       0      invalidXY | ✓
+counts: missingFrame=1/1  outOfBounds=1/1  invalidXY=1/1  (Tool2/Tool3)
+
+[ZExtractor] Starting extraction: 5 detections | Radius-based + Mean | Pixel = center (round to nearest) | offset=+1
+[ZExtractor] Done: 2 / 5 valid Z values | 1 missing frames | 1 out-of-bounds positions | 1 invalid X/Y
+[TopoJExtractor] Starting extraction: 5 detections | Radius-based + Mean | Pixel = center (round to nearest) | offset=+1
+[TopoJExtractor] Done: 2 / 5 valid Z values | 1 missing frames | 1 out-of-bounds positions | 1 invalid X/Y
+------------------------------------------------------------------------------
+combo: Radius-based + Mean + Pixel = center (round to nearest)
+------------------------------------------------------------------------------
+det  | Tool 2 (indexed+JSON)      | Tool 3 (TopoJ direct-Z)    | Z match?
+     | z(µm)     nUnmap status    | z(µm)     nUnmap status    |
+d0   | 3.000     0      OK        | 3.000     0      OK        | ✓
+d1   | 3.833     1      OK        | 3.833     0      OK        | ✓
+d2   | NaN       0      oob       | NaN       0      oob       | ✓
+d3   | NaN       0      missFrame | NaN       0      missFrame | ✓
+d4   | NaN       0      invalidXY | NaN       0      invalidXY | ✓
+counts: missingFrame=1/1  outOfBounds=1/1  invalidXY=1/1  (Tool2/Tool3)
+
+==============================================================================
+  TAKEAWAY
+==============================================================================
+Z matches row-for-row in every combo. The only columns that differ are:
+  • numUnmapped — Tool 2 counts sampled indices with no map entry;
+                  Tool 3 has no map, so it is always 0.
+  • status for a no-Z sample — Tool 2 'unmapped index' vs Tool 3 'no data'
+                  (same meaning: pixels were sampled but none gave a Z).
+
+This demo asserts nothing — see ExtractorEquivalenceTest for the real check.
+

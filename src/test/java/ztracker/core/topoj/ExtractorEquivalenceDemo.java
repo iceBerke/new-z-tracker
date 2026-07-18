@@ -30,10 +30,13 @@ import java.util.Map;
  * {@code ExtractorEquivalenceTest} (run via {@code mvn test}).
  *
  * <p><b>Run it:</b> from your IDE (right-click → Run 'main'), or from the command line after
- * {@code mvn test-compile}:
+ * {@code mvn test-compile}. To (re)generate the committed snapshot, redirect stdout to
+ * {@code ExtractorEquivalenceDemo_output.txt} alongside this source file — pass
+ * {@code -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8} so the ✓/→/µ characters survive the
+ * redirect on Windows (Java's default stdout encoding there is not UTF-8):
  * <pre>
- *   java -cp "target/classes;target/test-classes" ztracker.core.topoj.ExtractorEquivalenceDemo   (Windows)
- *   java -cp  target/classes:target/test-classes  ztracker.core.topoj.ExtractorEquivalenceDemo   (macOS/Linux)
+ *   mvn -q dependency:build-classpath -Dmdep.outputFile=cp.txt
+ *   java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.topoj.ExtractorEquivalenceDemo &gt; src/test/java/ztracker/core/topoj/ExtractorEquivalenceDemo_output.txt 2&gt;&amp;1
  * </pre>
  */
 public class ExtractorEquivalenceDemo {
