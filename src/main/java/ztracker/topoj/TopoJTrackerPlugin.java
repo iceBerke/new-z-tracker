@@ -27,7 +27,7 @@ import java.util.List;
  * projection pixel value <b>is</b> the Z coordinate in µm, so there is no mapping to load
  * and {@link TopoJExtractor} aggregates sampled values directly. All downstream machinery
  * (frame alignment, sampling/aggregation methods, per-point drop logic, every export
- * format) is shared with Tool 1 unchanged.
+ * format) is shared with Tool 2 unchanged.
  *
  * <p>This class is intentionally thin — it only orchestrates the pipeline. No business
  * logic lives here.

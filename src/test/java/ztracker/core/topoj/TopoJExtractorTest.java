@@ -152,7 +152,7 @@ class TopoJExtractorTest {
     @Test
     void extract_partialNaNSamples_stillAggregatesOverValidValues() {
         // ZAggregator NaN-filters, so a mix of NaN and real Z still yields a valid aggregate
-        // (median of the non-NaN values) and STATUS_OK — matching Tool 1's partial-unmapped case.
+        // (median of the non-NaN values) and STATUS_OK — matching Tool 2's partial-unmapped case.
         float[][] frame = {
             {Float.NaN, 10.0f, Float.NaN},
             {Float.NaN, 20.0f, Float.NaN},

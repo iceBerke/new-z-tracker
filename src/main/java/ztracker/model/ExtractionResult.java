@@ -18,7 +18,7 @@ public class ExtractionResult {
     /** {@link #sampleStatus} value: pixels were sampled, but every sampled value was NaN
      *  (a "no-data" pixel in a direct-Z / TopoJ float map). The direct-Z counterpart of
      *  {@link #STATUS_UNMAPPED_INDEX} — produced by {@link ztracker.core.topoj.TopoJExtractor},
-     *  never by {@link ztracker.core.extractor.ZExtractor} (Tool 1 has no NaN pixel indices). */
+     *  never by {@link ztracker.core.extractor.ZExtractor} (Tool 2 has no NaN pixel indices). */
     public static final String STATUS_NO_DATA = "no data";
     /** {@link #sampleStatus} value: the detection's X or Y itself is missing/unparseable
      *  (NaN) — sampling is never attempted for these (see {@link #invalidXYCount}). */

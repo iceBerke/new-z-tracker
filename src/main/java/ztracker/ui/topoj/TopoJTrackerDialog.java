@@ -39,14 +39,14 @@ import java.util.concurrent.CountDownLatch;
 /**
  * Tool 3 (TopoJ / direct-Z) counterpart to {@link ZTrackerDialog}.
  *
- * <p>This is a deliberate duplicate of {@link ZTrackerDialog} so Tool 1's dialog stays
+ * <p>This is a deliberate duplicate of {@link ZTrackerDialog} so Tool 2's dialog stays
  * byte-for-byte untouched (matching the plugin's isolate-per-tool philosophy — the same
- * reason Tool 2 duplicated its folder-picker layout). The only substantive difference is
+ * reason Tool 1 duplicated its folder-picker layout). The only substantive difference is
  * that <b>Step 1 collects just the TIFF folder and CSV</b> — there is no JSON Z-mapping
  * picker, because a TopoJ pixel value <b>is</b> the Z. Steps 2–6 (CSV format, column
  * confirmation, frame offset, methods, export) are identical.
  *
- * <p>Step 4 reuses Tool 1's {@link FrameAligner} via {@link LoadedFloatStack#frameView()},
+ * <p>Step 4 reuses Tool 2's {@link FrameAligner} via {@link LoadedFloatStack#frameView()},
  * which exposes only the float stack's frame map (FrameAligner never reads pixel data).
  */
 public class TopoJTrackerDialog {
@@ -310,7 +310,7 @@ public class TopoJTrackerDialog {
      * CSV-to-TIFF offset and see a live per-track verdict update as they type, then
      * confirm. Requires {@link #setLoadedData(TrackData, LoadedFloatStack)} first.
      *
-     * <p>Reuses Tool 1's {@link FrameAligner} against a {@link LoadedFloatStack#frameView()}
+     * <p>Reuses Tool 2's {@link FrameAligner} against a {@link LoadedFloatStack#frameView()}
      * (a pixel-less frame-index view of the float stack).
      */
     private boolean step4_frameOffset() {
@@ -463,7 +463,7 @@ public class TopoJTrackerDialog {
 
     private static final String ALL_LABEL = "All (run every method)";
 
-    /** Step 5: Sampling and aggregation method selection (identical to Tool 1's Step 5). */
+    /** Step 5: Sampling and aggregation method selection (identical to Tool 2's Step 5). */
     private boolean step5_methods() {
         String[] samplingLabels = {
             ZSampler.Method.RADIUS.label,
@@ -629,7 +629,7 @@ public class TopoJTrackerDialog {
         return true;
     }
 
-    /** Step 6: Output directory and export format selection (identical to Tool 1's Step 6). */
+    /** Step 6: Output directory and export format selection (identical to Tool 2's Step 6). */
     private boolean step6_export() {
         Frame parent = IJ.getInstance();
         final Dialog dlg = new Dialog(

@@ -19,7 +19,7 @@ import java.util.List;
  * {@link ZExtractor} maps its raw indices; {@link TopoJExtractor} aggregates
  * these values as-is.
  *
- * <p>This is a deliberate duplicate of {@link ZSampler}'s geometry so that Tool 1's
+ * <p>This is a deliberate duplicate of {@link ZSampler}'s geometry so that Tool 2's
  * sampler stays byte-for-byte untouched (matching the plugin's isolate-per-tool
  * philosophy). It reuses {@link ZSampler.Method} and {@link ZSampler.PixelConvention}
  * as the shared method vocabulary rather than redefining them.

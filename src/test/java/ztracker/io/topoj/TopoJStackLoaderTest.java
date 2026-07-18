@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Tests for {@link TopoJStackLoader} — the direct-Z (TopoJ) float-TIFF loader.
  *
  * <p>The defining behaviour vs. {@link TiffStackLoader} is that 32-bit float pixel values
- * are the physical Z in µm and are kept <b>exactly, un-rounded</b> (Tool 1 rounds to int
+ * are the physical Z in µm and are kept <b>exactly, un-rounded</b> (Tool 2 rounds to int
  * indices). Uses ImageJ's real TIFF read/write headlessly, same approach as
  * {@code ProjectionExporterTest}.
  */
@@ -94,7 +94,7 @@ class TopoJStackLoaderTest {
         sp.set(0, 0, 5);
         IJ.saveAsTiff(new ImagePlus("s", sp), new File(dir.toFile(), "topoj_0000.tif").getAbsolutePath());
 
-        // 16-bit is a valid input for Tool 1 (indexed) but not for the direct-Z extractor.
+        // 16-bit is a valid input for Tool 2 (indexed) but not for the direct-Z extractor.
         assertThrows(Exception.class, () -> TopoJStackLoader.load(dir.toFile()));
     }
 

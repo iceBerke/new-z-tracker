@@ -34,7 +34,7 @@ class TopoJSamplerTest {
     @Test
     void singlePixel_preservesFractionalAndNegativeZ() {
         // Direct-Z values are physical µm — fractional and negative values must survive intact
-        // (unlike Tool 1's integer indices).
+        // (unlike Tool 2's integer indices).
         float[][] frame = {
             {0f,    0f,   0f},
             {0f, -3.75f,  0f},
