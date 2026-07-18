@@ -60,7 +60,6 @@ public class TopoJExtractor {
         double[] z            = new double[n];
         double[] zStd         = new double[n];
         int[]    numSamples   = new int[n];
-        int[]    numUnmapped  = new int[n]; // always 0 for direct-Z (no mapping)
         String[] sampleStatus = new String[n];
 
         int missingFrames = 0;
@@ -81,7 +80,6 @@ public class TopoJExtractor {
                 z[i]            = Double.NaN;
                 zStd[i]         = Double.NaN;
                 numSamples[i]   = 0;
-                numUnmapped[i]  = 0;
                 sampleStatus[i] = ExtractionResult.STATUS_INVALID_XY;
                 invalidXY++;
                 continue;
@@ -99,7 +97,6 @@ public class TopoJExtractor {
                 z[i]           = Double.NaN;
                 zStd[i]        = Double.NaN;
                 numSamples[i]  = 0;
-                numUnmapped[i] = 0;
                 // An empty sample array means either the TIFF frame itself is missing, or the
                 // frame exists but the detection's footprint fell outside the image bounds —
                 // distinct causes with different fixes, counted separately (see ZExtractor).
@@ -119,7 +116,6 @@ public class TopoJExtractor {
             z[i]           = zVal;
             zStd[i]        = ZAggregator.std(zSamples);
             numSamples[i]  = zSamples.length;
-            numUnmapped[i] = 0;
             // zVal is only NaN here if every sampled pixel was itself NaN (a no-data pixel);
             // the direct-Z analogue of ZExtractor's STATUS_UNMAPPED_INDEX.
             sampleStatus[i] = Double.isNaN(zVal)
@@ -137,7 +133,10 @@ public class TopoJExtractor {
                 + "%d out-of-bounds positions | %d invalid X/Y",
                 validCount, n, missingFrames, outOfBounds, invalidXY));
 
-        return new ExtractionResult(z, zStd, numSamples, numUnmapped, sampleStatus,
+        return new ExtractionResult(
+                z, zStd, numSamples,
+                new int[n], // numUnmapped — direct-Z has no mapping, so always 0
+                sampleStatus,
                 sampling.label, aggregation.label, convention.label,
                 missingFrames, outOfBounds, invalidXY);
     }

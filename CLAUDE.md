@@ -150,12 +150,19 @@ extractor, dialog) so Tool 2 stays byte-for-byte untouched; the stack-agnostic c
 `ZSampler.PixelConvention` / `ZAggregator.Method` enums). `FrameAligner` — coupled to
 `TiffStackLoader.LoadedStack` but reading only its frame map, never its pixels — is reused via
 `TopoJStackLoader.LoadedFloatStack.frameView()`, a pixel-less `LoadedStack` frame-index adapter.
-Since there is no mapping, `numUnmapped` is always 0 and `STATUS_UNMAPPED_INDEX` never arises; its
-direct-Z analogue `ExtractionResult.STATUS_NO_DATA` (added p9.0) marks the case where pixels were
-sampled but every one was NaN (a no-data pixel in the float map). `TopoJExtractorTest` /
-`TopoJSamplerTest` cover the identity-Z + failure-classification logic (I/O-free), and
-`TopoJStackLoaderTest` proves float Z values survive load un-rounded through ImageJ's real
-headless TIFF read/write and that non-32-bit inputs are rejected.
+Since there is no mapping, the shared `ExtractionResult.numUnmapped` field is always 0 for Tool 3
+(`TopoJExtractor` doesn't track it — it passes a zero array at construction) and
+`STATUS_UNMAPPED_INDEX` never arises; its direct-Z analogue `ExtractionResult.STATUS_NO_DATA`
+(added p9.0) marks the case where pixels were sampled but every one was NaN (a no-data pixel in
+the float map). `TopoJExtractorTest` / `TopoJSamplerTest` cover the identity-Z + failure-classification
+logic (I/O-free), and `TopoJStackLoaderTest` proves float Z values survive load un-rounded through
+ImageJ's real headless TIFF read/write and that non-32-bit inputs are rejected.
+`ExtractorEquivalenceTest` (in `ztracker.core.topoj`) is the **cross-tool parity proof**: it builds
+an indexed stack + JSON map and the equivalent float stack (each pixel = its mapped Z, NaN if
+unmapped), then asserts `ZExtractor` and `TopoJExtractor` produce identical `z`/`zStd`/`numSamples`
+and missing/OOB/invalid tallies across every sampling × aggregation × convention combo — the one
+allowed divergence (`numUnmapped`, and `STATUS_UNMAPPED_INDEX`↔`STATUS_NO_DATA`) asserted explicitly.
+`ExtractorEquivalenceDemo` is the runnable, no-assertions walkthrough of the same comparison.
 
 ## Data Format Conventions
 
