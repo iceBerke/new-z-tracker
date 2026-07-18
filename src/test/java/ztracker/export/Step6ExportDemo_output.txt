@@ -48,7 +48,7 @@ Synthetic Z (stand-in for a real ZExtractor output -- NOT read from any input):
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track 7          2D ✓ (3 pt) — all points valid | 3D ✓ (3 pt) — all points valid | Results Table+ROI: 3/3 pt
 [TrackExportManager] Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=0, outOfBounds=0, unmappedIndex=0
-  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step6-demo-export18060682215923072839
+  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step6-demo-export5730439924812811214
     export_report.txt
     fiji\results_table.csv
     fiji\track_rois.zip

@@ -9,7 +9,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
       20  21  22  23  24
   (outlier planted at row=3,col=3 -> value 100 instead of 18)
 
-  Z mapping (this is the ztracker.io.ZMappingLoader JSON, index -> Z in micrometers -- what a real run loads from the mapping file the user picks in Step 1): for this demo it's synthesized as Z = index * 0.5, so every pixel value above maps 1:1 to a Z below. Real mappings come from an arbitrary JSON file and aren't necessarily linear -- this formula is just how THIS demo's fake data was built.
+  Z mapping (this is the ztracker.io.extractor.ZMappingLoader JSON, index -> Z in micrometers -- what a real run loads from the mapping file the user picks in Step 1): for this demo it's synthesized as Z = index * 0.5, so every pixel value above maps 1:1 to a Z below. Real mappings come from an arbitrary JSON file and aren't necessarily linear -- this formula is just how THIS demo's fake data was built.
     index:     0     1     2     3     4     5     6     7     8     9    10    11    12    13    14    15    16    17    19    20    21    22    23    24   100
     Z:       0.0   0.5   1.0   1.5   2.0   2.5   3.0   3.5   4.0   4.5   5.0   5.5   6.0   6.5   7.0   7.5   8.0   8.5   9.5  10.0  10.5  11.0  11.5  12.0  50.0
   (a pixel value with NO row here -- e.g. a stray index not in the JSON -- is what section 10 below calls an "unmapped index")
@@ -77,7 +77,7 @@ Step-5 demo: sampling methods, aggregation methods, "All"
 [TrackExportManager] ── Per-track report (1 track(s)) ──
 [TrackExportManager]   Track A          2D ✓ (2 pt) — all points valid | 3D ✓ (1/2 pt) — dropped 1: 1 missing frame
 [TrackExportManager] Exported 2D=1, 3D=1 | Skipped: 2D(noValidPoints)=0, 3D(noValidPoints)=0 | Dropped points: invalidXY=0, missingFrame=1, outOfBounds=0, unmappedIndex=0
-  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step5-demo9404790052721375646
+  Exported under: C:\Users\BERKE~1.SAN\AppData\Local\Temp\ztracker-step5-demo8701428558082284531
     radius\median\export_report.txt
     radius\median\tracks_2D\track_00065.npy
     radius\median\tracks_3D\track_00065.npy

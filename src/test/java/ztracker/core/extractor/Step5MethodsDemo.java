@@ -82,7 +82,7 @@ import java.util.stream.Stream;
  * <p>Run it manually (from the project root, after {@code mvn test-compile}):
  * <pre>
  *   mvn dependency:build-classpath -Dmdep.outputFile=cp.txt
- *   java -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.Step5MethodsDemo
+ *   java -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.extractor.Step5MethodsDemo
  * </pre>
  *
  * <p>To save the full output to a file instead of (or in addition to) the console, redirect
@@ -91,7 +91,7 @@ import java.util.stream.Stream;
  * {@code TrackExportManager}'s log lines when redirected — pass
  * {@code -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8} to keep them intact:
  * <pre>
- *   java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.Step5MethodsDemo &gt; src/test/java/ztracker/core/Step5MethodsDemo_output.txt 2&gt;&amp;1
+ *   java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "target/classes;target/test-classes;$(cat cp.txt)" ztracker.core.extractor.Step5MethodsDemo &gt; src/test/java/ztracker/core/extractor/Step5MethodsDemo_output.txt 2&gt;&amp;1
  * </pre>
  */
 public class Step5MethodsDemo {
