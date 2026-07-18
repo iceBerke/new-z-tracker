@@ -150,6 +150,7 @@ Open it via **Plugins > ZTracker > 3D Z-Extractor (TopoJ / direct-Z)**.
 
 - **No Z-mapping JSON.** Step 1 asks for just **two** inputs — the **TopoJ Z-map TIFF folder** and your **tracking CSV**.
 - **32-bit float images only.** The depth is stored as a real number per pixel, so the TIFFs must be 32-bit float. (16-bit/8-bit images are rejected with a clear message — those belong to the standard, indexed extractor.)
+- **Filenames must end with the frame number.** The frame index is read from the number your filename **ends with**, so any name prefix works and the zero-padding can be any width — `frame7.tif`, `topoj_0007.tif`, and `height_map_00000100.tif` all load fine (as frames 7, 7, and 100). A file that does **not** end with a number (e.g. `topoj_0007_final.tif`) is **rejected with a message listing the offending names** — rename it so the frame number comes last, right before `.tif`.
 
 **Everything else is identical** to the standard extractor: the same CSV format/column steps, the same live frame-offset check (Step 4), the same sampling/aggregation/pixel-convention choices (Step 5), the same output folder and formats (Step 6), and the same per-point drop behaviour and reports. X/Y stay in pixels, Z is in µm, T is the frame number.
 
