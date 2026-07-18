@@ -38,7 +38,11 @@ requires a live display and has no testable business logic. Core algorithmic log
 suite under `src/test/java` (test-scoped dependency only — this does not violate the
 no-runtime-deps rule below). Run with `mvn test`. Tool 1's suite is `ztracker.project.ZProjectorTest`
 (projection logic: min/max selection, ties→first layer, missing-layer global-index remap — all
-I/O-free) and `ztracker.export.projector.ProjectionExporterTest`, whose **seam test** writes the z-origin
+I/O-free), `ztracker.io.projector.ProjectionInputScannerTest` (the input scanner: numeric z-layer
+sort with negatives/gaps and non-numeric folders ignored, timepoint-filename union/dedup/sort, and
+— the subtle one — recording each present slice's **global** z-index when a timepoint is absent from
+some layers; plus `isDataset`/`parseZ`, all via real headless TIFF I/O), and
+`ztracker.export.projector.ProjectionExporterTest`, whose **seam test** writes the z-origin
 TIFFs + JSON mapping and reads them back through the extractor's own `TiffStackLoader` +
 `ZMappingLoader`, proving the project→extract round-trip actually holds (it also uses ImageJ's
 real TIFF read/write headlessly, confirming that works in the test JVM).
