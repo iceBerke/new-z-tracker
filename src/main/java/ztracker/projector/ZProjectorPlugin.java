@@ -3,13 +3,15 @@ package ztracker.projector;
 import ij.IJ;
 import ij.plugin.PlugIn;
 import ztracker.export.projector.ProjectionExporter;
+import ztracker.io.projector.FolderProjectionSource;
 import ztracker.io.projector.ProjectionInputScanner;
-import ztracker.io.projector.ProjectionInputScanner.DatasetScan;
-import ztracker.io.projector.ProjectionInputScanner.TimepointStack;
+import ztracker.io.projector.ProjectionSource;
+import ztracker.io.projector.ProjectionStackScanner;
 import ztracker.project.ZProjector;
 import ztracker.ui.projector.ZProjectorDialog;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,6 +33,12 @@ import java.util.List;
  * <p>Pipeline: collect parameters → resolve the dataset(s) → for each dataset, scan its
  * z-layers/timepoints, write the JSON mappings, then stream each timepoint through
  * {@link ZProjector} and write the 16-/32-bit z-origin TIFFs (+ optional raw projection).
+ *
+ * <p>Two input layouts are supported, chosen in the dialog and differing only in where the
+ * images and Z values come from — {@link FolderProjectionSource} (one sub-folder per Z depth,
+ * Z from the folder names) and {@link ProjectionStackScanner} (one multi-slice TIFF per
+ * timepoint, Z from the slice labels). Both arrive here as a {@link ProjectionSource}, so
+ * everything downstream of the scan — projection, export, output layout — is shared.
  */
 public class ZProjectorPlugin implements PlugIn {
 
@@ -47,17 +55,15 @@ public class ZProjectorPlugin implements PlugIn {
         // Resolve the dataset folder(s) to process.
         List<File> datasets = resolveDatasets(cfg);
         if (datasets.isEmpty()) {
-            IJ.error("ZTracker", cfg.batch
-                    ? "No datasets with numeric Z-layer sub-folders found under:\n"
-                        + cfg.inputDir.getAbsolutePath()
-                    : "No numeric Z-layer sub-folders found in:\n" + cfg.inputDir.getAbsolutePath());
+            IJ.error("ZTracker", noDatasetsMessage(cfg));
             return;
         }
 
         String depthStr = (cfg.write16Bit && cfg.write32Bit) ? "16+32-bit"
                         : cfg.write16Bit ? "16-bit" : "32-bit";
-        IJ.log(String.format("[ZProjector] Projection(s): %s | Scope: %s | Z-origin: %s | %d dataset(s)",
-                cfg.modes, cfg.batch ? "batch" : "single", depthStr, datasets.size()));
+        IJ.log(String.format("[ZProjector] Projection(s): %s | Input: %s | Scope: %s | Z-origin: %s | %d dataset(s)",
+                cfg.modes, cfg.stackInput ? "TIFF stacks" : "Z-layer sub-folders",
+                cfg.batch ? "batch" : "single", depthStr, datasets.size()));
 
         // Each requested projection × each dataset is one unit of work. Running both
         // projections writes into separate max_z / min_z output trees, so they never collide.
@@ -86,8 +92,9 @@ public class ZProjectorPlugin implements PlugIn {
 
     /**
      * Single scope → the input folder itself is the dataset. Batch scope → each
-     * sub-folder that scans as a valid dataset (numeric z-layers), skipping the tool's
-     * own {@code min_z}/{@code max_z} output roots.
+     * sub-folder that scans as a valid dataset for the chosen input type (numeric z-layer
+     * sub-folders, or TIFF stacks sitting directly inside), skipping the tool's own
+     * {@code min_z}/{@code max_z} output roots.
      */
     private static List<File> resolveDatasets(ZProjectorDialog.Config cfg) {
         if (!cfg.batch) {
@@ -100,10 +107,34 @@ public class ZProjectorPlugin implements PlugIn {
             for (File sub : subs) {
                 String name = sub.getName();
                 if (name.equals("min_z") || name.equals("max_z")) continue; // our own output roots
-                if (ProjectionInputScanner.isDataset(sub)) out.add(sub);
+                boolean isDataset = cfg.stackInput
+                        ? ProjectionStackScanner.isDataset(sub)
+                        : ProjectionInputScanner.isDataset(sub);
+                if (isDataset) out.add(sub);
             }
         }
         return out;
+    }
+
+    /** The "nothing to do" message, worded for the chosen input type and scope. */
+    static String noDatasetsMessage(ZProjectorDialog.Config cfg) {
+        String path = cfg.inputDir.getAbsolutePath();
+        if (cfg.stackInput) {
+            return cfg.batch
+                    ? "No datasets containing TIFF stacks found under:\n" + path
+                    : "No .tif stacks found in:\n" + path;
+        }
+        return cfg.batch
+                ? "No datasets with numeric Z-layer sub-folders found under:\n" + path
+                : "No numeric Z-layer sub-folders found in:\n" + path;
+    }
+
+    /** Opens a dataset in whichever layout the user selected. */
+    private static ProjectionSource openSource(File datasetDir, ZProjectorDialog.Config cfg)
+            throws IOException {
+        return cfg.stackInput
+                ? ProjectionStackScanner.scanDataset(datasetDir)
+                : FolderProjectionSource.scanDataset(datasetDir);
     }
 
     /**
@@ -129,7 +160,7 @@ public class ZProjectorPlugin implements PlugIn {
 
     private static void processDataset(File datasetDir, ZProjectorDialog.Config cfg, ZProjector.Mode mode)
             throws Exception {
-        DatasetScan scan = ProjectionInputScanner.scanDataset(datasetDir);
+        ProjectionSource source = openSource(datasetDir, cfg);
 
         String modeFolder = (mode == ZProjector.Mode.MAX_Z) ? "max_z" : "min_z";
         String rawPrefix  = modeFolder + "_projection_";
@@ -142,28 +173,31 @@ public class ZProjectorPlugin implements PlugIn {
         if (cfg.write32Bit) z32Dir.mkdirs();
         rawDir.mkdirs(); // raw projection is always written
 
-        ProjectionExporter.writeMappings(datasetOutDir, scan.zValues, cfg.write16Bit, cfg.write32Bit);
-        IJ.log(String.format("[ZProjector] %s '%s': %d z-layers (%s … %s), %d timepoint(s) → %s",
-                mode, datasetDir.getName(), scan.zLayerNames.size(),
-                scan.zLayerNames.get(0), scan.zLayerNames.get(scan.zLayerNames.size() - 1),
-                scan.timepointFilenames.size(), datasetOutDir.getAbsolutePath()));
+        List<String> zLayerNames = source.zLayerNames();
+        List<String> timepoints  = source.timepointLabels();
 
-        int total = scan.timepointFilenames.size();
+        ProjectionExporter.writeMappings(datasetOutDir, source.zValues(), cfg.write16Bit, cfg.write32Bit);
+        IJ.log(String.format("[ZProjector] %s '%s': %d z-layers (%s … %s), %d timepoint(s) → %s",
+                mode, datasetDir.getName(), zLayerNames.size(),
+                zLayerNames.get(0), zLayerNames.get(zLayerNames.size() - 1),
+                timepoints.size(), datasetOutDir.getAbsolutePath()));
+
+        int total = timepoints.size();
         int skipped16 = 0;
         for (int t = 0; t < total; t++) {
-            String filename = scan.timepointFilenames.get(t);
+            String filename = timepoints.get(t);
             IJ.showStatus("Projecting " + mode + " " + datasetDir.getName() + " — " + filename);
             IJ.showProgress(t, total);
 
-            TimepointStack ts;
+            ProjectionSource.Projected projected;
             try {
-                ts = ProjectionInputScanner.loadTimepoint(scan, filename);
+                projected = source.projectTimepoint(mode, filename);
             } catch (Exception e) {
                 IJ.log("[ZProjector]   skipped timepoint '" + filename + "': " + e.getMessage());
                 continue;
             }
 
-            ZProjector.Result result = ZProjector.project(mode, ts.slices, ts.globalZIndex);
+            ZProjector.Result result = projected.result;
 
             if (cfg.write16Bit) {
                 boolean wrote16 = ProjectionExporter.write16BitOrigin(z16Dir, filename, result.zOriginIndex);
@@ -181,7 +215,7 @@ public class ZProjectorPlugin implements PlugIn {
                 ProjectionExporter.write32BitOrigin(z32Dir, filename, result.zOriginIndex);
             }
             ProjectionExporter.writeRaw(rawDir, rawPrefix, filename,
-                    result.projection, ts.sourceBitDepth);
+                    result.projection, projected.sourceBitDepth);
         }
         IJ.showProgress(1.0);
 

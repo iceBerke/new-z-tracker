@@ -45,7 +45,10 @@ ZTracker_Fiji/
     │   │   ├── extractor/ZMappingLoader.java      ← Tool 2: JSON index→Z parsing (no external lib)
     │   │   ├── extractor/TiffStackLoader.java     ← Tool 2: indexed TIFF folder loader with frame→index map (int pixels)
     │   │   ├── topoj/TopoJStackLoader.java        ← Tool 3: 32-bit float TIFF loader (Z in µm, un-rounded); frameView() adapts to LoadedStack for FrameAligner reuse
-    │   │   └── projector/ProjectionInputScanner.java ← Tool 1: discovers z-layer/timepoint folders; streams one timepoint at a time
+    │   │   ├── projector/ProjectionSource.java    ← Tool 1: layout-agnostic contract both input types feed (project one timepoint)
+    │   │   ├── projector/ProjectionInputScanner.java ← Tool 1 input A: discovers z-layer/timepoint folders; streams one timepoint at a time
+    │   │   ├── projector/FolderProjectionSource.java ← Tool 1 input A: ProjectionSource adapter over the scanner above (leaves it untouched)
+    │   │   └── projector/ProjectionStackScanner.java ← Tool 1 input B: one TIFF stack per timepoint (slices = Z layers, Z from the slice labels); streams slices on demand
     │   ├── core/
     │   │   ├── FrameAligner.java                  ← shared: CSV-to-TIFF offset suggestion + per-track alignment reporting
     │   │   ├── ZAggregator.java                   ← shared: median / mean aggregation
@@ -54,7 +57,7 @@ ZTracker_Fiji/
     │   │   ├── topoj/TopoJSampler.java            ← Tool 3: same geometry over a float stack; sampled value is Z directly
     │   │   └── topoj/TopoJExtractor.java          ← Tool 3: identity Z (no index→Z lookup); reuses ZExtractor.MethodCombo/resolveComboOutputDir
     │   ├── project/
-    │   │   └── ZProjector.java                    ← Tool 1: min/max projection + per-pixel z-origin index map (I/O-free)
+    │   │   └── ZProjector.java                    ← Tool 1: min/max projection + per-pixel z-origin index map (I/O-free); Accumulator = same result, fed one slice at a time
     │   ├── export/
     │   │   ├── NpyExporter.java                   ← shared: writes [X,Y,Z,T] .npy (pure Java, no Python)
     │   │   ├── FijiPointsExporter.java            ← shared: Results Table CSV + ROI Manager .zip
@@ -142,6 +145,17 @@ here by one `ZProjector.Mode`).
 
 ### Input layout
 
+Two input types are supported, chosen by the dialog's **Input type** dropdown. They differ only
+in how the raw Z-stack is stored on disk and where each layer's physical Z comes from —
+everything downstream (projection, tie-breaking, output tree, JSON mapping) is identical.
+
+| Input type | One timepoint is | Z comes from |
+|---|---|---|
+| **Z-layer sub-folders** (default) | one TIFF **per Z-layer folder**, sharing a filename | the sub-folder names (`-300`, `-299`, …) |
+| **TIFF stacks** | one **multi-slice TIFF file**, its slices being the Z layers | each slice's ImageJ label (`z = -400.000`) |
+
+#### Input type A — Z-layer sub-folders
+
 A **dataset** is a folder whose sub-folders are named by their physical Z value, each
 containing one `.tif` per timepoint (the filename is the timepoint id, shared across layers).
 
@@ -178,6 +192,53 @@ Sub-folder names are parsed as numbers and sorted numerically (negatives and gap
 A timepoint absent from some layers is supported — only the present layers are stacked, and
 the winner's **global** layer index (its position in the full sorted list) is what gets recorded.
 
+#### Input type B — TIFF stacks (one file per timepoint)
+
+Here a **dataset** is a folder holding the per-timepoint TIFF *stacks* directly — each file is
+one timepoint, and the slices inside it are that timepoint's Z layers (the `t/z` file structure
+Fiji produces when you save a Z-stack per frame):
+
+```
+<input folder>/                 ← select this (Scope = Single dataset)
+├── 00001.tif                   ← timepoint 1: a multi-slice stack, one slice per Z layer
+├── 00002.tif                   ← timepoint 2, same Z layers
+└── ...
+```
+
+**Scope = Batch** works the same as for input type A — select a parent folder, and every
+sub-folder holding TIFFs is processed as its own dataset (`min_z`/`max_z` output folders skipped):
+
+```
+<input folder>/                 ← select this (Scope = Batch)
+├── datasetA/   00001.tif, 00002.tif, ...
+├── datasetB/   00001.tif, ...
+└── ...
+```
+
+Filenames are ordered by the integer they **end with**, so any zero-padding width works
+(`00001.tif`, `7.tif`, `00010.tif` sort numerically, not lexicographically), and the filename
+carries straight through to the outputs (`00001.tif` → `z_origin_00001.tif`).
+
+**Where Z comes from.** There are no Z-named folders here, so each layer's physical Z (µm) is
+read from the **ImageJ slice label** — the `z = -400.000` form Fiji writes for a Z stack (a
+label that is just a bare number works too). Layers are then sorted **ascending by Z**, exactly
+as the folder layout sorts its Z-named sub-folders, so the JSON mapping's `index → Z` ordering
+and the tie-breaking rule are identical for both input types no matter what order the slices sit
+in inside the file. A slice label with no readable Z is **rejected with a clear message** rather
+than guessed at — a silently mislabelled depth would corrupt every downstream Z coordinate.
+
+The dataset's Z layers are taken from its **first** stack; every later timepoint is checked
+against them. A timepoint covering only *some* of those layers is fine (the same way a timepoint
+can be absent from some Z folders in input type A) — its slices keep their global Z indices. A
+timepoint naming a depth the dataset has no layer for is skipped with a logged reason.
+
+> **Memory.** One timepoint here is one large file — a 401-slice 1051×1674 stack is ~700 MB, and
+> holding every slice as floats at once would need ~2.8 GB. So slices are read **one at a time**
+> from a virtual (on-demand) stack and folded straight into `ZProjector.Accumulator`, keeping
+> peak memory at roughly one slice plus two full-frame buffers. That real 401-slice timepoint
+> projects in ~2 s inside a **512 MB** heap. Files that can't be opened virtually (e.g.
+> compressed TIFFs) fall back to a normal in-memory open.
+
 ### The dialog
 
 A single modeless AWT dialog (same folder pickers as the extractor's Step 1 / Step 6),
@@ -185,8 +246,9 @@ in top-to-bottom order:
 
 | Field | Choices |
 |-------|---------|
-| Scope | **Single dataset** (the input folder is the dataset above) / **Batch** (the input folder holds many such datasets) — asked first, so it's clear what the input folder should point at |
-| Input folder | The folder matching the chosen scope. |
+| Input type | **Z-layer sub-folders** (default — one folder per Z depth, one TIFF per timepoint inside) / **TIFF stacks** (one file per timepoint; the file's slices are the Z layers) — asked first, since it decides what a dataset looks like on disk |
+| Scope | **Single dataset** (the input folder is one dataset) / **Batch** (the input folder holds many datasets) — a live description line below spells out the exact structure expected for the chosen input type × scope |
+| Input folder | The folder matching the chosen input type and scope. |
 | Output folder | Where the output tree is written. |
 | Projection | **Max-Z** (brightest pixel per position wins) / **Min-Z** (darkest wins) / **Both** |
 | Z-origin bit depth | **16-bit** (default — smaller & faster; indices up to 65,535) / **32-bit** (always safe) / **Both** |
@@ -533,6 +595,7 @@ Fully compatible with the existing Python smoothing and visualization scripts.
 
 | Version | Description |
 |---------|-------------|
+| p10.0 | **Tool 1 (Z-Projection + Origin Map) accepts a second input type: per-timepoint TIFF stacks.** A new **Input type** dropdown (defaulting to the existing Z-layer sub-folders, so nothing changes unless you pick otherwise) lets a dataset instead be a folder of multi-slice TIFFs — one file per timepoint, its slices being the Z layers (the `t/z` structure). Both scopes (single/batch), every dialog option, and the entire output tree are unchanged, so the projection still feeds Tool 2 exactly as before. Since there are no Z-named folders, each layer's Z (µm) is read from the **ImageJ slice label** (`z = -400.000`, or a bare number), sorted ascending like the folder layout's sub-folders — a label with no readable Z is rejected with a clear message rather than guessed at. New `io/projector/ProjectionSource` is the layout-agnostic contract both input types feed; `FolderProjectionSource` adapts the existing `ProjectionInputScanner` (left byte-for-byte unchanged) and `ProjectionStackScanner` implements the new one. Because one stack timepoint can be ~700 MB (and ~2.8 GB once every slice is a float array), the stack path reads slices **on demand** from a virtual stack straight into the new `ZProjector.Accumulator` — same result as `ZProjector.project`, fed one slice at a time — which keeps peak memory at a few tens of MB: a real 401-slice 1051×1674 timepoint projects in ~2 s inside a 512 MB heap. New tests: `ProjectionStackScannerTest` (Z-from-labels incl. rejection cases, numeric timepoint ordering, partial-layer timepoints, unsigned 8/16-bit and float reads, virtual-vs-in-memory agreement, plus a seam test reading the exported result back through Tool 2's `TiffStackLoader` + `ZMappingLoader`) and `ZProjectorAccumulatorTest` (accumulator ≡ `project`, incl. tie-breaking and global indices). Tools 2 and 3 untouched |
 | p9.4 | **Tool 3 (TopoJ / direct-Z) filename flexibility.** `TopoJStackLoader` now takes each frame index from the integer the filename **ends with** — any prefix, any zero-padding width, none of it hard-coded (`frame7.tif`, `topoj_0007.tif`, `height_map_00000100.tif` all resolve correctly). It strips the extension and anchors the match to the end of the base name (`(\d+)$`) instead of Tool 2's "last digit run anywhere", and — because anchoring can genuinely find no number — **rejects** any file that doesn't end with an integer with a clear message, rather than silently collapsing it to frame 0 (where several such files would clobber each other in `frameToIdx`). Tool 2's `TiffStackLoader` is deliberately left byte-for-byte unchanged (isolate-per-tool). New `TopoJStackLoaderTest` cases cover arbitrary prefix/padding and the reject-no-trailing-integer path |
 | p9.3 | Reordered the Fiji menu registration (`plugins.config`) to **pipeline order** — Z-Projection + Origin Map (Tool 1), then 3D Z-Coordinate Extractor (Tool 2), then 3D Z-Extractor (TopoJ / direct-Z, Tool 3). Previously the generator (Tool 1, the first pipeline step) was registered last, so the actual Fiji menu contradicted every doc's stated pipeline order. Also documented `ProjectionInputScannerTest` in CLAUDE.md's Tool 1 test-suite description. No behavior change beyond the menu ordering; docs (CLAUDE.md, README, user guide) all verified consistent in pipeline order |
 | p9.2 | Added `ExtractorEquivalenceTest` + `ExtractorEquivalenceDemo` (in `ztracker.core.topoj`): a cross-tool parity proof that the indexed extractor (Tool 2) and the direct-Z/TopoJ extractor (Tool 3) run the identical protocol — build an indexed stack + JSON map and the equivalent float stack (pixel = mapped Z, NaN if unmapped), then assert `z`/`zStd`/`numSamples` and the missing/OOB/invalid tallies match across every sampling × aggregation × convention combo, with the one allowed divergence (`numUnmapped`, and the `unmapped index`↔`no data` status label) asserted explicitly; the demo prints the same comparison for eyeballing. Also removed the always-zero `numUnmapped` local from `TopoJExtractor` (it now passes a zero array at construction — the shared `ExtractionResult` field still serves Tool 2) |

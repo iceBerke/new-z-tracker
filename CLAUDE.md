@@ -46,6 +46,15 @@ some layers; plus `isDataset`/`parseZ`, all via real headless TIFF I/O), and
 TIFFs + JSON mapping and reads them back through the extractor's own `TiffStackLoader` +
 `ZMappingLoader`, proving the project→extract round-trip actually holds (it also uses ImageJ's
 real TIFF read/write headlessly, confirming that works in the test JVM).
+Tool 1's second input type (per-timepoint TIFF stacks, p10.0) adds
+`ztracker.io.projector.ProjectionStackScannerTest` (Z parsed from real slice labels including
+every rejection case, ascending-Z sort with slices stored out of order in the file, numeric
+timepoint ordering across padding widths, partial-layer timepoints keeping their global indices,
+**unsigned** 8-/16-bit and exact 32-bit float pixel reads, virtual-vs-in-memory read agreement,
+and its own **seam test** projecting a stack dataset and reading the exported result back through
+`TiffStackLoader` + `ZMappingLoader`) and `ztracker.project.ZProjectorAccumulatorTest` (the
+`Accumulator` ≡ `ZProjector.project` parity proof over randomized tie-heavy stacks, plus
+tie-breaking, global-vs-position indices, and the buffer-reuse contract the scanner relies on).
 
 `src/test/java/ztracker/core/Step4AlignmentDemo.java` is a **runnable walkthrough** (not a test —
 it has a `main`, no `@Test`, so Surefire ignores it but it stays compiled against the real
@@ -117,10 +126,14 @@ The JAR registers **three tools** under `Plugins > ZTracker`:
 Numbering follows **pipeline order** (produce → extract), not creation order.
 
 **Tool 1 — Z-Projection + Origin Map (`ZProjectorPlugin`, added p8.0).** The upstream
-*producer* of Tool 2's inputs. From a raw Z-stack (a folder of Z-layer sub-folders named by
-their physical Z value, each holding one TIFF per timepoint), it computes a min-Z or max-Z
+*producer* of Tool 2's inputs. From a raw Z-stack it computes a min-Z or max-Z
 intensity projection and, per pixel, tracks **which Z-layer won** (`argmax`/`argmin`) as an
-integer index. It writes the indexed z-origin TIFFs (16-bit and/or 32-bit, user-selectable —
+integer index. Two **input types** are accepted (dialog dropdown, default = the first):
+a folder of **Z-layer sub-folders** named by their physical Z value, each holding one TIFF per
+timepoint (Z from the folder names); or a folder of per-timepoint **TIFF stacks** — one
+multi-slice file per timepoint whose slices are the Z layers, with Z read from the ImageJ slice
+labels (added p10.0, see the Tool 1 input types section below). Everything downstream of the
+scan is shared, so both produce the identical output tree. It writes the indexed z-origin TIFFs (16-bit and/or 32-bit, user-selectable —
 default 16-bit) plus the matching `index → Z` JSON mapping — i.e. exactly what Tool 2 loads. Native-Java port of
 `max_z_projection_plus_z_tracking_v2.py` / `min_z_projection_plus_z_tracking_v2.py` (the two
 scripts differ only in min vs max, captured by one `ZProjector.Mode`).
@@ -190,10 +203,11 @@ Other outputs: `FijiPointsExporter` writes one `PointROI` per detection (named `
 There are **three `PlugIn` entry points**, all thin orchestrators with no business logic.
 
 `ZProjectorPlugin` (Tool 1, added p8.0) is the simpler one: show `ZProjectorDialog` → resolve
-the dataset(s) (single = the picked folder; batch = each sub-folder that scans as a dataset,
-skipping the tool's own `min_z`/`max_z` output roots) → for each dataset, `ProjectionInputScanner`
-discovers z-layers/timepoints, then **streams one timepoint at a time** (RAM-friendly, matching
-the Python script): load its z-stack, `ZProjector.project` computes the projection + z-origin
+the dataset(s) (single = the picked folder; batch = each sub-folder that scans as a dataset for
+the chosen input type, skipping the tool's own `min_z`/`max_z` output roots) → for each dataset,
+open it as a `ProjectionSource` (which discovers z-layers/timepoints), then **streams one
+timepoint at a time** (RAM-friendly, matching
+the Python script): `ProjectionSource.projectTimepoint` returns the projection + z-origin
 index map, `ProjectionExporter` writes the z-origin TIFF(s) at the selected bit depth(s) (16-bit
 and/or 32-bit — default 16-bit; a single depth ~halves the per-timepoint write work), the matching
 JSON mapping(s), and the 8-bit raw projection (always written). If 16-bit is chosen alone and an
@@ -207,6 +221,38 @@ It reuses no `ZTrackerPlugin`/`ZTrackerDialog` code (the shared
 folder-picker layout is deliberately **duplicated**, not extracted, so the extractor UI is
 untouched) but does reuse the `io`/`model` format contracts so its output loads straight back
 into Tool 2.
+
+#### Tool 1's two input types (`ProjectionSource`)
+
+Both layouts implement `io.projector.ProjectionSource`, whose unit of work is **project one
+timepoint** (not "load one timepoint") — that is what lets the stack layout stream without ever
+holding a whole timepoint in memory, while leaving the folder layout's behaviour identical:
+
+- **`FolderProjectionSource`** (input type A, the default) — a thin adapter over the original
+  `ProjectionInputScanner`, which is left **byte-for-byte unchanged**. Every timepoint still goes
+  `loadTimepoint` → `ZProjector.project`, so adding input type B cannot alter type A's results
+  or memory profile.
+- **`ProjectionStackScanner.StackScan`** (input type B, added p10.0) — one multi-slice TIFF per
+  timepoint, slices = Z layers. Z comes from the **ImageJ slice labels** (`z = -400.000`, or a
+  label that is nothing but a number); layers are sorted **ascending by Z**, matching how type A
+  sorts its Z-named sub-folders, so the JSON mapping's ordering *and* the ties→lowest-Z rule are
+  identical for both types regardless of slice order in the file. A label with no readable Z is
+  **rejected with a clear message** — `parseZLabel` deliberately refuses to mine a stray number
+  out of arbitrary text, because a confidently wrong depth is far worse than a hard failure.
+  The dataset's Z layers come from its **first** stack; a later timepoint may cover a subset of
+  them (keeping global indices, exactly like a timepoint absent from some Z folders in type A),
+  but one naming an unknown depth is skipped with a logged reason.
+
+**Memory is the reason the stack path exists in this shape.** A single 401-slice 1051×1674
+timepoint is ~700 MB on disk and would be ~2.8 GB held as `float[][]` per slice, so
+`ProjectionStackScanner` reads slices **on demand** from a `FileInfoVirtualStack` and folds each
+into `ZProjector.Accumulator` (the incremental form of `ZProjector.project` — same strict
+comparison, so first-added wins ties; parity locked in by `ZProjectorAccumulatorTest`), reusing
+one `float[][]` buffer across slices. Peak memory is then ~one slice + two full-frame buffers:
+that real timepoint projects in ~2 s inside a 512 MB heap. Files that can't be opened virtually
+(compressed, multi-IFD) fall back to a plain `IJ.openImage`. `readInto` goes straight to the
+backing `byte[]`/`short[]`/`float[]` pixel array (masking to **unsigned** for the integer types)
+rather than per-pixel `getf`, since a deep stack multiplies 1.7 M pixels by hundreds of slices.
 
 `ZTrackerPlugin` (Tool 2) wires together the extraction pipeline and dialog, **interleaving the
 multi-step dialog with I/O** so each user choice is validated against loaded data before the next step is shown:
@@ -238,17 +284,22 @@ Keep the package layout clean — `model` / `io` / `core` / `project` / `export`
   dialog stays byte-for-byte unchanged), with one substantive difference: **Step 1 collects only
   the TIFF folder + CSV** — there is no JSON-mapping picker. Steps 2–6 are identical, and Step 4
   reuses `FrameAligner` against `LoadedFloatStack.frameView()`.
-  `projector.ZProjectorDialog` (Tool 1) is a single modeless AWT `Dialog` in the same style — a scope
-  `Choice` (single/batch) asked **first**, then input/output `DirectoryChooser` pickers via a
+  `projector.ZProjectorDialog` (Tool 1) is a single modeless AWT `Dialog` in the same style — an
+  input-type `Choice` (Z-layer sub-folders / TIFF stacks) asked **first**, then a scope
+  `Choice` (single/batch), then a gray **structure line** that live-updates from both choices to
+  spell out exactly what the input folder must contain (`describeStructure`; the dialog is packed
+  while that label holds its widest text, since an AWT `Label` never grows after `pack()`), then
+  input/output `DirectoryChooser` pickers via a
   **copy** of `addInputGroup` (duplicated here on purpose so `ZTrackerDialog` is byte-for-byte
-  unchanged; the input folder needs no description since scope already frames it), then a
+  unchanged; the input folder needs no description of its own since the structure line covers it), then a
   projection `Choice` (Max-Z / Min-Z / **Both**) and a Z-origin bit-depth `Choice` (16-bit /
   32-bit / **Both**, default 16-bit). There is no raw-projection toggle — the 8-bit raw is always
   written. `Config.modes` is a `List<ZProjector.Mode>` (one entry, or both); `Config.write16Bit`/
-  `write32Bit` carry the bit-depth selection (at least one always true).
-- `ztracker.io` — input loaders. Shared at root: `TrackCsvLoader`. `extractor.ZMappingLoader` + `extractor.TiffStackLoader` (indexed loaders, Tool 2); `topoj.TopoJStackLoader` (Tool 3's 32-bit float stack); `projector.ProjectionInputScanner` (Tool 1's z-layer/timepoint folder structure).
+  `write32Bit` carry the bit-depth selection (at least one always true); `Config.stackInput`
+  carries the input type (`false` = z-layer sub-folders, the default).
+- `ztracker.io` — input loaders. Shared at root: `TrackCsvLoader`. `extractor.ZMappingLoader` + `extractor.TiffStackLoader` (indexed loaders, Tool 2); `topoj.TopoJStackLoader` (Tool 3's 32-bit float stack); `projector.ProjectionSource` (Tool 1's layout-agnostic input contract) with its two implementations `projector.ProjectionInputScanner` + `projector.FolderProjectionSource` (z-layer/timepoint folder structure) and `projector.ProjectionStackScanner` (per-timepoint TIFF stacks).
 - `ztracker.core` — extraction logic. Shared at root: `FrameAligner` + `ZAggregator`. `extractor.ZSampler` + `extractor.ZExtractor` (Tool 2); `topoj.TopoJSampler` + `topoj.TopoJExtractor` (Tool 3 — duplicates of the sampler/extractor geometry over a float stack, values taken as Z directly).
-- `ztracker.project` — projection logic (`ZProjector`: I/O-free min/max projection + per-pixel z-origin index map). Tool 1's counterpart to `core`; no subpackage since it's entirely Tool 1's.
+- `ztracker.project` — projection logic (`ZProjector`: I/O-free min/max projection + per-pixel z-origin index map, plus `ZProjector.Accumulator`, the incremental one-slice-at-a-time form used by the TIFF-stack input). Tool 1's counterpart to `core`; no subpackage since it's entirely Tool 1's.
 - `ztracker.export` — output writers. Shared at root: `NpyExporter`, `FijiPointsExporter`, `TrackExportManager`. `projector.ProjectionExporter` (Tool 1's z-origin TIFFs + JSON mappings + raw projection).
 - `ztracker.model` — data containers (`TrackData`, `ExtractionResult`) — shared, at root.
 
@@ -298,6 +349,9 @@ the same reason its extraction is deduped. A single chosen method still exports 
 
 - **AWT Label.getFont() returns null before peer creation.** Calling `getFont().deriveFont(...)` on a freshly constructed `Label` that hasn't been added to a visible container will NPE. Always null-check and fall back to `new Font(Font.DIALOG, Font.PLAIN, 12)` before deriving a style.
 - **Frame indexing mismatch.** Tracking CSVs are often 0-indexed while TIFF files start at frame 1. `FrameAligner` handles a configurable offset; the most common correct value is **+1**. **Always preserve the offset confirmation/preview step** in the dialog — silent misalignment corrupts results. The offset *suggestion* is start-anchored (`suggestOffset` = firstTiff − minCsvFrame) and is only a hint — the user confirms. The offset is a single constant applied to every detection, so the correctness test is per-frame: does `frame + offset` land on an existing TIFF for every detection (`missingFrameCount`)? **Do NOT infer a bad offset from the CSV frame range being shorter than the TIFF range** — a track that covers only part of the recording is normal (a cell appears then vanishes), so an end-anchored `lastTiff − maxCsvFrame` heuristic false-alarms and was removed. Instead, `validate` reports alignment **per track** (`AlignmentReport.perTrack`: each track's frame span, detection count, and how many detections map to a missing TIFF). The step-4 UI is a single custom AWT dialog that **live-updates** as the user edits the offset: the compact in-box verdict comes from `perTrackAlignment` + `buildBoxSummary`. So the user can **verify before confirming**, the full per-track table (capped at 50 rows — each track's span plus how its first/last frame maps) is written to the Fiji log via `validate` **once per distinct offset actually evaluated** (deduped against the last-logged offset, so keystrokes within one number don't re-dump), starting with the suggested offset when the box opens; on confirm it logs the table again under a `CONFIRMED` header. The confirm checkbox default tracks `all tracks fully mapped`. The dialog is **modeless** (blocks the plugin thread with a `CountDownLatch`, not by AWT modality) so the Log window stays interactive/resizable while it is open. Per-track rows are ordered by **track id** — numerically when the ids parse as integers (so `10` sorts after `2`, not lexicographically before it), otherwise lexicographically.
+- **Tool 1's TIFF-stack input must stay streaming — do not "simplify" it into load-all-then-project.** `ProjectionStackScanner.projectTimepoint` deliberately reads slices one at a time from a virtual stack into `ZProjector.Accumulator` instead of building a `List<float[][]>` and calling `ZProjector.project`. That is not stylistic: one real timepoint is a 401-slice 1051×1674 stack (~700 MB on disk, ~2.8 GB as floats), and the streaming form runs it in ~2 s inside a **512 MB** heap. The folder input type keeps the load-then-`project` path precisely because its timepoints are assembled from separate small files. Related traps in the same method: slices are folded in **ascending-Z** order (not file order) so ties resolve to the lowest Z exactly as the folder layout does — reordering that silently changes which depth a flat/saturated region reports; and the single reused `float[][]` buffer is only safe because `Accumulator.add` **copies** (covered by `accumulator_copiesEachSlice_soCallersCanReuseOneBuffer`).
+- **Reading pixels straight from the backing array needs unsigned masking — `byte`/`short` are signed in Java.** `ProjectionStackScanner.readInto` bypasses `ImageProcessor.getf` for speed (a deep stack is hundreds of millions of pixel reads) by going to the `byte[]`/`short[]`/`float[]` directly, which means intensity 200 in an 8-bit image arrives as `-56` and 40000 in a 16-bit image arrives negative unless masked with `& 0xff` / `& 0xffff`. Both are regression-tested (`projectTimepoint_reads8BitValuesUnsigned_notSignExtended`, `..._reads16BitValuesUnsigned_...`). `getf` — what the folder input type uses — already does this masking internally, which is why that path never had to think about it.
+- **Z for the TIFF-stack input comes from slice labels only, and unreadable labels must stay a hard error.** `ProjectionStackScanner.parseZLabel` accepts ImageJ's `z = -400.000` form (anywhere in a possibly multi-line label) or a label that is *nothing but* a number, and returns `null` for anything else — which fails the whole dataset with a message naming the offending slice. It deliberately does **not** fall back to "the first/last number found in the text": a label like `00001-0003.tif` would then yield a confidently wrong depth, silently corrupting every Z coordinate downstream, which is far worse than refusing to run. The calibration (`pixelDepth`/`unit`) is *not* consulted — real Fiji Z-stacks in this pipeline carry `pixelDepth=1.0`/`unit=null` while holding the true depths in the labels, so trusting calibration would look like it worked and be wrong.
 - **16-bit and 32-bit indexed TIFFs.** `TiffStackLoader` stores pixels as `int[][][]`. 16-bit frames read via `ImageProcessor.getPixel(x, y)`, which already returns the correct unsigned `0–65535` value. 32-bit frames are backed by a `FloatProcessor`, so indices are read via `getf(x, y)` and rounded with `Math.round()` — using `getPixel` on a float processor truncates toward zero and can be off-by-one. Mixed bit depths within one folder are rejected with a clear error; only 16-bit and 32-bit are supported (8-bit and 24-bit RGB are rejected).
 - **CSV variety.** TrackMate CSVs have a header row followed by **3 metadata rows that must be skipped**. But not all inputs are TrackMate — some come from other trackers (e.g. columns `Track n°`, `Slice n°`, 1-based frames, latin-1 encoding, no metadata rows). Keep column detection **alias-based and tolerant**, not hard-coded to TrackMate.
 - **Frame-number extraction uses the LAST digit run in the filename, not the first.** `TiffStackLoader.extractFrameNumber` (Tool 2) must not just take the first regex match — filenames can contain incidental numbers before the real frame index (e.g. `z_origin_32bit_0007.tif`, where "32" from "32bit" is not the frame number). Taking the first match collapses every file to the same detected frame. **Tool 3 (`TopoJStackLoader`) does this more strictly on purpose** — for filename flexibility it anchors the frame index to the integer the base name (extension stripped) **ends with** (`(\d+)$`): any prefix, any zero-padding width (not hard-coded — `frame7.tif`, `topoj_0007.tif`, `height_map_00000100.tif` all work). Because it anchors to the end rather than "last run anywhere", it does **not** silently fall back to frame 0 for a name with no trailing integer (which would let several such files clobber each other in `frameToIdx`); it **rejects** them with a clear message up front. Tool 2's looser behavior is deliberately left byte-for-byte unchanged (isolate-per-tool).

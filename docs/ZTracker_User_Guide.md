@@ -24,8 +24,11 @@ Both share every other step (frame offset, sampling, export). Pick the one that 
 
 Makes the two inputs Part 2 needs, starting from a raw Z-stack. Open it via **Plugins > ZTracker > Z-Projection + Origin Map**.
 
-**What it needs:** a **dataset folder** whose sub-folders are named by their depth in µm (e.g.
-`-300`, `-299`, …), each holding one TIFF per time frame (same filename across depths):
+**What it needs:** a **dataset folder** holding your raw Z-stack, in either of two layouts — you
+say which with the **Input type** dropdown.
+
+_Input type = **Z-layer sub-folders**_ (the default): sub-folders named by their depth in µm
+(e.g. `-300`, `-299`, …), each holding one TIFF per time frame (same filename across depths):
 
 ```
 dataset/
@@ -34,10 +37,28 @@ dataset/
 └── ...
 ```
 
+_Input type = **TIFF stacks**_: one multi-slice TIFF **per time frame**, sitting straight in the
+folder — the slices inside each file are the depths:
+
+```
+dataset/
+├── 00001.tif     ← time frame 1, one slice per depth
+├── 00002.tif     ← time frame 2
+└── ...
+```
+
+Any numbering works (`00001.tif`, `7.tif`, `img_0010.tif`) — files are ordered by the number they
+**end with**. With this layout the depths are read from each slice's label inside the file (the
+`z = -400.000` labels Fiji writes for a Z-stack), since there are no depth-named folders to read
+them from. If a slice's label has no depth in it, the tool stops and tells you which slice —
+better that than quietly using a wrong depth.
+
 **In the dialog** you pick, top to bottom:
 
-- **Scope** (asked first) — _Single dataset_ (the folder above) or _Batch_ (a folder holding many
-  such datasets). This tells you what the input folder should be.
+- **Input type** (asked first) — _Z-layer sub-folders_ or _TIFF stacks_, as above.
+- **Scope** — _Single dataset_ (one dataset folder) or _Batch_ (a folder holding many such
+  datasets). A grey line under it spells out exactly what your input folder should contain for
+  the combination you picked.
 - **Input folder** and **Output folder**.
 - **Projection** — _Max-Z_ (keeps the **brightest** pixel at each position — the usual choice for
   fluorescence), _Min-Z_ (keeps the **darkest**), or _Both_ (runs both, into separate `max_z` and
@@ -60,6 +81,13 @@ output folder; in Batch these are grouped one level down under a `max_z` / `min_
 :::tip
 The 16-bit and 32-bit depth images hold the same information — use 16-bit unless you have more
 than ~65,000 Z-layers (essentially never), in which case use the 32-bit set.
+:::
+
+:::tip
+Both input types produce **exactly the same output**, so Part 2 doesn't care which one you used.
+Big TIFF stacks are fine too — the tool reads one slice at a time rather than loading the whole
+file, so a 400-slice, 700 MB time frame goes through in a couple of seconds without needing a
+large memory setting in Fiji.
 :::
 
 The `z_origin` folder + `z_layer_mapping.json` this makes are exactly what Part 2 reads next.
@@ -168,6 +196,8 @@ Not sure which one you have? If your projection folder came with a `z_layer_mapp
 | Plugin not in the menu | Restart Fiji, or use `Help > Refresh Menus`. |
 | Nothing seems to export | Make sure at least one format is ticked in **Step 6**, and read `export_report.txt`. |
 | "requires 32-bit float TIFFs" error | You opened the **TopoJ / direct-Z** extractor with indexed images — use the standard **3D Z-Coordinate Extractor** (with its JSON map) instead. |
+| Part 1: "no Z-layer sub-folders" or "no .tif stacks found" | The **Input type** doesn't match your folder — switch it (or the Scope) and check the grey structure line under Scope. |
+| Part 1: "slice has no readable Z in its label" | Your TIFF stack's slices aren't labelled with their depth (`z = -400.000`). Re-save the stack from Fiji with the depth labels, or use the Z-layer sub-folder layout instead. |
 
 ---
 

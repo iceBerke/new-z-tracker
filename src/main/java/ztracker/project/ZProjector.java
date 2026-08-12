@@ -105,4 +105,98 @@ public final class ZProjector {
         }
         return new Result(projection, zOrigin);
     }
+
+    /**
+     * Incremental form of {@link #project}: slices are fed in <em>one at a time</em> and only
+     * the running result is retained, so peak memory is two full-frame buffers
+     * ({@code float[][]} + {@code int[][]}) instead of the entire z-stack.
+     *
+     * <p>This exists for the TIFF-stack input type, where a single timepoint is one large
+     * multi-slice file — a 401-slice 1051×1674 stack is ~700 MB on disk and would be ~2.8 GB
+     * once every slice is held as {@code float[][]}. Fed from a virtual (on-demand) stack, the
+     * accumulator keeps that flat at a few tens of MB no matter how deep the stack is.
+     *
+     * <p><b>Identical results to {@link #project}</b>, given the same slices in the same order:
+     * same strict comparison, so the <em>first</em> slice added wins ties. Callers that want
+     * ties resolved toward the lowest Z (as the folder layout does, since it walks layers in
+     * ascending Z order) must add slices in ascending-Z order too. Parity is locked in by
+     * {@code ZProjectorAccumulatorTest}.
+     */
+    public static final class Accumulator {
+
+        private final boolean max;
+        private float[][] projection;
+        private int[][]   zOrigin;
+        private int width  = -1;
+        private int height = -1;
+        private int sliceCount;
+
+        public Accumulator(Mode mode) {
+            this.max = (mode == Mode.MAX_Z);
+        }
+
+        /**
+         * Folds one slice into the running projection.
+         *
+         * @param slice        intensities {@code [height][width]}; <b>only read</b>, never
+         *                     retained — the caller may reuse the same buffer for every slice
+         * @param globalZIndex this slice's global z-layer index (what lands in the z-origin map)
+         * @throws IllegalArgumentException if the slice's dimensions differ from earlier slices
+         */
+        public void add(float[][] slice, int globalZIndex) {
+            if (slice == null) {
+                throw new IllegalArgumentException("Null slice added to the projection.");
+            }
+            int h = slice.length;
+            int w = (h == 0) ? 0 : slice[0].length;
+
+            if (sliceCount == 0) {
+                width      = w;
+                height     = h;
+                projection = new float[h][w];
+                zOrigin    = new int[h][w];
+                for (int y = 0; y < h; y++) {
+                    System.arraycopy(slice[y], 0, projection[y], 0, w);
+                    java.util.Arrays.fill(zOrigin[y], globalZIndex);
+                }
+                sliceCount = 1;
+                return;
+            }
+
+            if (h != height || w != width) {
+                throw new IllegalArgumentException(
+                        "Inconsistent slice dimensions at index " + sliceCount + ": expected "
+                        + width + "x" + height + ", got " + w + "x" + h + ".");
+            }
+
+            for (int y = 0; y < height; y++) {
+                float[] row  = slice[y];
+                float[] best = projection[y];
+                int[]   org  = zOrigin[y];
+                for (int x = 0; x < width; x++) {
+                    float v = row[x];
+                    // Strict comparison — first slice added keeps the tie, as in project().
+                    if (max ? (v > best[x]) : (v < best[x])) {
+                        best[x] = v;
+                        org[x]  = globalZIndex;
+                    }
+                }
+            }
+            sliceCount++;
+        }
+
+        /** How many slices have been folded in so far. */
+        public int sliceCount() { return sliceCount; }
+
+        /**
+         * @return the projection and z-origin map accumulated so far
+         * @throws IllegalStateException if no slice was ever added
+         */
+        public Result result() {
+            if (sliceCount == 0) {
+                throw new IllegalStateException("Empty z-stack: nothing to project.");
+            }
+            return new Result(projection, zOrigin);
+        }
+    }
 }

@@ -44,6 +44,13 @@ public class ZProjectorDialog {
     public static final class Config {
         public final File inputDir;
         public final boolean batch;
+        /**
+         * Which input layout the dataset(s) use: {@code false} = one sub-folder per Z depth
+         * holding one TIFF per timepoint (the original layout, and the default);
+         * {@code true} = one multi-slice TIFF stack per timepoint, its slices being the Z
+         * layers (Z read from the slice labels).
+         */
+        public final boolean stackInput;
         /** The projection(s) to run — one of Max-Z / Min-Z, or both (in run order). */
         public final List<ZProjector.Mode> modes;
         public final File outputDir;
@@ -51,10 +58,11 @@ public class ZProjectorDialog {
         public final boolean write16Bit;
         public final boolean write32Bit;
 
-        Config(File inputDir, boolean batch, List<ZProjector.Mode> modes, File outputDir,
-               boolean write16Bit, boolean write32Bit) {
+        Config(File inputDir, boolean batch, boolean stackInput, List<ZProjector.Mode> modes,
+               File outputDir, boolean write16Bit, boolean write32Bit) {
             this.inputDir   = inputDir;
             this.batch      = batch;
+            this.stackInput = stackInput;
             this.modes      = modes;
             this.outputDir  = outputDir;
             this.write16Bit = write16Bit;
@@ -67,9 +75,12 @@ public class ZProjectorDialog {
     /** @return the collected configuration (null until {@link #showDialog()} returns true). */
     public Config getConfig() { return config; }
 
-    // Scope / projection choice labels.
-    private static final String SCOPE_SINGLE = "Single dataset  (folder holds the Z-value sub-folders directly)";
-    private static final String SCOPE_BATCH  = "Batch  (folder holds many datasets, each with its own Z-value sub-folders)";
+    // Input type / scope / projection choice labels.
+    private static final String INPUT_FOLDERS = "Z-layer sub-folders  (one folder per Z depth, one TIFF per timepoint inside)";
+    private static final String INPUT_STACKS  = "TIFF stacks  (one file per timepoint; the file's slices are the Z layers)";
+
+    private static final String SCOPE_SINGLE = "Single dataset  (the input folder is one dataset)";
+    private static final String SCOPE_BATCH  = "Batch  (the input folder holds many datasets)";
     private static final String PROJ_MAX     = "Max-Z  (brightest pixel per position)";
     private static final String PROJ_MIN     = "Min-Z  (darkest pixel per position)";
     private static final String PROJ_BOTH    = "Both  (Max-Z and Min-Z — separate max_z / min_z sub-folders)";
@@ -109,13 +120,25 @@ public class ZProjectorDialog {
         Panel grid = new Panel(new GridBagLayout());
         int row = 0;
 
-        // Scope first — it tells the user what the input folder below should point at.
+        // Input type first — it decides what a "dataset" even looks like on disk.
+        final Choice inputTypeChoice = new Choice();
+        inputTypeChoice.add(INPUT_FOLDERS);
+        inputTypeChoice.add(INPUT_STACKS);
+        row = addChoiceGroup(grid, row, true, "Input type", inputTypeChoice);
+
+        // Scope next — it tells the user what the input folder below should point at.
         final Choice scopeChoice = new Choice();
         scopeChoice.add(SCOPE_SINGLE);
         scopeChoice.add(SCOPE_BATCH);
-        row = addChoiceGroup(grid, row, true, "Scope", scopeChoice);
+        row = addChoiceGroup(grid, row, false, "Scope", scopeChoice);
 
-        // Input folder — no description; the Scope choice above already explains it.
+        // Live description of the folder structure the two choices above imply, so the
+        // input folder below is unambiguous whichever combination is picked.
+        final Label structureLbl = new Label(longestStructureDescription());
+        structureLbl.setForeground(Color.DARK_GRAY);
+        row = addDescriptionRow(grid, row, structureLbl);
+
+        // Input folder — no description of its own; the structure line above explains it.
         row = addInputGroup(grid, row, false, "Input folder", null, inBtn, inPathLbl);
 
         // Output folder.
@@ -137,6 +160,13 @@ public class ZProjectorDialog {
         depthChoice.add(DEPTH_32);
         depthChoice.add(DEPTH_BOTH);
         row = addChoiceGroup(grid, row, false, "Z-origin bit depth", depthChoice);
+
+        // Keep the structure line in step with the two choices above it.
+        final Runnable refreshStructure = () -> structureLbl.setText(describeStructure(
+                INPUT_STACKS.equals(inputTypeChoice.getSelectedItem()),
+                SCOPE_BATCH.equals(scopeChoice.getSelectedItem())));
+        inputTypeChoice.addItemListener(e -> refreshStructure.run());
+        scopeChoice.addItemListener(e -> refreshStructure.run());
 
         inBtn.addActionListener(e -> {
             DirectoryChooser dc = new DirectoryChooser("Select input folder");
@@ -174,7 +204,8 @@ public class ZProjectorDialog {
         dlg.add(headerPanel, BorderLayout.NORTH);
         dlg.add(grid,        BorderLayout.CENTER);
         dlg.add(btnPanel,    BorderLayout.SOUTH);
-        dlg.pack();
+        dlg.pack(); // packed while the structure line holds its widest text, so it never clips
+        refreshStructure.run();
         dlg.setMinimumSize(dlg.getSize());
         if (parent != null) dlg.setLocationRelativeTo(parent);
         dlg.setVisible(true); // modeless — returns immediately; block below on the latch
@@ -205,7 +236,8 @@ public class ZProjectorDialog {
             return false;
         }
 
-        boolean batch = SCOPE_BATCH.equals(scopeChoice.getSelectedItem());
+        boolean batch      = SCOPE_BATCH.equals(scopeChoice.getSelectedItem());
+        boolean stackInput = INPUT_STACKS.equals(inputTypeChoice.getSelectedItem());
 
         String proj = modeChoice.getSelectedItem();
         List<ZProjector.Mode> modes;
@@ -222,8 +254,38 @@ public class ZProjectorDialog {
         boolean write32 = DEPTH_32.equals(depth) || DEPTH_BOTH.equals(depth);
 
         outputDir.mkdirs();
-        config = new Config(inputDir, batch, modes, outputDir, write16, write32);
+        config = new Config(inputDir, batch, stackInput, modes, outputDir, write16, write32);
         return true;
+    }
+
+    // ── Structure description ─────────────────────────────────────────────────
+
+    /** What the input folder must contain, for each input type × scope combination. */
+    static String describeStructure(boolean stackInput, boolean batch) {
+        if (stackInput) {
+            return batch
+                    ? "Input folder → one sub-folder per dataset, each holding its per-timepoint TIFF stacks."
+                    : "Input folder → one multi-slice TIFF per timepoint (00001.tif, 00002.tif, …); Z comes from the slice labels.";
+        }
+        return batch
+                ? "Input folder → one sub-folder per dataset, each with its own Z-named sub-folders."
+                : "Input folder → sub-folders named by Z depth (-300, -299, …), each holding one TIFF per timepoint.";
+    }
+
+    /**
+     * The widest of the four structure descriptions. The dialog is packed while the label
+     * holds this text, so switching to any other one can never clip (an AWT {@link Label}
+     * does not grow after {@code pack()}).
+     */
+    private static String longestStructureDescription() {
+        String longest = "";
+        for (boolean stack : new boolean[]{false, true}) {
+            for (boolean batch : new boolean[]{false, true}) {
+                String s = describeStructure(stack, batch);
+                if (s.length() > longest.length()) longest = s;
+            }
+        }
+        return longest;
     }
 
     // ── Layout helpers (duplicated from ZTrackerDialog by design) ──────────────
@@ -274,6 +336,20 @@ public class ZProjectorDialog {
         c.insets = new Insets(2, 8, 4, 8);
         grid.add(pathLabel, c);
 
+        return startRow;
+    }
+
+    /**
+     * A standalone gray description line, laid out like {@code addInputGroup}'s description
+     * row. Used for the structure line, whose text changes with the choices above it.
+     */
+    private static int addDescriptionRow(Panel grid, int startRow, Label description) {
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = startRow++;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        c.insets = new Insets(2, 8, 4, 8);
+        grid.add(description, c);
         return startRow;
     }
 
