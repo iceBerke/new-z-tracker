@@ -1,0 +1,5 @@
+# Test fixtures are real acquisition files — their exact bytes are the point of the
+# tests that read them (see ProjectionStackScannerRealDataTest). Never let line-ending
+# normalisation touch them.
+*.tif binary
+*.tiff binary

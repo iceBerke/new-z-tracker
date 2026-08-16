@@ -56,6 +56,22 @@ and its own **seam test** projecting a stack dataset and reading the exported re
 `Accumulator` ≡ `ZProjector.project` parity proof over randomized tie-heavy stacks, plus
 tie-breaking, global-vs-position indices, and the buffer-reuse contract the scanner relies on).
 
+`ztracker.io.projector.ProjectionStackScannerRealDataTest` complements — does **not** replace —
+that synthetic suite by running the scanner against a **real Fiji-produced stack**:
+`src/test/resources/ztracker/io/projector/reference_stack_crop.tif`, a byte-for-byte 53×68 / 3-slice
+crop of an actual acquisition timepoint (uncompressed big-endian 8-bit, ImageJ 1.54p, `IJMetadata`
+tag, labels `z = -2.000` / `0.000` / `2.000`). This is the repo's **only** binary fixture and its
+authenticity is the whole point — **never open, convert, or re-save it**; the test asserts its exact
+size (11,385 bytes) so an accidental re-encode fails loudly instead of quietly turning it into a
+second synthetic fixture. It exists because the synthetic suite is mildly circular (it parses only
+labels `FileSaver` itself wrote), so it can't prove the acquisition pipeline's real label text,
+byte order, and metadata layout parse. It checks whole-frame projection sums and z-origin
+histograms for both modes, named pixels traced from their slices through both projections, unsigned
+8-bit reads on live data, and — the most valuable part — **tie-breaking on real pixels**: 8-bit
+acquisitions saturate, so 250 of this crop's 3604 pixels (~7%) have two or more slices sharing the
+max, making ties ordinary rather than the corner case the docs imply. Both an adjacent (layers 0,1)
+and a non-adjacent (layers 0,2) tie are asserted to resolve to the lowest Z.
+
 `src/test/java/ztracker/core/Step4AlignmentDemo.java` is a **runnable walkthrough** (not a test —
 it has a `main`, no `@Test`, so Surefire ignores it but it stays compiled against the real
 `FrameAligner`). It prints `suggestOffset` / `suggestOffsetFromEnd` / `validate` results over
