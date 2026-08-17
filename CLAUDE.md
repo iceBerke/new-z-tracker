@@ -46,6 +46,11 @@ some layers; plus `isDataset`/`parseZ`, all via real headless TIFF I/O), and
 TIFFs + JSON mapping and reads them back through the extractor's own `TiffStackLoader` +
 `ZMappingLoader`, proving the project→extract round-trip actually holds (it also uses ImageJ's
 real TIFF read/write headlessly, confirming that works in the test JVM).
+`ztracker.projector.ZProjectorPluginTest` covers `ZProjectorPlugin.resolveDatasetOutDir` — the
+p8.2 output-nesting rule that **single** scope drops the redundant projection-type grouping level
+(`<out>/max_z_<dataset>/`) while **batch** keeps it (`<out>/max_z/max_z_<dataset>/`), plus the
+`max_z`/`min_z` prefix keeping both projections' folders from colliding when they share one
+output folder.
 Tool 1's second input type (per-timepoint TIFF stacks, p10.0) adds
 `ztracker.io.projector.ProjectionStackScannerTest` (Z parsed from real slice labels including
 every rejection case, ascending-Z sort with slices stored out of order in the file, numeric
