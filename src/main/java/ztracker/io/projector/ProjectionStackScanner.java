@@ -200,6 +200,16 @@ public final class ProjectionStackScanner {
                     }
 
                     ImageProcessor ip = stack.getProcessor(slice);
+                    // Colour slices have no single intensity to project: ColorProcessor.getf
+                    // hands back the packed ARGB int, so projecting one would compare packed
+                    // colour values and yield a confident but meaningless z-origin map.
+                    if (ip.getBitDepth() == 24) {
+                        throw new IOException(
+                                "Colour (RGB) slice within '" + label + "': slice " + slice
+                                + " is 24-bit RGB."
+                                + "\nZ-projection needs grayscale intensity — convert the stack"
+                                + " with Image > Type > 8-bit or 16-bit first.");
+                    }
                     if (bitDepth < 0) {
                         bitDepth = ip.getBitDepth();
                         buffer   = new float[ip.getHeight()][ip.getWidth()];

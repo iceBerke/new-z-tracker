@@ -131,7 +131,8 @@ public final class ProjectionInputScanner {
      * contain {@code filename}. The returned slices are parallel to {@code globalZIndex},
      * where each entry is the layer's index into {@link DatasetScan#zLayerNames}.
      *
-     * @throws IOException if a present image cannot be opened, or slice dimensions disagree
+     * @throws IOException if a present image cannot be opened, is 24-bit RGB, or slice
+     *                     dimensions disagree
      */
     public static TimepointStack loadTimepoint(DatasetScan scan, String filename) throws IOException {
         List<float[][]> slices = new ArrayList<>();
@@ -147,6 +148,16 @@ public final class ProjectionInputScanner {
                 throw new IOException("Could not open image: " + img.getAbsolutePath());
             }
             try {
+                // Colour images have no single intensity to project: ColorProcessor.getf
+                // hands back the packed ARGB int, so projecting one would compare packed
+                // colour values and yield a confident but meaningless z-origin map.
+                if (imp.getBitDepth() == 24) {
+                    throw new IOException(
+                            "Colour (RGB) image within timepoint '" + filename + "': "
+                            + scan.zLayerNames.get(i) + " is 24-bit RGB."
+                            + "\nZ-projection needs grayscale intensity — convert with"
+                            + " Image > Type > 8-bit or 16-bit first.");
+                }
                 if (width < 0) {
                     width    = imp.getWidth();
                     height   = imp.getHeight();

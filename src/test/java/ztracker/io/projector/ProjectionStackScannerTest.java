@@ -5,6 +5,7 @@ import ij.ImagePlus;
 import ij.ImageStack;
 import ij.io.FileSaver;
 import ij.process.ByteProcessor;
+import ij.process.ColorProcessor;
 import ij.process.FloatProcessor;
 import ij.process.ShortProcessor;
 import org.junit.jupiter.api.Test;
@@ -125,6 +126,23 @@ class ProjectionStackScannerTest {
     @Test
     void scanDataset_throwsWhenFolderHoldsNoTiffs(@TempDir Path dir) throws Exception {
         assertThrows(IOException.class, () -> ProjectionStackScanner.scanDataset(dir.toFile()));
+    }
+
+    @Test
+    void projectTimepoint_rejectsColourSlices_ratherThanProjectingPackedRgbValues(@TempDir Path dir)
+            throws Exception {
+        // ColorProcessor.getf returns the packed ARGB int, so an RGB stack would project on
+        // colour values and produce a confident but meaningless z-origin map. Fail instead.
+        File dataset = dir.toFile();
+        writeColourStack(dataset, "00001.tif", 2, 2, new double[]{-400, 0, 400});
+
+        ProjectionStackScanner.StackScan scan = ProjectionStackScanner.scanDataset(dataset);
+
+        IOException e = assertThrows(IOException.class,
+                () -> scan.projectTimepoint(ZProjector.Mode.MAX_Z, "00001.tif"));
+        assertTrue(e.getMessage().contains("RGB"), "message should name the cause: " + e.getMessage());
+        assertTrue(e.getMessage().contains("00001.tif"),
+                "message should name the offending file: " + e.getMessage());
     }
 
     // ── Timepoint discovery / ordering ────────────────────────────────────────
@@ -394,6 +412,13 @@ class ProjectionStackScannerTest {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /** Writes a 16-bit stack whose slice {@code i} is filled with {@code fills[i]} at Z {@code z[i]}. */
+    private static void writeColourStack(File dir, String name, int w, int h, double[] z)
+            throws IOException {
+        ImageStack st = new ImageStack(w, h);
+        for (double zi : z) st.addSlice("z = " + zi, new ColorProcessor(w, h));
+        save(new ImagePlus(name, st), new File(dir, name));
+    }
+
     private static void writeShortStack(File dir, String name, int w, int h,
                                         double[] z, int[] fills) throws IOException {
         String[] labels = new String[z.length];

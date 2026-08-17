@@ -2,6 +2,7 @@ package ztracker.io.projector;
 
 import ij.ImagePlus;
 import ij.io.FileSaver;
+import ij.process.ColorProcessor;
 import ij.process.FloatProcessor;
 import ij.process.ShortProcessor;
 import org.junit.jupiter.api.Test;
@@ -188,6 +189,24 @@ class ProjectionInputScannerTest {
         assertEquals(12.5, ProjectionInputScanner.parseZ(" 12.5 "));  // trimmed
         assertNull(ProjectionInputScanner.parseZ("max_z"));
         assertNull(ProjectionInputScanner.parseZ(""));
+    }
+
+    @Test
+    void loadTimepoint_rejectsColourImage_ratherThanProjectingPackedRgbValues(@TempDir Path dir)
+            throws Exception {
+        // ColorProcessor.getf returns the packed ARGB int, so an RGB layer would project on
+        // colour values and produce a confident but meaningless z-origin map. Fail instead.
+        File dataset = new File(dir.toFile(), "ds");
+        writeShortTiff(layer(dataset, "-300"), "t1.tif", 2, 2, 10);
+        save(new ColorProcessor(2, 2), new File(layer(dataset, "-299"), "t1.tif"));
+
+        ProjectionInputScanner.DatasetScan scan = ProjectionInputScanner.scanDataset(dataset);
+
+        IOException e = assertThrows(IOException.class,
+                () -> ProjectionInputScanner.loadTimepoint(scan, "t1.tif"));
+        assertTrue(e.getMessage().contains("RGB"), "message should name the cause: " + e.getMessage());
+        assertTrue(e.getMessage().contains("-299"),
+                "message should name the offending layer: " + e.getMessage());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
