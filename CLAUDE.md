@@ -77,6 +77,38 @@ acquisitions saturate, so 250 of this crop's 3604 pixels (~7%) have two or more 
 max, making ties ordinary rather than the corner case the docs imply. Both an adjacent (layers 0,1)
 and a non-adjacent (layers 0,2) tie are asserted to resolve to the lowest Z.
 
+Tool 2's suite is `ztracker.core.extractor.ZSamplerTest` (sampling geometry: `SINGLE_PIXEL` reading
+a value above the 16-bit range, `FOUR_NEIGHBOR`'s four corners, the `RADIUS` disk's membership rule,
+edge footprints **clipped** rather than errored, and the empty-array return that a missing frame and
+an out-of-bounds position share — plus the `PixelConvention` pairs: floor-vs-round anchoring, the
+exact-integer boundary where the two diverge, and the negative coordinate that is in-bounds under
+Center but out-of-bounds under Corner), `ztracker.core.extractor.ZExtractorTest` (index→Z end to
+end, the NaN-Z causes kept distinct from each other — missing frame vs out-of-bounds vs every
+sampled index unmapped — the `Math.round(NaN)` regression test that plants a marker at pixel
+`(0, y)` to prove a NaN X is never sampled, convention threading, and `extractAll`'s combo
+behaviour including `SINGLE_PIXEL` running once however many aggregations were asked for, with all
+three `resolveComboOutputDir` layouts), `ztracker.io.extractor.TiffStackLoaderTest` (filename
+parsing, then real headless TIFF round-trips: unsigned 16-bit reads across the full `0–65535` range,
+32-bit `getf`+`Math.round` with values chosen so truncation would give a *different* answer,
+mixed/8-bit/24-bit-RGB rejection, frame-gap mapping proved by each frame's own pixel, and the two
+p10.1/p10.2 guards — per-frame dimensions in both accessor paths and both directions, and
+digit-less filenames), and `ztracker.io.extractor.ZMappingLoaderTest` (the JSON regex: negatives,
+decimals, scientific notation, integer-only values, multi-digit keys, surrounding non-entry content
+ignored, and the empty/no-valid-entries throws). The stack-agnostic suites every tool leans on sit
+alongside these: `FrameAlignerTest`, `ZAggregatorTest`, `TrackCsvLoaderTest`, `NpyExporterTest`,
+`FijiPointsExporterTest`, and `TrackExportManagerTest`.
+
+Tool 3's suite mirrors Tool 2's minus the mapping: `ztracker.io.topoj.TopoJStackLoaderTest` (float Z
+surviving **un-rounded** through ImageJ's real headless TIFF I/O, 32-bit-only enforcement rejecting
+16-/8-bit, the frame index read from whatever integer the base name **ends with** at any padding
+width, rejection of names that don't end with one, and p10.1's dimension guard),
+`ztracker.core.topoj.TopoJSamplerTest` (the same geometry `ZSamplerTest` covers, over a float stack,
+plus fractional/negative Z preserved), and `ztracker.core.topoj.TopoJExtractorTest` (the sampled
+float returned directly as Z, missing-frame vs out-of-bounds tallies kept separate, the same NaN-X
+regression, `STATUS_NO_DATA` when *every* sampled pixel is NaN contrasted with partial-NaN samples
+still aggregating over what's left, and `extractAll` parity). `ztracker.core.topoj.ExtractorEquivalenceTest`
+is the cross-tool parity proof — see the Tool 3 description below for what it locks in.
+
 `src/test/java/ztracker/core/Step4AlignmentDemo.java` is a **runnable walkthrough** (not a test —
 it has a `main`, no `@Test`, so Surefire ignores it but it stays compiled against the real
 `FrameAligner`). It prints `suggestOffset` / `suggestOffsetFromEnd` / `validate` results over
