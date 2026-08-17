@@ -10,11 +10,17 @@ import java.util.List;
 
 /**
  * {@link ProjectionSource} over the original z-layer-sub-folder layout — a thin adapter
- * around {@link ProjectionInputScanner}, which is left <b>byte-for-byte unchanged</b>.
+ * around {@link ProjectionInputScanner}, which p10.0 left <b>byte-for-byte unchanged</b> when
+ * it added the stack input type.
  *
  * <p>Every timepoint still goes through the exact same path it always has
  * ({@link ProjectionInputScanner#loadTimepoint} then {@link ZProjector#project}), so adding
  * the stack input type cannot alter this layout's results or its memory profile.
+ *
+ * <p>Note the scope of that claim: the scanner is <em>not</em> unchanged in absolute terms.
+ * p10.5 (RGB rejection) and p10.6 (mixed-depth rejection) have since modified
+ * {@link ProjectionInputScanner#loadTimepoint}; what p10.0 left untouched was this layout's
+ * path, not the file for all time.
  */
 public final class FolderProjectionSource implements ProjectionSource {
 

@@ -109,6 +109,10 @@ public final class ProjectionInputScanner {
 
         // Union of .tif filenames across all layers (a TreeSet dedups and sorts lexicographically,
         // matching the script's set() + sorted()).
+        // The dedup is load-bearing downstream: ZProjectorPlugin.duplicateTimepointIndexError
+        // refuses a dataset whose timepoint labels resolve to the same index, so one timepoint
+        // present in twenty Z-layer folders must arrive there as ONE label. Replace this with a
+        // plain List and every well-formed folder dataset is rejected as an index collision.
         TreeSet<String> filenames = new TreeSet<>();
         for (File layer : subDirs) {
             File[] tifs = layer.listFiles(
