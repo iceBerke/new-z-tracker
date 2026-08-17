@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Fiji plugin entry point for the Z-Projection + Origin-Map tool — the upstream
@@ -41,6 +42,12 @@ import java.util.List;
  * everything downstream of the scan — projection, export, output layout — is shared.
  */
 public class ZProjectorPlugin implements PlugIn {
+
+    /**
+     * "Does this name carry a frame number?" — the same test {@code TiffStackLoader} applies
+     * to every file in a z-origin folder before it will load it (p10.2).
+     */
+    private static final Pattern ANY_DIGIT = Pattern.compile("\\d");
 
     @Override
     public void run(String arg) {
@@ -169,6 +176,64 @@ public class ZProjectorPlugin implements PlugIn {
                 : new File(outputDir, datasetFolderName);
     }
 
+    // ── Cross-timepoint / output-name checks ───────────────────────────────────
+
+    /**
+     * Describes how a timepoint's projected frame differs in size from the dataset's first
+     * written timepoint, or {@code null} when they match.
+     *
+     * <p>Unlike the cross-timepoint bit-depth change — which only logs a NOTE, because each
+     * timepoint is projected independently and the z-origin output stores layer indices —
+     * a size change is <b>not survivable downstream</b>. {@code TiffStackLoader} sizes its
+     * pixel array from the first frame and rejects the whole folder if any later frame
+     * disagrees (p10.1), so writing the odd-sized timepoint would make the <em>entire</em>
+     * z-origin folder unloadable by Tool 2. Dropping just that timepoint leaves a frame gap,
+     * which Tool 2 accepts. Hence the caller skips rather than warns.
+     */
+    static String dimensionMismatch(String label, int width, int height,
+                                    String refLabel, int refWidth, int refHeight) {
+        if (width == refWidth && height == refHeight) return null;
+        return "projects to " + width + "x" + height + ", but this dataset's first written"
+                + " timepoint '" + refLabel + "' is " + refWidth + "x" + refHeight + "."
+                + " Every timepoint of one dataset must be the same size — the extractor"
+                + " (Tool 2) refuses a z-origin folder whose frames disagree, so writing this"
+                + " one would make the whole folder unloadable.";
+    }
+
+    /**
+     * Warns about a timepoint whose name carries no digits, or {@code null} when it does.
+     *
+     * <p>The z-origin filenames are {@code <prefix> + <timepoint name>}, so a digit-less
+     * input name produces output the extractor cannot map to a frame — differently per depth,
+     * which is why both are spelled out: the 16-bit name has no digits at all and is rejected
+     * outright (p10.2), while the 32-bit name does carry one — the {@code 32} of
+     * {@code 32bit} — which the "last digit run" rule reads as the frame index, so several
+     * such timepoints collide on frame 32 and are rejected as duplicates (p10.4).
+     *
+     * <p>Reported, not fixed: renaming the user's input is their call, and the projection
+     * itself is perfectly good.
+     */
+    static String digitlessNameWarning(String filename, boolean write16, boolean write32) {
+        if (ANY_DIGIT.matcher(filename).find()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("timepoint name '").append(filename).append("' contains no digits, so its")
+          .append(" z-origin output carries no frame number:");
+        if (write16) {
+            sb.append("\n  'z_origin_").append(filename).append("' — the extractor (Tool 2)")
+              .append(" takes the frame index from the last run of digits in the filename,")
+              .append(" finds none, and refuses the whole z_origin folder.");
+        }
+        if (write32) {
+            sb.append("\n  'z_origin_32bit_").append(filename).append("' — the extractor reads")
+              .append(" the '32' of '32bit' as the frame index, so every such timepoint claims")
+              .append(" frame 32: two or more and it refuses the folder as duplicate frame")
+              .append(" numbers, one alone loads under the wrong frame.");
+        }
+        sb.append("\n  Rename the input timepoint file to carry a frame index (e.g. 0001.tif)")
+          .append(" and re-run.");
+        return sb.toString();
+    }
+
     /**
      * Projects one dataset for one mode.
      *
@@ -204,6 +269,9 @@ public class ZProjectorPlugin implements PlugIn {
         int written = 0;
         int skipped16 = 0;
         int previousBitDepth = -1;
+        // Size of the first successfully written timepoint — every later one must match it.
+        int refWidth = -1, refHeight = -1;
+        String refLabel = null;
         String firstFailure = null;
         for (int t = 0; t < total; t++) {
             String filename = timepoints.get(t);
@@ -217,6 +285,23 @@ public class ZProjectorPlugin implements PlugIn {
                 if (firstFailure == null) firstFailure = filename + ": " + e.getMessage();
                 IJ.log("[ZProjector]   skipped timepoint '" + filename + "': " + e.getMessage());
                 continue;
+            }
+
+            int height = projected.result.zOriginIndex.length;
+            int width  = height == 0 ? 0 : projected.result.zOriginIndex[0].length;
+
+            // A size change between timepoints, unlike a depth change, cannot be written out
+            // and flagged: it would make the whole z-origin folder unloadable by Tool 2 rather
+            // than just this timepoint. Skip it (leaving a frame gap, which Tool 2 accepts) and
+            // let the run summary's WARNING report the loss. Checked before the depth NOTE so a
+            // dropped timepoint neither emits one nor becomes the "previous" depth.
+            if (refWidth >= 0) {
+                String mismatch = dimensionMismatch(filename, width, height,
+                        refLabel, refWidth, refHeight);
+                if (mismatch != null) {
+                    IJ.log("[ZProjector]   skipped timepoint '" + filename + "': " + mismatch);
+                    continue;
+                }
             }
 
             // Depths may differ between timepoints without corrupting anything — each
@@ -238,8 +323,19 @@ public class ZProjectorPlugin implements PlugIn {
                 rawDir.mkdirs(); // raw projection is always written
                 ProjectionExporter.writeMappings(datasetOutDir, source.zValues(),
                         cfg.write16Bit, cfg.write32Bit);
+                refWidth  = width;
+                refHeight = height;
+                refLabel  = filename;
             }
             written++;
+
+            // The output names are '<prefix><timepoint name>', so a digit-less input name
+            // yields output the extractor cannot map to a frame. Report it at the point of
+            // writing — the projection is fine, only the name is unusable downstream.
+            String nameWarning = digitlessNameWarning(filename, cfg.write16Bit, cfg.write32Bit);
+            if (nameWarning != null) {
+                IJ.log("[ZProjector]   WARNING: " + nameWarning);
+            }
 
             ZProjector.Result result = projected.result;
 
