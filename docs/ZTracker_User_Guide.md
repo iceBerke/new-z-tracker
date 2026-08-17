@@ -27,6 +27,12 @@ Makes the two inputs Part 2 needs, starting from a raw Z-stack. Open it via **Pl
 **What it needs:** a **dataset folder** holding your raw Z-stack, in either of two layouts — you
 say which with the **Input type** dropdown.
 
+**Image depth:** your raw slices can be **8-, 16-, or 32-bit** grayscale. Part 1 only compares
+pixel brightness between depths, so the bit depth affects precision, not whether it works — use
+whatever your microscope produced. **Colour (RGB) images won't work**: they aren't rejected, but
+the projection would run on packed colour values and give meaningless depths, so convert to
+grayscale first (**Image > Type > 8-bit** or **16-bit**).
+
 _Input type = **Z-layer sub-folders**_ (the default): sub-folders named by their depth in µm
 (e.g. `-300`, `-299`, …), each holding one TIFF per time frame (same filename across depths):
 
@@ -103,12 +109,12 @@ It reads depth from the **Z-origin projection TIFF images** (from Part 1), where
 | File | What it is |
 | --- | --- |
 | **Z-mapping JSON** | A `.json` file that maps pixel codes to depths in µm, e.g. `{"0": -600.0, "1": -599.0, ...}`. (Part 1 makes this.) |
-| **Z-origin TIFF folder** | A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images. (Part 1 makes this.) |
+| **Z-origin TIFF folder** | A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images. (Part 1 makes this.) 8-bit and colour (RGB) TIFFs are rejected with a clear message — a pixel here is a code that has to reach into the depth map, and 8-bit only counts to 256. |
 | **Tracking CSV** | Your tracks exported from TrackMate (or another tracker). Must contain X, Y, Frame, and Track ID columns. |
 
 **Two things the Z-origin TIFF folder must get right.** Both are checked as soon as the folder loads, so you'll see the message before the wizard goes any further:
 
-- **Every filename must contain the frame number.** The frame index is the **last run of digits anywhere in the name**, so a prefix with its own numbers is fine — `z_origin_0007.tif` and `z_origin_32bit_0007.tif` both load as frame 7. Any zero-padding width works. A file with **no digits at all** in its name (e.g. `frame.tif`) is rejected, and the message lists every offending file so you can rename them in one go. Note this rule is **looser than the TopoJ / direct-Z extractor's**, which needs the number at the very **end** of the name: `topoj_0007_final.tif` loads fine here as frame 7, but that same file is rejected by the TopoJ extractor. (It doesn't work the other way round — anything the TopoJ extractor accepts is fine here too, with the same frame number.)
+- **Every filename must contain the frame number.** The frame index is the **last run of digits anywhere in the name**, so a prefix with its own numbers is fine — `z_origin_0007.tif` and `z_origin_32bit_0007.tif` both load as frame 7. Any zero-padding width works, and the widths may differ from file to file within the same folder — `z_7.tif`, `z_0008.tif`, and `z_00000009.tif` load as three separate frames (7, 8, 9), not as a clash. A file with **no digits at all** in its name (e.g. `frame.tif`) is rejected, and the message lists every offending file so you can rename them in one go. Note this rule is **looser than the TopoJ / direct-Z extractor's**, which needs the number at the very **end** of the name: `topoj_0007_final.tif` loads fine here as frame 7, but that same file is rejected by the TopoJ extractor. (It doesn't work the other way round — anything the TopoJ extractor accepts is fine here too, with the same frame number.)
 - **Every image must be the same size as the first one.** If any TIFF's width or height differs from the first frame's, the folder is rejected and the message names the file along with both sizes. This applies to images that are **larger** as well as smaller — a larger frame used to load quietly, cropped to the first frame's top-left corner, and now stops the run instead. If you're deliberately working with a cropped subset, crop every frame to the same size first.
 
 ## Opening the plugin
