@@ -157,6 +157,14 @@ public class TiffStackLoader {
                     "Mixed bit depths in TIFF folder: " + file.getName()
                     + " is " + imp.getBitDepth() + "-bit, expected " + bitDepth + "-bit.");
         }
+        if (imp.getWidth() != width || imp.getHeight() != height) {
+            imp.close();
+            throw new IOException(
+                    "Inconsistent image dimensions in TIFF folder: " + file.getName()
+                    + " is " + imp.getWidth() + "x" + imp.getHeight()
+                    + ", expected " + width + "x" + height + "."
+                    + "\nEvery frame must match the first frame's dimensions.");
+        }
         try {
             ImageProcessor ip = imp.getProcessor();
             for (int y = 0; y < height; y++) {

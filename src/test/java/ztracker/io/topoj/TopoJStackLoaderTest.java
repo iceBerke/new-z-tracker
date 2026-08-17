@@ -11,6 +11,7 @@ import ztracker.io.extractor.TiffStackLoader.LoadedStack;
 import ztracker.io.topoj.TopoJStackLoader.LoadedFloatStack;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -134,5 +135,37 @@ class TopoJStackLoaderTest {
         IJ.saveAsTiff(new ImagePlus("b", bp), new File(dir.toFile(), "topoj_0000.tif").getAbsolutePath());
 
         assertThrows(Exception.class, () -> TopoJStackLoader.load(dir.toFile()));
+    }
+
+    // ── Per-frame dimension guard (p10.1) ─────────────────────────────────────
+
+    @Test
+    void load_rejectsLaterFrameSmallerThanFirst(@TempDir Path dir) throws Exception {
+        // Reads go through getf, which is NOT bounds-checked: unguarded, a short frame shears
+        // its rows and then usually dies with a bare ArrayIndexOutOfBoundsException.
+        writeFloatTiff(new File(dir.toFile(), "topoj_0000.tif"),
+                new float[][]{{1.0f, 2.0f}, {3.0f, 4.0f}});
+        writeFloatTiff(new File(dir.toFile(), "topoj_0001.tif"), new float[][]{{5.0f}});
+
+        IOException e = assertThrows(IOException.class, () -> TopoJStackLoader.load(dir.toFile()));
+        assertTrue(e.getMessage().contains("topoj_0001.tif"),
+                "message should name the offending file: " + e.getMessage());
+        assertTrue(e.getMessage().contains("1x1") && e.getMessage().contains("2x2"),
+                "message should give actual and expected dimensions: " + e.getMessage());
+    }
+
+    @Test
+    void load_rejectsLaterFrameLargerThanFirst(@TempDir Path dir) throws Exception {
+        // A larger frame stays in bounds and would silently become a top-left crop.
+        writeFloatTiff(new File(dir.toFile(), "topoj_0000.tif"),
+                new float[][]{{1.0f, 2.0f}, {3.0f, 4.0f}});
+        writeFloatTiff(new File(dir.toFile(), "topoj_0001.tif"),
+                new float[][]{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}});
+
+        IOException e = assertThrows(IOException.class, () -> TopoJStackLoader.load(dir.toFile()));
+        assertTrue(e.getMessage().contains("topoj_0001.tif"),
+                "message should name the offending file: " + e.getMessage());
+        assertTrue(e.getMessage().contains("3x3") && e.getMessage().contains("2x2"),
+                "message should give actual and expected dimensions: " + e.getMessage());
     }
 }
