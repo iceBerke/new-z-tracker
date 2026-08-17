@@ -106,6 +106,11 @@ It reads depth from the **Z-origin projection TIFF images** (from Part 1), where
 | **Z-origin TIFF folder** | A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images. (Part 1 makes this.) |
 | **Tracking CSV** | Your tracks exported from TrackMate (or another tracker). Must contain X, Y, Frame, and Track ID columns. |
 
+**Two things the Z-origin TIFF folder must get right.** Both are checked as soon as the folder loads, so you'll see the message before the wizard goes any further:
+
+- **Every filename must contain the frame number.** The frame index is the **last run of digits anywhere in the name**, so a prefix with its own numbers is fine — `z_origin_0007.tif` and `z_origin_32bit_0007.tif` both load as frame 7. Any zero-padding width works. A file with **no digits at all** in its name (e.g. `frame.tif`) is rejected, and the message lists every offending file so you can rename them in one go. Note this rule is **looser than the TopoJ / direct-Z extractor's**, which needs the number at the very **end** of the name: `topoj_0007_final.tif` loads fine here as frame 7, but that same file is rejected by the TopoJ extractor. (It doesn't work the other way round — anything the TopoJ extractor accepts is fine here too, with the same frame number.)
+- **Every image must be the same size as the first one.** If any TIFF's width or height differs from the first frame's, the folder is rejected and the message names the file along with both sizes. This applies to images that are **larger** as well as smaller — a larger frame used to load quietly, cropped to the first frame's top-left corner, and now stops the run instead. If you're deliberately working with a cropped subset, crop every frame to the same size first.
+
 ## Opening the plugin
 
 In Fiji, go to **Plugins > ZTracker > 3D Z-Coordinate Extractor**. The plugin runs as a simple 6-step wizard. You can move, resize, and read the Fiji **Log** window at any time while a step is open — it stays usable.
@@ -195,6 +200,8 @@ Not sure which one you have? If your projection folder came with a `z_layer_mapp
 | Columns detected wrong | Fix them manually in **Step 3**. |
 | Plugin not in the menu | Restart Fiji, or use `Help > Refresh Menus`. |
 | Nothing seems to export | Make sure at least one format is ticked in **Step 6**, and read `export_report.txt`. |
+| "Inconsistent image dimensions in TIFF folder" | One TIFF is a different size from the first one in the folder — the message names it and gives both sizes. Remove it or re-crop everything to one size. Worth knowing: Part 1 doesn't compare sizes *between* timepoints, so a projection run can produce a folder like this. |
+| "These TIFF filenames contain no frame number" | One or more TIFFs have no digits in the name, so there's no frame index to read — the message lists them all. Rename each so it carries its frame number (e.g. `z_origin_0007.tif`). |
 | "requires 32-bit float TIFFs" error | You opened the **TopoJ / direct-Z** extractor with indexed images — use the standard **3D Z-Coordinate Extractor** (with its JSON map) instead. |
 | Part 1: "no Z-layer sub-folders" or "no .tif stacks found" | The **Input type** doesn't match your folder — switch it (or the Scope) and check the grey structure line under Scope. |
 | Part 1: "slice has no readable Z in its label" | Your TIFF stack's slices aren't labelled with their depth (`z = -400.000`). Re-save the stack from Fiji with the depth labels, or use the Z-layer sub-folder layout instead. |
