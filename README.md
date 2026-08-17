@@ -593,7 +593,7 @@ actually breaks:
 Same as the Python pipeline:
 
 - **JSON mapping**: `{"0": -600.0, "1": -599.0, ...}` (string keys, float values)
-- **TIFF stack**: 16-bit unsigned integer or 32-bit indexed, one file per timepoint, numeric filenames (all frames must share the same bit depth)
+- **TIFF stack**: 16-bit unsigned integer or 32-bit indexed, one file per timepoint. The frame index is the **last run of digits anywhere in the filename** (`z_origin_0007.tif` and `z_origin_32bit_0007.tif` both read as frame 7 — the "32" in "32bit" is skipped). Any zero-padding width works and widths may be mixed within one folder, since each is parsed to an integer and the folder is sorted numerically. A filename with **no digits at all** is rejected up front, listing every offending file (p10.2). Every frame must also match the **first frame's pixel dimensions** — larger as well as smaller (p10.1) — and share its **bit depth**. Note Tool 3 (TopoJ / direct-Z) uses a stricter rule: the digits must be at the **end** of the base name, so a name this loader accepts may be rejected there
 - **CSV**: TrackMate or other tracker formats (alias-based column auto-detection); required columns: X, Y, Frame, Track_ID
 
 ---
