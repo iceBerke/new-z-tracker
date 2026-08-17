@@ -24,16 +24,57 @@ const pdfPath = join(DIR, `${BASENAME}.pdf`);
 // ---------------------------------------------------------------------------
 // Parse Markdown into a flat list of block objects. Supports the subset used
 // by this guide: h1-h3, paragraphs, unordered/ordered lists, pipe tables,
-// horizontal rules, and ::: note / ::: tip callout fences.
+// horizontal rules, fenced code blocks, and ::: note / ::: tip callouts
+// (whose bodies are parsed recursively, so a callout may hold lists/code).
 // ---------------------------------------------------------------------------
+
+// A line that starts (or ends) a ``` / ~~~ fence.
+const FENCE_RE = /^\s*(`{3,}|~{3,})\s*\w*\s*$/;
+// Lines that terminate a paragraph or a list item's lazy continuation.
+const isBlockStart = l =>
+  /^(#{1,3})\s/.test(l) || /^:::/.test(l) || /^---+\s*$/.test(l) ||
+  /^\s*[-*]\s+/.test(l) || /^\s*\d+\.\s+/.test(l) || /^\s*\|/.test(l) ||
+  FENCE_RE.test(l);
+
 function parseBlocks(md) {
-  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  return parseLines(md.replace(/\r\n/g, "\n").split("\n"));
+}
+
+function parseLines(lines) {
   const blocks = [];
   let i = 0;
+
+  // Markdown allows a list item to wrap onto following indented lines ("lazy
+  // continuation"). Pull those in so one item stays one item instead of being
+  // split into a separate paragraph mid-sentence.
+  const takeItem = (marker) => {
+    let text = lines[i].replace(marker, "");
+    i++;
+    while (i < lines.length && lines[i].trim() !== "" &&
+           /^\s+\S/.test(lines[i]) && !isBlockStart(lines[i])) {
+      text += " " + lines[i].trim();
+      i++;
+    }
+    return text;
+  };
+
   while (i < lines.length) {
-    let line = lines[i];
+    const line = lines[i];
 
     if (line.trim() === "") { i++; continue; }
+
+    // Fenced code block — kept verbatim, never inline-formatted.
+    const fence = line.match(FENCE_RE);
+    if (fence) {
+      const delim = fence[1];
+      const closeRe = new RegExp("^\\s*" + delim[0] + "{" + delim.length + ",}\\s*$");
+      i++;
+      const body = [];
+      while (i < lines.length && !closeRe.test(lines[i])) { body.push(lines[i]); i++; }
+      i++; // consume the closing fence (absent at EOF is fine)
+      blocks.push({ type: "code", lines: body });
+      continue;
+    }
 
     // Callout fence:  :::note  ...  :::
     const callout = line.match(/^:::(\w+)\s*$/);
@@ -43,7 +84,7 @@ function parseBlocks(md) {
       const body = [];
       while (i < lines.length && !/^:::\s*$/.test(lines[i])) { body.push(lines[i]); i++; }
       i++; // skip closing :::
-      blocks.push({ type: "callout", kind, text: body.join(" ").trim() });
+      blocks.push({ type: "callout", kind, blocks: parseLines(body) });
       continue;
     }
 
@@ -66,9 +107,9 @@ function parseBlocks(md) {
     }
 
     // Unordered list
-    if (/^\s*-\s+/.test(line)) {
+    if (/^\s*[-*]\s+/.test(line)) {
       const items = [];
-      while (i < lines.length && /^\s*-\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*-\s+/, "")); i++; }
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) items.push(takeItem(/^\s*[-*]\s+/));
       blocks.push({ type: "ul", items });
       continue;
     }
@@ -76,17 +117,14 @@ function parseBlocks(md) {
     // Ordered list
     if (/^\s*\d+\.\s+/.test(line)) {
       const items = [];
-      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*\d+\.\s+/, "")); i++; }
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) items.push(takeItem(/^\s*\d+\.\s+/));
       blocks.push({ type: "ol", items });
       continue;
     }
 
     // Paragraph (accumulate until a blank line or a new block starts)
     const para = [];
-    while (i < lines.length && lines[i].trim() !== "" &&
-           !/^(#{1,3})\s/.test(lines[i]) && !/^:::/.test(lines[i]) &&
-           !/^---+\s*$/.test(lines[i]) && !/^\s*[-*]\s+/.test(lines[i]) &&
-           !/^\s*\d+\.\s+/.test(lines[i]) && !/^\s*\|/.test(lines[i])) {
+    while (i < lines.length && lines[i].trim() !== "" && !isBlockStart(lines[i])) {
       para.push(lines[i]); i++;
     }
     blocks.push({ type: "p", text: para.join(" ").trim() });
@@ -99,16 +137,36 @@ function parseBlocks(md) {
 // ---------------------------------------------------------------------------
 const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// Inline: **bold**, _italic_, `code`. Escape HTML first, then apply markers.
-function inlineHtml(s) {
-  s = esc(s);
-  s = s.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
+// Inline: **bold**, _italic_ / *italic*, `code`.
+//
+// Code spans are lifted out to placeholders BEFORE the emphasis passes run, so
+// markers inside them (`snake_case`, `**literal**`) survive untouched, then put
+// back afterwards. The emphasis rules require a non-word character on each side
+// of the delimiter, which is what keeps identifiers like export_report.txt from
+// being read as italics — and, unlike the old `[\s.,)]` lookahead, correctly
+// closes an italic run that is followed by a colon or any other punctuation.
+const PH = "\u0000"; // never occurs in the source text
+
+function protectCode(s, store) {
+  return s.replace(/`([^`]+)`/g, (_, c) => `${PH}${store.push(c) - 1}${PH}`);
+}
+function emphasize(s) {
   s = s.replace(/\*\*([^*]+)\*\*/g, (_, c) => `<strong>${c}</strong>`);
-  s = s.replace(/(^|[\s(])_([^_]+)_(?=[\s.,)]|$)/g, (_, pre, c) => `${pre}<em>${c}</em>`);
+  s = s.replace(/(^|[^\w*])\*([^*\s][^*]*)\*(?![\w*])/g, (_, pre, c) => `${pre}<em>${c}</em>`);
+  s = s.replace(/(^|[^\w_])_([^_]+)_(?![\w_])/g, (_, pre, c) => `${pre}<em>${c}</em>`);
   return s;
 }
 
-function renderHtml(blocks) {
+function inlineHtml(s) {
+  const codes = [];
+  s = protectCode(esc(s), codes);
+  s = emphasize(s);
+  return s.replace(new RegExp(PH + "(\\d+)" + PH, "g"), (_, n) => `<code>${codes[n]}</code>`);
+}
+
+// Render a block list to an array of HTML fragments. Used for the document and,
+// recursively, for the contents of a callout.
+function renderBlocksHtml(blocks) {
   const parts = [];
   let stepCount = 0;
   for (const b of blocks) {
@@ -129,7 +187,10 @@ function renderHtml(blocks) {
       case "ul": parts.push(`<ul>${b.items.map(it => `<li>${inlineHtml(it)}</li>`).join("")}</ul>`); break;
       case "ol": parts.push(`<ol>${b.items.map(it => `<li>${inlineHtml(it)}</li>`).join("")}</ol>`); break;
       case "hr": parts.push("<hr>"); break;
-      case "callout": parts.push(`<div class="${b.kind === "tip" ? "tip" : "note"}">${inlineHtml(b.text)}</div>`); break;
+      case "code": parts.push(`<pre><code>${esc(b.lines.join("\n"))}</code></pre>`); break;
+      case "callout":
+        parts.push(`<div class="${b.kind === "tip" ? "tip" : "note"}">${renderBlocksHtml(b.blocks).join("\n")}</div>`);
+        break;
       case "table": {
         const head = `<tr>${b.header.map(c => `<th>${inlineHtml(c)}</th>`).join("")}</tr>`;
         const body = b.body.map(r => `<tr>${r.map(c => `<td>${inlineHtml(c)}</td>`).join("")}</tr>`).join("");
@@ -138,10 +199,12 @@ function renderHtml(blocks) {
       }
     }
   }
+  return parts;
+}
+
+function renderHtml(blocks) {
   // Close each step card at the next top-level boundary (h2/hr) or end.
-  let html = parts.join("\n");
-  html = closeStepCards(parts);
-  return pageShell(html);
+  return pageShell(closeStepCards(renderBlocksHtml(blocks)));
 }
 
 // Steps are opened as a <div class="step"> and must be closed before the next
@@ -178,6 +241,8 @@ function pageShell(inner) {
   ul, ol { margin: 6px 0; padding-left: 22px; }
   li { margin: 4px 0; }
   code { background: #f2f4f7; border: 1px solid #e2e6eb; border-radius: 3px; padding: 1px 5px; font-family: "Consolas", monospace; font-size: 9.5pt; }
+  pre { background: #f7f9fc; border: 1px solid #dde6f1; border-radius: 4px; padding: 9px 12px; margin: 10px 0; overflow-x: auto; page-break-inside: avoid; }
+  pre code { background: none; border: none; padding: 0; font-size: 9.5pt; line-height: 1.4; white-space: pre; }
   .step { background: #f7f9fc; border: 1px solid #dde6f1; border-left: 4px solid #2f6db5; border-radius: 4px; padding: 10px 14px; margin: 12px 0; page-break-inside: avoid; }
   .step h3 { margin-top: 0; color: #14406b; }
   .stepnum { display: inline-block; background: #2f6db5; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-weight: bold; font-size: 10pt; margin-right: 6px; }
@@ -200,10 +265,16 @@ ${inner}
 // ---------------------------------------------------------------------------
 // Plain-text rendering
 // ---------------------------------------------------------------------------
-const stripInline = s => s
-  .replace(/`([^`]+)`/g, "$1")
-  .replace(/\*\*([^*]+)\*\*/g, "$1")
-  .replace(/(^|[\s(])_([^_]+)_(?=[\s.,)]|$)/g, "$1$2");
+// Same code-span protection and emphasis rules as the HTML path, so the two
+// outputs can never disagree about what is a marker and what is literal text.
+const stripInline = s => {
+  const codes = [];
+  s = protectCode(s, codes);
+  s = s.replace(/\*\*([^*]+)\*\*/g, "$1")
+       .replace(/(^|[^\w*])\*([^*\s][^*]*)\*(?![\w*])/g, "$1$2")
+       .replace(/(^|[^\w_])_([^_]+)_(?![\w_])/g, "$1$2");
+  return s.replace(new RegExp(PH + "(\\d+)" + PH, "g"), (_, n) => codes[n]);
+};
 
 function wrap(text, width, indent = "") {
   const words = text.split(/\s+/);
@@ -217,8 +288,9 @@ function wrap(text, width, indent = "") {
   return lines.join("\n");
 }
 
-function renderTxt(blocks) {
-  const W = 72;
+// Render a block list to an array of text lines. Used for the document and,
+// recursively, for the contents of a callout.
+function renderTxtBlocks(blocks, W) {
   const out = [];
   for (const b of blocks) {
     switch (b.type) {
@@ -233,9 +305,18 @@ function renderTxt(blocks) {
       case "ul": for (const it of b.items) out.push(wrap(stripInline(it), W - 2, "  ").replace(/^ {2}/, "  - ")); break;
       case "ol": b.items.forEach((it, n) => out.push(wrap(stripInline(it), W - 4, "    ").replace(/^ {4}/, `  ${n + 1}. `))); break;
       case "hr": out.push("", "-".repeat(W)); break;
+      // Code stays verbatim — indented, never wrapped, never inline-stripped.
+      case "code": for (const l of b.lines) out.push("    " + l); break;
       case "callout": {
-        const label = b.kind === "tip" ? "TIP: " : "NOTE: ";
-        out.push(wrap(label + stripInline(b.text), W - 2, "  ").replace(/^ {2}/, "  ")); break;
+        // Label on its own line, body indented, so any lists inside keep their
+        // shape instead of being flattened into one run of prose.
+        out.push(b.kind === "tip" ? "TIP:" : "NOTE:");
+        // Entries may themselves be multi-line (wrap() joins with \n), so split
+        // before indenting or only the first physical line would be indented.
+        for (const seg of renderTxtBlocks(b.blocks, W - 2)) {
+          for (const l of String(seg).split("\n")) out.push(l === "" ? "" : "  " + l);
+        }
+        break;
       }
       case "table": {
         const rows = [b.header, ...b.body].map(r => r.map(stripInline));
@@ -250,7 +331,11 @@ function renderTxt(blocks) {
     }
     if (b.type !== "h" && b.type !== "ul" && b.type !== "ol") out.push("");
   }
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trimStart() + "\n";
+  return out;
+}
+
+function renderTxt(blocks) {
+  return renderTxtBlocks(blocks, 72).join("\n").replace(/\n{3,}/g, "\n\n").trimStart() + "\n";
 }
 
 // ---------------------------------------------------------------------------

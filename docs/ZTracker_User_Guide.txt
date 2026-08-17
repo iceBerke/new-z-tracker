@@ -18,14 +18,18 @@ under Plugins > ZTracker, run in order:
 If a colleague or an earlier run already gave you the depth-coded images
 and the .json map, you can skip Part 1 and go straight to Part 2.
 
-  NOTE: Two flavours of Part 2. Which extractor you use depends on what
-  your depth images hold: - Indexed images + a JSON map (what Part 1
-  makes) → use 3D Z-Coordinate Extractor. Each pixel is a *code* that
-  looks up a real depth in the .json file. - Direct-Z images, no JSON
-  (e.g. Fiji's TopoJ output) → use 3D Z-Extractor (TopoJ / direct-Z).
-  Each pixel value *is* the depth in µm, so there's no map to load and
-  no JSON to pick. Both share every other step (frame offset, sampling,
-  export). Pick the one that matches your images.
+NOTE:
+  Two flavours of Part 2. Which extractor you use depends on what your
+  depth images hold:
+
+    - Indexed images + a JSON map (what Part 1 makes) → use 3D
+    Z-Coordinate Extractor. Each pixel is a code that looks up a real
+    depth in the .json file.
+    - Direct-Z images, no JSON (e.g. Fiji's TopoJ output) → use 3D
+    Z-Extractor (TopoJ / direct-Z). Each pixel value is the depth in µm,
+    so there's no map to load and no JSON to pick.
+  Both share every other step (frame offset, sampling, export). Pick the
+  one that matches your images.
 
 PART 1 — Z-PROJECTION + ORIGIN MAP
 ------------------------------------------------------------------------
@@ -39,14 +43,18 @@ Input type = Z-layer sub-folders (the default): sub-folders named by
 their depth in µm (e.g. -300, -299, …), each holding one TIFF per time
 frame (same filename across depths):
 
-`` dataset/ ├── -300/ frame_0001.tif, frame_0002.tif, ... ├── -299/
-frame_0001.tif, ... └── ... ``
+    dataset/
+    ├── -300/   frame_0001.tif, frame_0002.tif, ...
+    ├── -299/   frame_0001.tif, ...
+    └── ...
 
-_Input type = TIFF stacks_: one multi-slice TIFF per time frame, sitting
+Input type = TIFF stacks: one multi-slice TIFF per time frame, sitting
 straight in the folder — the slices inside each file are the depths:
 
-`` dataset/ ├── 00001.tif ← time frame 1, one slice per depth ├──
-00002.tif ← time frame 2 └── ... ``
+    dataset/
+    ├── 00001.tif     ← time frame 1, one slice per depth
+    ├── 00002.tif     ← time frame 2
+    └── ...
 
 Any numbering works (00001.tif, 7.tif, img_0010.tif) — files are ordered
 by the number they end with. With this layout the depths are read from
@@ -60,21 +68,16 @@ In the dialog you pick, top to bottom:
   - Input type (asked first) — Z-layer sub-folders or TIFF stacks, as
   above.
   - Scope — Single dataset (one dataset folder) or Batch (a folder holding
-  many such
-datasets). A grey line under it spells out exactly what your input
-folder should contain for the combination you picked.
-
+  many such datasets). A grey line under it spells out exactly what your
+  input folder should contain for the combination you picked.
   - Input folder and Output folder.
   - Projection — Max-Z (keeps the brightest pixel at each position — the
-  usual choice for
-fluorescence), Min-Z (keeps the darkest), or Both (runs both, into
-separate max_z and min_z folders).
-
+  usual choice for fluorescence), Min-Z (keeps the darkest), or Both
+  (runs both, into separate max_z and min_z folders).
   - Z-origin bit depth — 16-bit (the default; smaller and faster), 32-bit,
-  or Both.
-Leave it on 16-bit unless a downstream tool specifically needs 32-bit —
-it's the faster choice and handles any realistic number of Z-layers.
-
+  or Both. Leave it on 16-bit unless a downstream tool specifically
+  needs 32-bit — it's the faster choice and handles any realistic number
+  of Z-layers.
 The 8-bit "raw" preview picture is always saved — there's nothing to
 switch on.
 
@@ -88,14 +91,16 @@ z_origin/ (16-bit) and/or z_origin_32bit/ (32-bit)  The depth-coded projection T
 z_layer_mapping.json                                The pixel-code → depth map — this is Part 2's Z-mapping JSON.
 raw/                                                A plain 8-bit projection picture for looking at (Part 2 ignores it).
 
-  TIP: The 16-bit and 32-bit depth images hold the same information —
-  use 16-bit unless you have more than ~65,000 Z-layers (essentially
-  never), in which case use the 32-bit set.
+TIP:
+  The 16-bit and 32-bit depth images hold the same information — use
+  16-bit unless you have more than ~65,000 Z-layers (essentially never),
+  in which case use the 32-bit set.
 
-  TIP: Both input types produce exactly the same output, so Part 2
-  doesn't care which one you used. Big TIFF stacks are fine too — the
-  tool reads one slice at a time rather than loading the whole file, so
-  a 400-slice, 700 MB time frame goes through in a couple of seconds
+TIP:
+  Both input types produce exactly the same output, so Part 2 doesn't
+  care which one you used. Big TIFF stacks are fine too — the tool reads
+  one slice at a time rather than loading the whole file, so a
+  400-slice, 700 MB time frame goes through in a couple of seconds
   without needing a large memory setting in Fiji.
 
 The z_origin folder + z_layer_mapping.json this makes are exactly what
@@ -120,6 +125,29 @@ File                  What it is
 Z-mapping JSON        A .json file that maps pixel codes to depths in µm, e.g. {"0": -600.0, "1": -599.0, ...}. (Part 1 makes this.)
 Z-origin TIFF folder  A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images. (Part 1 makes this.)
 Tracking CSV          Your tracks exported from TrackMate (or another tracker). Must contain X, Y, Frame, and Track ID columns.
+
+Two things the Z-origin TIFF folder must get right. Both are checked as
+soon as the folder loads, so you'll see the message before the wizard
+goes any further:
+
+  - Every filename must contain the frame number. The frame index is the
+  last run of digits anywhere in the name, so a prefix with its own
+  numbers is fine — z_origin_0007.tif and z_origin_32bit_0007.tif both
+  load as frame 7. Any zero-padding width works. A file with no digits
+  at all in its name (e.g. frame.tif) is rejected, and the message lists
+  every offending file so you can rename them in one go. Note this rule
+  is looser than the TopoJ / direct-Z extractor's, which needs the
+  number at the very end of the name: topoj_0007_final.tif loads fine
+  here as frame 7, but that same file is rejected by the TopoJ
+  extractor. (It doesn't work the other way round — anything the TopoJ
+  extractor accepts is fine here too, with the same frame number.)
+  - Every image must be the same size as the first one. If any TIFF's
+  width or height differs from the first frame's, the folder is rejected
+  and the message names the file along with both sizes. This applies to
+  images that are larger as well as smaller — a larger frame used to
+  load quietly, cropped to the first frame's top-left corner, and now
+  stops the run instead. If you're deliberately working with a cropped
+  subset, crop every frame to the same size first.
 
 OPENING THE PLUGIN
 ------------------------------------------------------------------------
@@ -156,9 +184,10 @@ full table is printed to the Fiji Log so you can check that every track
 lands on a real TIFF frame. When the box says all tracks map correctly,
 confirm.
 
-  NOTE: Why it matters: a wrong offset silently pairs each track point
-  with the wrong image, giving wrong depths. Take a moment to confirm
-  the verdict looks good.
+NOTE:
+  Why it matters: a wrong offset silently pairs each track point with
+  the wrong image, giving wrong depths. Take a moment to confirm the
+  verdict looks good.
 
 Step 5 — Choose how to sample depth
 Pick how the plugin reads pixels under each detection:
@@ -171,8 +200,8 @@ Pick how the plugin reads pixels under each detection:
   value.)
   - Pixel convention: leave on Corner (the default) unless you have a
   specific reason to use Center.
-  TIP: Not sure? Radius + Median + Corner is a solid default for most
-  users.
+TIP:
+  Not sure? Radius + Median + Corner is a solid default for most users.
 
 Step 6 — Choose output folder & formats
 Pick where to save results and tick the formats you want (see the next
@@ -231,20 +260,23 @@ sampling/aggregation/pixel-convention choices (Step 5), the same output
 folder and formats (Step 6), and the same per-point drop behaviour and
 reports. X/Y stay in pixels, Z is in µm, T is the frame number.
 
-  TIP: Not sure which one you have? If your projection folder came with
-  a z_layer_mapping.json, use the standard extractor. If it's a bare
+TIP:
+  Not sure which one you have? If your projection folder came with a
+  z_layer_mapping.json, use the standard extractor. If it's a bare
   folder of 32-bit float TIFFs from TopoJ with no JSON, use this
   direct-Z one.
 
 QUICK TROUBLESHOOTING
 ------------------------------------------------------------------------
 Symptom                                                     Likely fix
-----------------------------------------------------------  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------  ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Lots of points show "missing frame"                         Revisit Step 4 — the frame offset is probably wrong (try +1 or 0).
 Lots of points show "out of bounds"                         Check your CSV X/Y match the TIFF image size, and check the pixel convention in Step 5.
 Columns detected wrong                                      Fix them manually in Step 3.
 Plugin not in the menu                                      Restart Fiji, or use Help > Refresh Menus.
 Nothing seems to export                                     Make sure at least one format is ticked in Step 6, and read export_report.txt.
+"Inconsistent image dimensions in TIFF folder"              One TIFF is a different size from the first one in the folder — the message names it and gives both sizes. Remove it or re-crop everything to one size. Worth knowing: Part 1 doesn't compare sizes between timepoints, so a projection run can produce a folder like this.
+"These TIFF filenames contain no frame number"              One or more TIFFs have no digits in the name, so there's no frame index to read — the message lists them all. Rename each so it carries its frame number (e.g. z_origin_0007.tif).
 "requires 32-bit float TIFFs" error                         You opened the TopoJ / direct-Z extractor with indexed images — use the standard 3D Z-Coordinate Extractor (with its JSON map) instead.
 Part 1: "no Z-layer sub-folders" or "no .tif stacks found"  The Input type doesn't match your folder — switch it (or the Scope) and check the grey structure line under Scope.
 Part 1: "slice has no readable Z in its label"              Your TIFF stack's slices aren't labelled with their depth (z = -400.000). Re-save the stack from Fiji with the depth labels, or use the Z-layer sub-folder layout instead.
