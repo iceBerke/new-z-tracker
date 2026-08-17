@@ -147,7 +147,13 @@
                          plugins folder, so a version bump doesn't leave the old JAR behind
                          (which would make Fiji register the plugin twice). Excludes the
                          current version, so it is safe to run after copy-to-fiji — it can
-                         never delete the freshly-built JAR. -->
+                         never delete the freshly-built JAR.
+
+                         failonerror="false" is deliberate: it keeps one undeletable file from
+                         aborting the sweep over the others. The cost is that a failure here is
+                         silent — and note Ant logs "[delete] Deleting <file>" as its *intent*,
+                         so that line is NOT proof the file went. verify-deploy below is what
+                         actually enforces the outcome; do not rely on this step alone. -->
                     <execution>
                         <id>clean-old-jars</id>
                         <phase>install</phase>
@@ -159,7 +165,7 @@
                                              includes="z-tracker-v4-*.jar"
                                              excludes="z-tracker-v4-${patch.version}.jar"/>
                                 </delete>
-                                <echo level="info" message="[clean-old-jars] Removed any z-tracker-v4-*.jar except the current z-tracker-v4-${patch.version}.jar."/>
+                                <echo level="info" message="[clean-old-jars] Attempted removal of any z-tracker-v4-*.jar except the current z-tracker-v4-${patch.version}.jar (verify-deploy confirms)."/>
                             </target>
                         </configuration>
                     </execution>
@@ -177,7 +183,20 @@
                                            property="fiji.jar.exists"/>
                                 <fail unless="fiji.jar.exists"
                                       message="JAR not copied to Fiji plugins folder. Check outputDirectory in pom.xml line 126."/>
-                                <echo level="info" message="[verify-deploy] OK — z-tracker-v4-${patch.version}.jar built and deployed."/>
+                                <!-- "the new JAR is there" is not the same as "the old one is gone".
+                                     clean-old-jars cannot fail the build (see its comment), so a
+                                     superseded JAR held open by a running Fiji survives silently and
+                                     Fiji then registers every ZTracker tool twice. Assert the folder
+                                     really holds only the current version. -->
+                                <pathconvert property="stale.jars" pathsep=", " setonempty="false">
+                                    <fileset dir="C:/Users/berke.santos/Desktop/Fiji-Stable/plugins"
+                                             includes="z-tracker-v4-*.jar"
+                                             excludes="z-tracker-v4-${patch.version}.jar"/>
+                                    <mapper type="flatten"/>
+                                </pathconvert>
+                                <fail if="stale.jars"
+                                      message="Superseded JAR(s) still in the Fiji plugins folder: ${stale.jars} — they could not be deleted, almost always because Fiji is running and holds them open (Windows file lock). Leaving them there makes Fiji register every ZTracker tool twice. Quit Fiji completely, then re-run mvn install."/>
+                                <echo level="info" message="[verify-deploy] OK — z-tracker-v4-${patch.version}.jar built and deployed, and no superseded z-tracker-v4-*.jar left behind."/>
                             </target>
                         </configuration>
                     </execution>

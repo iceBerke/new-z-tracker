@@ -6,12 +6,14 @@ import ztracker.io.extractor.TiffStackLoader;
 import ztracker.io.extractor.ZMappingLoader;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -162,5 +164,66 @@ class ProjectionExporterTest {
                         "Z lookup mismatch at (" + x + "," + y + ")");
             }
         }
+    }
+
+    // ── Seam: what a digit-less timepoint name does downstream (p10.8) ─────────
+    //
+    // These pin the three outcomes ZProjectorPlugin.digitlessNameWarning describes to the
+    // user. They go through the real writers, so the output *names* are the exporter's own
+    // rather than hand-typed — if a prefix ever changes, these move with it. Nothing in
+    // TiffStackLoader changed for p10.8; this is the consumer's existing behaviour, pinned
+    // here so the producer's warning cannot drift from it (as its first wording did).
+
+    /**
+     * 32-bit: the worst outcome, and the one a "Tool 2 will refuse the folder" summary gets
+     * wrong. {@code z_origin_32bit_cells.tif} does carry a digit run — the "32" of "32bit" —
+     * so mixed with normally-named timepoints the folder loads with <b>no error at all</b> and
+     * the digit-less timepoint silently occupies frame 32.
+     */
+    @Test
+    void seam_digitless32BitName_loadsSilentlyAtFrame32_neitherRejectedNorColliding(
+            @TempDir Path dir) throws Exception {
+        File z32 = new File(dir.toFile(), "z_origin_32bit");
+        assertTrue(z32.mkdirs());
+        // Input timepoints "cells.tif" (no digits) and "0007.tif", written by the real exporter.
+        ProjectionExporter.write32BitOrigin(z32, "cells.tif", new int[][]{{1}});
+        ProjectionExporter.write32BitOrigin(z32, "0007.tif", new int[][]{{2}});
+
+        TiffStackLoader.LoadedStack stack = TiffStackLoader.load(z32); // no throw — the point
+        assertEquals(2, stack.frameCount());
+        assertEquals(7, stack.firstFrame());
+        assertEquals(32, stack.lastFrame(), "the digit-less timepoint lands on the '32' of 32bit");
+        // ...and it really is cells.tif's pixel sitting at frame 32.
+        assertEquals(1, stack.pixels[stack.frameToIdx.get(32)][0][0]);
+    }
+
+    /** 32-bit: the one arrangement that IS caught — the "32" colliding with a real frame 32. */
+    @Test
+    void seam_digitless32BitName_isOnlyRefusedWhenItCollidesWithAGenuineFrame32(@TempDir Path dir)
+            throws Exception {
+        File z32 = new File(dir.toFile(), "z_origin_32bit");
+        assertTrue(z32.mkdirs());
+        ProjectionExporter.write32BitOrigin(z32, "cells.tif", new int[][]{{1}});
+        ProjectionExporter.write32BitOrigin(z32, "0032.tif", new int[][]{{2}});
+
+        IOException e = assertThrows(IOException.class, () -> TiffStackLoader.load(z32));
+        assertTrue(e.getMessage().contains("frame 32"), e.getMessage());
+        assertTrue(e.getMessage().contains("z_origin_32bit_cells.tif"), e.getMessage());
+    }
+
+    /** 16-bit: no digit run at all, so this one really is refused outright (p10.2). */
+    @Test
+    void seam_digitless16BitName_isRefusedOutright(@TempDir Path dir) throws Exception {
+        File z16 = new File(dir.toFile(), "z_origin");
+        assertTrue(z16.mkdirs());
+        ProjectionExporter.write16BitOrigin(z16, "cells.tif", new int[][]{{1}});
+        ProjectionExporter.write16BitOrigin(z16, "0007.tif", new int[][]{{2}});
+
+        IOException e = assertThrows(IOException.class, () -> TiffStackLoader.load(z16));
+        // Assert on the offending-file list specifically: the message's own help text cites
+        // "e.g. z_origin_0007.tif" as a well-formed example, so a plain contains() on that name
+        // would false-alarm.
+        assertTrue(e.getMessage().contains("[z_origin_cells.tif]"),
+                "only the digit-less file should be listed: " + e.getMessage());
     }
 }

@@ -189,26 +189,64 @@ public class ZProjectorPlugin implements PlugIn {
      * disagrees (p10.1), so writing the odd-sized timepoint would make the <em>entire</em>
      * z-origin folder unloadable by Tool 2. Dropping just that timepoint leaves a frame gap,
      * which Tool 2 accepts. Hence the caller skips rather than warns.
+     *
+     * <p>The message names the reference size <em>and</em> where it came from, because the
+     * reference is merely the first timepoint that happened to be written — it is not verified
+     * against anything, so it can perfectly well be the outlier itself. See
+     * {@link #dimensionSkipSummary}, which says so outright once the skips outnumber the keeps.
      */
     static String dimensionMismatch(String label, int width, int height,
                                     String refLabel, int refWidth, int refHeight) {
         if (width == refWidth && height == refHeight) return null;
-        return "projects to " + width + "x" + height + ", but this dataset's first written"
-                + " timepoint '" + refLabel + "' is " + refWidth + "x" + refHeight + "."
-                + " Every timepoint of one dataset must be the same size — the extractor"
-                + " (Tool 2) refuses a z-origin folder whose frames disagree, so writing this"
-                + " one would make the whole folder unloadable.";
+        return "projects to " + width + "x" + height + ", but this dataset's reference size is "
+                + refWidth + "x" + refHeight + ", taken from '" + refLabel + "' — the first"
+                + " timepoint that was written. Every timepoint of one dataset must be the same"
+                + " size: the extractor (Tool 2) refuses a z-origin folder whose frames disagree,"
+                + " so writing this one would make the whole folder unloadable.";
+    }
+
+    /**
+     * The per-dataset note closing a run that dropped timepoints for size, or {@code null}
+     * when none were dropped.
+     *
+     * <p>Exists because the reference size is unverified: if the <em>first written</em>
+     * timepoint is the odd-sized one, every later timepoint mismatches it and the run reports
+     * a huge skip count while the single surviving timepoint is the actual problem. A user
+     * reading "99 skipped" must not have to infer that. So once the skips are the majority,
+     * this says plainly that the reference is the more likely culprit.
+     */
+    static String dimensionSkipSummary(int skippedForSize, int total, String refLabel,
+                                       int refWidth, int refHeight) {
+        if (skippedForSize <= 0) return null;
+        String note = skippedForSize + " of " + total + " timepoint(s) skipped for not matching the"
+                + " reference size " + refWidth + "x" + refHeight + " from '" + refLabel + "'.";
+        if (skippedForSize * 2 >= total) {
+            note += " That is most of this dataset, which usually means '" + refLabel + "' is"
+                  + " itself the odd one out — it is the reference only because it was written"
+                  + " first, not because it was checked against anything. Verify it before"
+                  + " trusting the timepoint(s) that were kept.";
+        }
+        return note;
     }
 
     /**
      * Warns about a timepoint whose name carries no digits, or {@code null} when it does.
      *
      * <p>The z-origin filenames are {@code <prefix> + <timepoint name>}, so a digit-less
-     * input name produces output the extractor cannot map to a frame — differently per depth,
-     * which is why both are spelled out: the 16-bit name has no digits at all and is rejected
-     * outright (p10.2), while the 32-bit name does carry one — the {@code 32} of
-     * {@code 32bit} — which the "last digit run" rule reads as the frame index, so several
-     * such timepoints collide on frame 32 and are rejected as duplicates (p10.4).
+     * input name produces output the extractor cannot map to its real frame — differently per
+     * depth, which is why both are spelled out rather than summarised as "no frame number":
+     *
+     * <ul>
+     *   <li><b>16-bit</b> {@code z_origin_<name>} has no digits at all, so Tool 2 rejects the
+     *       whole folder up front (p10.2).</li>
+     *   <li><b>32-bit</b> {@code z_origin_32bit_<name>} <em>does</em> carry a digit run — the
+     *       {@code 32} of {@code 32bit} — which the last-digit-run rule reads as frame 32. That
+     *       is only refused when something <em>else</em> also resolves to 32 (a second
+     *       digit-less name, or a genuine {@code 0032.tif}), as a duplicate (p10.4). Otherwise
+     *       the folder loads with no error whatsoever and this timepoint simply sits at frame
+     *       32 — the <b>worst</b> of the three outcomes, because nothing reports it, so the
+     *       message states it first and as its own consequence.</li>
+     * </ul>
      *
      * <p>Reported, not fixed: renaming the user's input is their call, and the projection
      * itself is perfectly good.
@@ -216,21 +254,48 @@ public class ZProjectorPlugin implements PlugIn {
     static String digitlessNameWarning(String filename, boolean write16, boolean write32) {
         if (ANY_DIGIT.matcher(filename).find()) return null;
         StringBuilder sb = new StringBuilder();
-        sb.append("timepoint name '").append(filename).append("' contains no digits, so its")
-          .append(" z-origin output carries no frame number:");
+        // Not "carries no frame number" — the 32-bit name does carry one (the '32'), just the
+        // wrong one, and the per-depth lines below have to be free to say so.
+        sb.append("timepoint name '").append(filename).append("' contains no digits, so the")
+          .append(" extractor cannot map its z-origin output to the right frame:");
         if (write16) {
             sb.append("\n  'z_origin_").append(filename).append("' — the extractor (Tool 2)")
               .append(" takes the frame index from the last run of digits in the filename,")
               .append(" finds none, and refuses the whole z_origin folder.");
         }
         if (write32) {
-            sb.append("\n  'z_origin_32bit_").append(filename).append("' — the extractor reads")
-              .append(" the '32' of '32bit' as the frame index, so every such timepoint claims")
-              .append(" frame 32: two or more and it refuses the folder as duplicate frame")
-              .append(" numbers, one alone loads under the wrong frame.");
+            sb.append("\n  'z_origin_32bit_").append(filename).append("' — this name DOES carry a")
+              .append(" digit run: the '32' of '32bit'. The extractor takes the last digit run as")
+              .append(" the frame index, so it reads this timepoint as frame 32. Alongside")
+              .append(" normally-named timepoints the folder then loads with NO error at all and")
+              .append(" this timepoint silently occupies frame 32 — worse than a refusal, because")
+              .append(" nothing reports it and the Z coordinates come out attached to the wrong")
+              .append(" frame. It is refused only if something else also resolves to 32 (a second")
+              .append(" digit-less timepoint, or a real 0032.tif), as a duplicate frame number.");
         }
         sb.append("\n  Rename the input timepoint file to carry a frame index (e.g. 0001.tif)")
           .append(" and re-run.");
+        return sb.toString();
+    }
+
+    /**
+     * The one-line form of {@link #digitlessNameWarning}, for every offending timepoint after
+     * the first in a dataset — or {@code null} when the name carries a digit.
+     *
+     * <p>Input naming is normally uniform, so the realistic case is <em>every</em> timepoint
+     * lacking digits. Repeating the four-line explanation 100 times would bury the rest of the
+     * run log, so the explanation is logged once per dataset and the remaining timepoints get
+     * this line: the same facts still apply, they are just not restated. Says nothing the full
+     * warning does not.
+     */
+    static String digitlessNameBrief(String filename, boolean write16, boolean write32) {
+        if (ANY_DIGIT.matcher(filename).find()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("timepoint name '").append(filename).append("' also contains no digits → ");
+        if (write16) sb.append('\'').append("z_origin_").append(filename).append('\'');
+        if (write16 && write32) sb.append(", ");
+        if (write32) sb.append('\'').append("z_origin_32bit_").append(filename).append('\'');
+        sb.append(" (same as above).");
         return sb.toString();
     }
 
@@ -272,6 +337,9 @@ public class ZProjectorPlugin implements PlugIn {
         // Size of the first successfully written timepoint — every later one must match it.
         int refWidth = -1, refHeight = -1;
         String refLabel = null;
+        int skippedForSize = 0;
+        // The digit-less-name explanation is logged once per dataset, not once per timepoint.
+        boolean digitlessExplained = false;
         String firstFailure = null;
         for (int t = 0; t < total; t++) {
             String filename = timepoints.get(t);
@@ -300,6 +368,7 @@ public class ZProjectorPlugin implements PlugIn {
                         refLabel, refWidth, refHeight);
                 if (mismatch != null) {
                     IJ.log("[ZProjector]   skipped timepoint '" + filename + "': " + mismatch);
+                    skippedForSize++;
                     continue;
                 }
             }
@@ -330,11 +399,16 @@ public class ZProjectorPlugin implements PlugIn {
             written++;
 
             // The output names are '<prefix><timepoint name>', so a digit-less input name
-            // yields output the extractor cannot map to a frame. Report it at the point of
-            // writing — the projection is fine, only the name is unusable downstream.
-            String nameWarning = digitlessNameWarning(filename, cfg.write16Bit, cfg.write32Bit);
+            // yields output the extractor cannot map to its real frame. Report it at the point
+            // of writing — the projection is fine, only the name is unusable downstream. The
+            // full explanation is logged once per dataset (input naming is normally uniform, so
+            // all 100 timepoints of a dataset typically offend); the rest get one line each.
+            String nameWarning = digitlessExplained
+                    ? digitlessNameBrief(filename, cfg.write16Bit, cfg.write32Bit)
+                    : digitlessNameWarning(filename, cfg.write16Bit, cfg.write32Bit);
             if (nameWarning != null) {
                 IJ.log("[ZProjector]   WARNING: " + nameWarning);
+                digitlessExplained = true;
             }
 
             ZProjector.Result result = projected.result;
@@ -375,6 +449,12 @@ public class ZProjectorPlugin implements PlugIn {
         IJ.log(String.format("[ZProjector] %s '%s' done: %d of %d timepoint(s) written%s%s.",
                 mode, datasetDir.getName(), written, total,
                 written < total ? ", " + (total - written) + " skipped" : "", skipNote));
+        // The reference size is unverified — it is just the first timepoint written — so a large
+        // skip count may mean the reference, not the skipped timepoints, is the outlier.
+        String sizeNote = dimensionSkipSummary(skippedForSize, total, refLabel, refWidth, refHeight);
+        if (sizeNote != null) {
+            IJ.log("[ZProjector]   WARNING: " + sizeNote);
+        }
         return total - written;
     }
 }
