@@ -57,7 +57,10 @@ public class TiffStackLoader {
      *
      * @param folder directory containing .tif / .tiff files
      * @return loaded stack with frame mapping
-     * @throws IOException if the folder is empty or a file cannot be read
+     * @throws IOException if the folder holds no TIFFs, a filename carries no frame number,
+     *                     a file cannot be read, the bit depth is unsupported or mixed across
+     *                     the folder, or a frame's pixel dimensions differ from the first
+     *                     frame's
      */
     public static LoadedStack load(File folder) throws IOException {
         File[] tifFiles = folder.listFiles(
@@ -65,6 +68,21 @@ public class TiffStackLoader {
 
         if (tifFiles == null || tifFiles.length == 0) {
             throw new IOException("No TIFF files found in: " + folder.getAbsolutePath());
+        }
+
+        // Every filename must carry a frame number. Reject up front with a clear message
+        // rather than silently collapsing digit-less names to frame 0, where several such
+        // files would clobber each other in frameToIdx and quietly vanish from the stack.
+        List<String> namesWithoutFrameNumber = new ArrayList<>();
+        for (File f : tifFiles) {
+            if (!hasFrameNumber(f)) namesWithoutFrameNumber.add(f.getName());
+        }
+        if (!namesWithoutFrameNumber.isEmpty()) {
+            throw new IOException(
+                    "These TIFF filenames contain no frame number: " + namesWithoutFrameNumber
+                    + "\nThe frame index is the last run of digits in the filename (e.g."
+                    + " z_origin_0007.tif, z_origin_32bit_0007.tif). Rename so every file"
+                    + " carries its frame number.");
         }
 
         // Sort by the trailing integer in the filename (natural sort)
@@ -120,9 +138,16 @@ public class TiffStackLoader {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
+    /** Whether a filename carries a frame number at all — {@link #load} rejects those that don't. */
+    private static boolean hasFrameNumber(File file) {
+        return NUMBER_PATTERN.matcher(file.getName()).find();
+    }
+
     /**
      * Extracts the last integer found in a filename (used for sorting and mapping).
-     * Falls back to 0 if none found (should not happen with well-named TIFF stacks).
+     * Falls back to 0 if none found — unreachable through {@link #load}, which rejects
+     * digit-less filenames up front (frame 0 is itself a legitimate frame number, so the
+     * fallback cannot double as an error signal).
      *
      * <p>Uses the last match rather than the first because filenames can contain
      * incidental numbers before the trailing frame index (e.g. {@code z_origin_32bit_0007.tif}

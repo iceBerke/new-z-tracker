@@ -32,10 +32,11 @@ import java.util.regex.Pattern;
  * zero-padding width is accepted (the padding is not hard-coded: {@code frame7.tif},
  * {@code topoj_0007.tif}, and {@code height_map_00000007.tif} all resolve to frame 7).
  * Unlike {@link TiffStackLoader} (which takes the last digit run <i>anywhere</i> in the
- * name and silently falls back to frame 0), this loader anchors the match to the end of
- * the base name and <b>rejects</b> any file that does not end with an integer, rather
- * than silently collapsing it to frame 0 (where several such files would clobber each
- * other in the {@code frame → stackIndex} map).
+ * name), this loader anchors the match to the end of the base name and <b>rejects</b> any
+ * file that does not end with an integer. Both loaders reject a name carrying no frame
+ * number at all (Tool 2 since p10.2) rather than collapsing it to frame 0, where several
+ * such files would clobber each other in the {@code frame → stackIndex} map; they differ
+ * only in <i>where</i> in the name the number is looked for.
  */
 public class TopoJStackLoader {
 
@@ -94,8 +95,10 @@ public class TopoJStackLoader {
      *
      * @param folder directory containing .tif / .tiff files
      * @return loaded float stack with frame mapping
-     * @throws IOException if the folder is empty, a file cannot be read, or a file
-     *                     is not 32-bit float (or bit depths are mixed)
+     * @throws IOException if the folder holds no TIFFs, a filename does not end with a frame
+     *                     number, a file cannot be read, a file is not 32-bit float (or bit
+     *                     depths are mixed), or a frame's pixel dimensions differ from the
+     *                     first frame's
      */
     public static LoadedFloatStack load(File folder) throws IOException {
         File[] tifFiles = folder.listFiles(

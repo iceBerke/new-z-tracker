@@ -185,6 +185,36 @@ class TiffStackLoaderTest {
                 + e.getMessage());
     }
 
+    // ── Filenames without a frame number (p10.2) ──────────────────────────────
+
+    @Test
+    void load_rejectsFilenameWithNoFrameNumber(@TempDir Path dir) throws Exception {
+        // extractFrameNumber falls back to 0 for a digit-less name, and 0 is a legitimate
+        // frame number — so the fallback cannot signal an error and load() must reject the
+        // name itself, before several such files quietly overwrite each other in frameToIdx.
+        writeShortTiff(new File(dir.toFile(), "z_origin_0000.tif"), new int[][]{{1}});
+        writeShortTiff(new File(dir.toFile(), "frame.tif"),         new int[][]{{2}});
+
+        IOException e = assertThrows(IOException.class, () -> TiffStackLoader.load(dir.toFile()));
+        assertTrue(e.getMessage().contains("frame.tif"),
+                "message should name the offending file: " + e.getMessage());
+        assertTrue(!e.getMessage().contains("z_origin_0000.tif"),
+                "message should not name the well-formed file: " + e.getMessage());
+    }
+
+    @Test
+    void load_rejectsSeveralDigitlessFilenames_namingEveryOneOfThem(@TempDir Path dir)
+            throws Exception {
+        // The silent-loss case: without the check both collapse to frame 0 and only one
+        // survives in frameToIdx. The message must list them all, not just the first.
+        writeShortTiff(new File(dir.toFile(), "alpha.tif"), new int[][]{{1}});
+        writeShortTiff(new File(dir.toFile(), "beta.tif"),  new int[][]{{2}});
+
+        IOException e = assertThrows(IOException.class, () -> TiffStackLoader.load(dir.toFile()));
+        assertTrue(e.getMessage().contains("alpha.tif") && e.getMessage().contains("beta.tif"),
+                "message should name every offending file: " + e.getMessage());
+    }
+
     // ── Per-frame dimension guard (p10.1) ─────────────────────────────────────
 
     @Test
