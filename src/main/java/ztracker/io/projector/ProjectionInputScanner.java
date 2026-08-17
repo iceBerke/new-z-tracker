@@ -167,6 +167,16 @@ public final class ProjectionInputScanner {
                             "Inconsistent image dimensions within timepoint '" + filename + "': "
                             + scan.zLayerNames.get(i) + " is " + imp.getWidth() + "x" + imp.getHeight()
                             + ", expected " + width + "x" + height + ".");
+                } else if (imp.getBitDepth() != bitDepth) {
+                    // The projection compares raw intensities across these layers, and the
+                    // depths have different ceilings (255 vs 65535), so mixing them lets the
+                    // deeper layer win Max-Z on magnitude alone — a plausible, wrong z-origin.
+                    throw new IOException(
+                            "Inconsistent bit depths within timepoint '" + filename + "': "
+                            + scan.zLayerNames.get(i) + " is " + imp.getBitDepth() + "-bit, expected "
+                            + bitDepth + "-bit."
+                            + "\nAll Z layers of one timepoint must share a bit depth — the"
+                            + " projection compares their raw intensities.");
                 }
                 ImageProcessor ip = imp.getProcessor();
                 float[][] slice = new float[height][width];

@@ -29,7 +29,9 @@ say which with the **Input type** dropdown.
 
 **Image depth:** your raw slices can be **8-, 16-, or 32-bit** grayscale. Part 1 only compares
 pixel brightness between depths, so the bit depth affects precision, not whether it works — use
-whatever your microscope produced. **Colour (RGB) images are rejected** with a message naming the
+whatever your microscope produced — but **all the depths of one time frame must be the same bit
+depth** (mixing 8- and 16-bit is rejected: the brighter scale would win everywhere and the depths
+you got back would be wrong). **Colour (RGB) images are rejected** too, with a message naming the
 offending layer or slice — there's no single brightness to compare in a colour pixel. Convert to
 grayscale first (**Image > Type > 8-bit** or **16-bit**) and re-run.
 
@@ -211,6 +213,8 @@ Not sure which one you have? If your projection folder came with a `z_layer_mapp
 | "These TIFF files resolve to the same frame number" | Two or more TIFFs point at the same frame, so one would have replaced the other — the message shows the frame number and every file that landed on it. Usually two runs mixed into one folder (`run1_0007.tif`, `run2_0007.tif` are both frame 7). Separate them into their own folders, or rename so each frame appears once. |
 | "requires 32-bit float TIFFs" error | You opened the **TopoJ / direct-Z** extractor with indexed images — use the standard **3D Z-Coordinate Extractor** (with its JSON map) instead. |
 | Part 1: "no Z-layer sub-folders" or "no .tif stacks found" | The **Input type** doesn't match your folder — switch it (or the Scope) and check the grey structure line under Scope. |
+| Part 1: "Inconsistent bit depths within timepoint" | One depth of that time frame is a different bit depth from the others (e.g. 8-bit among 16-bit). The message names it. Convert them all to the same type and re-run. |
+| Part 1: finished, but the Log ends with a **WARNING** about skipped timepoints | Those time frames are **missing from the output** — scroll up to the `skipped timepoint` lines for the reason on each. Don't treat the run as complete: Part 2 will read the result as a normal gap in the frame numbering and say nothing. |
 | Part 1: "Colour (RGB) image/slice" | Your raw stack is in colour, which has no single brightness to project. Convert it with **Image > Type > 8-bit** (or **16-bit**) and re-run — the message names the layer or slice it stopped on. |
 | Part 1: "slice has no readable Z in its label" | Your TIFF stack's slices aren't labelled with their depth (`z = -400.000`). Re-save the stack from Fiji with the depth labels, or use the Z-layer sub-folder layout instead. |
 

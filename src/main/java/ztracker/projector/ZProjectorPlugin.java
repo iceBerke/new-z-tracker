@@ -69,10 +69,11 @@ public class ZProjectorPlugin implements PlugIn {
         // projections writes into separate max_z / min_z output trees, so they never collide.
         int unitsDone = 0;
         int unitsTotal = datasets.size() * cfg.modes.size();
+        int timepointsSkipped = 0;
         for (ZProjector.Mode mode : cfg.modes) {
             for (File datasetDir : datasets) {
                 try {
-                    processDataset(datasetDir, cfg, mode);
+                    timepointsSkipped += processDataset(datasetDir, cfg, mode);
                     unitsDone++;
                 } catch (Exception e) {
                     IJ.log("[ZProjector] SKIPPED " + mode + " for dataset '"
@@ -85,6 +86,16 @@ public class ZProjectorPlugin implements PlugIn {
         IJ.showProgress(1.0);
         IJ.log(String.format("\n[ZProjector] Done. %d / %d (dataset × projection) unit(s) processed. Output under: %s",
                 unitsDone, unitsTotal, cfg.outputDir.getAbsolutePath()));
+        // A partial run must not read as a clean one: a dropped timepoint becomes a legal
+        // frame gap downstream, which the extractor accepts without comment.
+        if (timepointsSkipped > 0) {
+            IJ.log("[ZProjector] WARNING: " + timepointsSkipped + " timepoint(s) were skipped and"
+                    + " are missing from the output — see the 'skipped timepoint' lines above.");
+        }
+        if (unitsDone < unitsTotal) {
+            IJ.log("[ZProjector] WARNING: " + (unitsTotal - unitsDone)
+                    + " of " + unitsTotal + " unit(s) produced no output at all.");
+        }
         IJ.log("========================================\n");
     }
 
@@ -158,7 +169,18 @@ public class ZProjectorPlugin implements PlugIn {
                 : new File(outputDir, datasetFolderName);
     }
 
-    private static void processDataset(File datasetDir, ZProjectorDialog.Config cfg, ZProjector.Mode mode)
+    /**
+     * Projects one dataset for one mode.
+     *
+     * <p>Output folders and the {@code z_layer_mapping*.json} are created on the first
+     * successfully projected timepoint, so a dataset that fails outright leaves nothing behind
+     * rather than an empty tree plus an orphan mapping — which would look like a valid
+     * extractor input folder.
+     *
+     * @return how many timepoints were skipped (0 when everything was written)
+     * @throws IOException if <em>no</em> timepoint could be projected, naming the first failure
+     */
+    private static int processDataset(File datasetDir, ZProjectorDialog.Config cfg, ZProjector.Mode mode)
             throws Exception {
         ProjectionSource source = openSource(datasetDir, cfg);
 
@@ -169,21 +191,20 @@ public class ZProjectorPlugin implements PlugIn {
         File rawDir = new File(datasetOutDir, "raw");
         File z16Dir = new File(datasetOutDir, "z_origin");
         File z32Dir = new File(datasetOutDir, "z_origin_32bit");
-        if (cfg.write16Bit) z16Dir.mkdirs();
-        if (cfg.write32Bit) z32Dir.mkdirs();
-        rawDir.mkdirs(); // raw projection is always written
 
         List<String> zLayerNames = source.zLayerNames();
         List<String> timepoints  = source.timepointLabels();
 
-        ProjectionExporter.writeMappings(datasetOutDir, source.zValues(), cfg.write16Bit, cfg.write32Bit);
         IJ.log(String.format("[ZProjector] %s '%s': %d z-layers (%s … %s), %d timepoint(s) → %s",
                 mode, datasetDir.getName(), zLayerNames.size(),
                 zLayerNames.get(0), zLayerNames.get(zLayerNames.size() - 1),
                 timepoints.size(), datasetOutDir.getAbsolutePath()));
 
         int total = timepoints.size();
+        int written = 0;
         int skipped16 = 0;
+        int previousBitDepth = -1;
+        String firstFailure = null;
         for (int t = 0; t < total; t++) {
             String filename = timepoints.get(t);
             IJ.showStatus("Projecting " + mode + " " + datasetDir.getName() + " — " + filename);
@@ -193,9 +214,32 @@ public class ZProjectorPlugin implements PlugIn {
             try {
                 projected = source.projectTimepoint(mode, filename);
             } catch (Exception e) {
+                if (firstFailure == null) firstFailure = filename + ": " + e.getMessage();
                 IJ.log("[ZProjector]   skipped timepoint '" + filename + "': " + e.getMessage());
                 continue;
             }
+
+            // Depths may differ between timepoints without corrupting anything — each
+            // timepoint is projected on its own, and the z-origin output is layer indices —
+            // so this is worth flagging, not failing.
+            if (previousBitDepth >= 0 && projected.sourceBitDepth != previousBitDepth) {
+                IJ.log("[ZProjector]   NOTE: '" + filename + "' is " + projected.sourceBitDepth
+                        + "-bit, previous timepoint was " + previousBitDepth + "-bit."
+                        + " Z-origin output is unaffected (it stores layer indices), but check"
+                        + " this is intentional.");
+            }
+            previousBitDepth = projected.sourceBitDepth;
+
+            // Output folders and the mapping are created on first success, so a dataset that
+            // fails outright leaves no empty tree + orphan JSON looking like valid Tool 2 input.
+            if (written == 0) {
+                if (cfg.write16Bit) z16Dir.mkdirs();
+                if (cfg.write32Bit) z32Dir.mkdirs();
+                rawDir.mkdirs(); // raw projection is always written
+                ProjectionExporter.writeMappings(datasetOutDir, source.zValues(),
+                        cfg.write16Bit, cfg.write32Bit);
+            }
+            written++;
 
             ZProjector.Result result = projected.result;
 
@@ -219,13 +263,22 @@ public class ZProjectorPlugin implements PlugIn {
         }
         IJ.showProgress(1.0);
 
+        // Nothing written means the dataset failed, however many timepoints were attempted —
+        // report it as a failure naming the first cause, rather than "done" over empty output.
+        if (written == 0) {
+            throw new IOException("No timepoint could be projected (" + total + " attempted). "
+                    + "First failure — " + firstFailure);
+        }
+
         String skipNote = "";
         if (skipped16 > 0) {
             skipNote = cfg.write32Bit
                     ? " (" + skipped16 + " without a 16-bit z-origin — 32-bit still written)"
                     : " (" + skipped16 + " with NO z-origin — indices exceed uint16 and 32-bit was not selected)";
         }
-        IJ.log(String.format("[ZProjector] %s '%s' done: %d timepoint(s)%s.",
-                mode, datasetDir.getName(), total, skipNote));
+        IJ.log(String.format("[ZProjector] %s '%s' done: %d of %d timepoint(s) written%s%s.",
+                mode, datasetDir.getName(), written, total,
+                written < total ? ", " + (total - written) + " skipped" : "", skipNote));
+        return total - written;
     }
 }

@@ -2,6 +2,7 @@ package ztracker.io.projector;
 
 import ij.ImagePlus;
 import ij.io.FileSaver;
+import ij.process.ByteProcessor;
 import ij.process.ColorProcessor;
 import ij.process.FloatProcessor;
 import ij.process.ShortProcessor;
@@ -207,6 +208,41 @@ class ProjectionInputScannerTest {
         assertTrue(e.getMessage().contains("RGB"), "message should name the cause: " + e.getMessage());
         assertTrue(e.getMessage().contains("-299"),
                 "message should name the offending layer: " + e.getMessage());
+    }
+
+    @Test
+    void loadTimepoint_rejectsMixedBitDepthsAcrossLayers(@TempDir Path dir) throws Exception {
+        // The projection compares these layers' raw intensities, and their ceilings differ
+        // (255 vs 65535), so a 16-bit layer would win Max-Z on magnitude alone.
+        File dataset = new File(dir.toFile(), "ds");
+        writeShortTiff(layer(dataset, "-300"), "t1.tif", 2, 2, 10);   // 16-bit
+        save(new ByteProcessor(2, 2), new File(layer(dataset, "-299"), "t1.tif")); // 8-bit
+
+        ProjectionInputScanner.DatasetScan scan = ProjectionInputScanner.scanDataset(dataset);
+
+        IOException e = assertThrows(IOException.class,
+                () -> ProjectionInputScanner.loadTimepoint(scan, "t1.tif"));
+        assertTrue(e.getMessage().contains("bit depth") || e.getMessage().contains("bit depths"),
+                "message should name the cause: " + e.getMessage());
+        assertTrue(e.getMessage().contains("-299"),
+                "message should name the offending layer: " + e.getMessage());
+        assertTrue(e.getMessage().contains("8-bit") && e.getMessage().contains("16-bit"),
+                "message should give both depths: " + e.getMessage());
+    }
+
+    @Test
+    void loadTimepoint_uniformBitDepthAcrossLayers_stillLoads(@TempDir Path dir) throws Exception {
+        // Guard against over-eager rejection: same depth everywhere must remain fine.
+        File dataset = new File(dir.toFile(), "ds");
+        writeShortTiff(layer(dataset, "-300"), "t1.tif", 2, 2, 10);
+        writeShortTiff(layer(dataset, "-299"), "t1.tif", 2, 2, 20);
+
+        ProjectionInputScanner.DatasetScan scan = ProjectionInputScanner.scanDataset(dataset);
+        ProjectionInputScanner.TimepointStack ts =
+                ProjectionInputScanner.loadTimepoint(scan, "t1.tif");
+
+        assertEquals(2, ts.slices.size());
+        assertEquals(16, ts.sourceBitDepth);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

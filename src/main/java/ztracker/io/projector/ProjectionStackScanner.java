@@ -218,6 +218,18 @@ public final class ProjectionStackScanner {
                                 "Inconsistent slice dimensions within '" + label + "': slice " + slice
                                 + " is " + ip.getWidth() + "x" + ip.getHeight() + ", expected "
                                 + buffer[0].length + "x" + buffer.length + ".");
+                    } else if (ip.getBitDepth() != bitDepth) {
+                        // Defensive, and deliberately untested: a mixed-depth stack cannot
+                        // survive a round-trip to a file. ImageJ's FileSaver writes the whole
+                        // stack using the *first* slice's type and coerces the rest, so a
+                        // reopened stack always reports one depth (verified against ij 1.54f).
+                        // Kept for parity with the folder layout, where each Z layer is its own
+                        // file and mixing really does happen — see that check for why it matters.
+                        throw new IOException(
+                                "Inconsistent bit depths within '" + label + "': slice " + slice
+                                + " is " + ip.getBitDepth() + "-bit, expected " + bitDepth + "-bit."
+                                + "\nAll slices of one timepoint must share a bit depth — the"
+                                + " projection compares their raw intensities.");
                     }
                     readInto(ip, buffer);
                     acc.add(buffer, global); // add() copies — the buffer is reused next slice
