@@ -226,7 +226,7 @@ public class ZProjectorPlugin implements PlugIn {
                 IJ.log("[ZProjector]   NOTE: '" + filename + "' is " + projected.sourceBitDepth
                         + "-bit, previous timepoint was " + previousBitDepth + "-bit."
                         + " Z-origin output is unaffected (it stores layer indices), but check"
-                        + " this is intentional.");
+                        + " if this is intentional.");
             }
             previousBitDepth = projected.sourceBitDepth;
 
