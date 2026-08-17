@@ -232,6 +232,26 @@ against them. A timepoint covering only *some* of those layers is fine (the same
 can be absent from some Z folders in input type A) — its slices keep their global Z indices. A
 timepoint naming a depth the dataset has no layer for is skipped with a logged reason.
 
+**A stack needs at least two slices.** A single-slice TIFF isn't a Z stack, so it is rejected up
+front — and since that almost always means the data is really the *other* layout, the message
+points you at the **Z-layer sub-folders** input type instead. This is checked on the stack that
+defines the dataset's Z layers; a later timepoint holding fewer layers is the supported subset
+case described above, not an error.
+
+**No two slices may share a Z value.** If two of that stack's labels read the same depth (both
+`z = 0.000`, say), the dataset is rejected and the message names the repeated value. Each slice
+must carry its own distinct depth — otherwise two slices would compete for one layer, and one
+would silently overwrite the other in the projection.
+
+**Calibration is ignored by design — Z comes only from the labels.** If your stack has a properly
+set voxel depth (Image ▸ Properties, or `pixelDepth`/unit in the TIFF header), the tool still does
+not read it. That is deliberate, not an oversight: the stacks this pipeline works with routinely
+carry a placeholder depth of `1.0` with no unit while keeping their true depths in the slice
+labels, so believing the calibration would look like it worked and hand you Z coordinates on the
+wrong scale — the worst kind of failure, because nothing about the output would look wrong. The
+labels are the single source of Z, which is also why an unreadable label stops the run outright
+instead of quietly falling back to the calibration.
+
 > **Memory.** One timepoint here is one large file — a 401-slice 1051×1674 stack is ~700 MB, and
 > holding every slice as floats at once would need ~2.8 GB. So slices are read **one at a time**
 > from a virtual (on-demand) stack and folded straight into `ZProjector.Accumulator`, keeping
