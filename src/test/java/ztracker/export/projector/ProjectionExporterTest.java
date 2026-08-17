@@ -166,13 +166,15 @@ class ProjectionExporterTest {
         }
     }
 
-    // ── Seam: what a digit-less timepoint name does downstream (p10.8) ─────────
+    // ── Seam: what a digit-less timepoint name does downstream ─────────────────
     //
-    // These pin the three outcomes ZProjectorPlugin.digitlessNameWarning describes to the
-    // user. They go through the real writers, so the output *names* are the exporter's own
-    // rather than hand-typed — if a prefix ever changes, these move with it. Nothing in
-    // TiffStackLoader changed for p10.8; this is the consumer's existing behaviour, pinned
-    // here so the producer's warning cannot drift from it (as its first wording did).
+    // These pin the three consumer-side outcomes that ZProjectorPlugin's pre-flight refusal
+    // (missingTimepointIndexError, p10.9) cites as supporting detail. Since p10.9 Tool 1 will
+    // not emit such a folder at all, so these describe a state no longer reachable through it
+    // — they are kept because they still substantiate that supporting detail, and would fail if
+    // the pre-flight check were ever dropped. They go through the real writers, so the output
+    // *names* are the exporter's own rather than hand-typed. Nothing in TiffStackLoader changed
+    // for p10.8 or p10.9; this is the consumer's existing behaviour.
 
     /**
      * 32-bit: the worst outcome, and the one a "Tool 2 will refuse the folder" summary gets

@@ -15,7 +15,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -49,6 +52,12 @@ public class ZProjectorPlugin implements PlugIn {
      */
     private static final Pattern ANY_DIGIT = Pattern.compile("\\d");
 
+    /**
+     * A run of digits — used to pick out a label's <em>last</em> one, which is the timepoint
+     * index under the same rule {@code TiffStackLoader.extractFrameNumber} applies (p10.4).
+     */
+    private static final Pattern DIGIT_RUN = Pattern.compile("\\d+");
+
     @Override
     public void run(String arg) {
         IJ.log("========================================");
@@ -77,6 +86,9 @@ public class ZProjectorPlugin implements PlugIn {
         int unitsDone = 0;
         int unitsTotal = datasets.size() * cfg.modes.size();
         int timepointsSkipped = 0;
+        // Kept so a run that produces nothing can state the reason in its dialog rather than
+        // sending the user to the Log — see the unitsDone == 0 branch below.
+        List<String> failures = new ArrayList<>();
         for (ZProjector.Mode mode : cfg.modes) {
             for (File datasetDir : datasets) {
                 try {
@@ -85,8 +97,27 @@ public class ZProjectorPlugin implements PlugIn {
                 } catch (Exception e) {
                     IJ.log("[ZProjector] SKIPPED " + mode + " for dataset '"
                             + datasetDir.getName() + "': " + e.getMessage());
+                    failures.add(mode + " '" + datasetDir.getName() + "': " + e.getMessage());
                 }
             }
+        }
+
+        // A run that wrote nothing is a failure, not a partial success: "complete" / "Done."
+        // would contradict its own 0-count, and a user who picks one folder and never opens the
+        // Log would see a plugin that silently did nothing. So this case gets its own wording
+        // and a dialog, following the noDatasetsMessage precedent above. Note SKIPPED stays the
+        // per-dataset verb — it is accurate in a batch run where other datasets succeeded; only
+        // the run-level framing changes, and only when nothing at all was produced.
+        if (unitsDone == 0) {
+            IJ.showStatus("Z-Projection failed — nothing was written.");
+            IJ.showProgress(1.0); // >= 1 clears the bar (ij ProgressBar.show), not "shows 100%"
+            IJ.log(String.format("\n[ZProjector] FAILED — nothing was written."
+                            + " 0 of %d (dataset × projection) unit(s) produced output."
+                            + " Intended output folder: %s",
+                    unitsTotal, cfg.outputDir.getAbsolutePath()));
+            IJ.log("========================================\n");
+            IJ.error("ZTracker — Z-Projection failed", writeNothingMessage(unitsTotal, failures));
+            return;
         }
 
         IJ.showStatus("Z-Projection complete.");
@@ -132,6 +163,80 @@ public class ZProjectorPlugin implements PlugIn {
             }
         }
         return out;
+    }
+
+    /** Longest dialog line before wrapping — see {@link #wrapForDialog}. */
+    private static final int DIALOG_WRAP_COLUMNS = 90;
+
+    /** How many failure reasons the dialog spells out before deferring to the Log. */
+    private static final int MAX_FAILURES_IN_DIALOG = 3;
+
+    /**
+     * The dialog text for a run that produced no output at all — self-contained, carrying the
+     * actual reason(s) rather than telling the user to check the Log.
+     *
+     * <p>That is deliberate: {@code IJ.error} is <b>modal</b>, so while it is up the user cannot
+     * scroll the Log window. A dialog saying "see the Log" while blocking the Log would be worse
+     * than no dialog at all.
+     *
+     * <p>Only the first {@link #MAX_FAILURES_IN_DIALOG} reasons are spelled out — a batch run
+     * with forty failed datasets would otherwise produce an unreadable dialog — and the count of
+     * the rest is stated explicitly rather than silently dropped.
+     */
+    static String writeNothingMessage(int unitsTotal, List<String> failures) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Nothing was written.")
+          .append("\n \n0 of ").append(unitsTotal)
+          .append(" (dataset × projection) unit(s) produced output.");
+        int shown = Math.min(failures.size(), MAX_FAILURES_IN_DIALOG);
+        if (shown > 0) {
+            sb.append("\n \n").append(failures.size() == 1 ? "Reason:" : "Reasons:");
+            for (int i = 0; i < shown; i++) {
+                sb.append("\n \n").append(failures.get(i));
+            }
+            if (failures.size() > shown) {
+                sb.append("\n \n…and ").append(failures.size() - shown)
+                  .append(" more — the full list is in the Log window.");
+            }
+        }
+        return wrapForDialog(sb.toString());
+    }
+
+    /**
+     * Hard-wraps at word boundaries, preserving existing line breaks.
+     *
+     * <p>Needed because ImageJ's {@code MessageDialog} renders through {@code MultiLineLabel},
+     * which splits on {@code '\n'} only — a lone {@code StringTokenizer(text, "\n")}, no word
+     * wrapping (verified in ij 1.54f) — so a 200-character line becomes a dialog wider than the
+     * screen. Blank lines are kept as a single space, since {@code StringTokenizer} skips truly
+     * empty tokens and would otherwise collapse them.
+     */
+    private static String wrapForDialog(String text) {
+        StringBuilder out = new StringBuilder();
+        String[] paragraphs = text.split("\n", -1);
+        for (int p = 0; p < paragraphs.length; p++) {
+            if (p > 0) out.append('\n');
+            String paragraph = paragraphs[p];
+            if (paragraph.trim().isEmpty()) {
+                out.append(' ');
+                continue;
+            }
+            int lineLen = 0;
+            for (String word : paragraph.split(" ")) {
+                if (word.isEmpty()) continue;
+                if (lineLen > 0 && lineLen + 1 + word.length() > DIALOG_WRAP_COLUMNS) {
+                    out.append('\n');
+                    lineLen = 0;
+                }
+                if (lineLen > 0) {
+                    out.append(' ');
+                    lineLen++;
+                }
+                out.append(word);
+                lineLen += word.length();
+            }
+        }
+        return out.toString();
     }
 
     /** The "nothing to do" message, worded for the chosen input type and scope. */
@@ -230,73 +335,110 @@ public class ZProjectorPlugin implements PlugIn {
     }
 
     /**
-     * Warns about a timepoint whose name carries no digits, or {@code null} when it does.
+     * Rejects a dataset whose timepoint filenames do not all carry a digit run — returning the
+     * error message, or {@code null} when every name is fine.
      *
-     * <p>The z-origin filenames are {@code <prefix> + <timepoint name>}, so a digit-less
-     * input name produces output the extractor cannot map to its real frame — differently per
-     * depth, which is why both are spelled out rather than summarised as "no frame number":
+     * <p><b>A timepoint's identity is the number in its filename.</b> A digit-free name means the
+     * file states no position in the sequence, so the dataset has no timepoint ordering at all:
+     * that is malformed input, and this refuses it outright rather than producing output from it.
      *
-     * <ul>
-     *   <li><b>16-bit</b> {@code z_origin_<name>} has no digits at all, so Tool 2 rejects the
-     *       whole folder up front (p10.2).</li>
-     *   <li><b>32-bit</b> {@code z_origin_32bit_<name>} <em>does</em> carry a digit run — the
-     *       {@code 32} of {@code 32bit} — which the last-digit-run rule reads as frame 32. That
-     *       is only refused when something <em>else</em> also resolves to 32 (a second
-     *       digit-less name, or a genuine {@code 0032.tif}), as a duplicate (p10.4). Otherwise
-     *       the folder loads with no error whatsoever and this timepoint simply sits at frame
-     *       32 — the <b>worst</b> of the three outcomes, because nothing reports it, so the
-     *       message states it first and as its own consequence.</li>
-     * </ul>
+     * <p>Checked over {@link ProjectionSource#timepointLabels()} <em>before any projection or
+     * output</em>, and reporting <em>every</em> offending name at once — mirroring
+     * {@code TiffStackLoader.load}, which validates all filenames up front and throws with the
+     * full offender list rather than failing one file at a time (p10.2).
      *
-     * <p>Reported, not fixed: renaming the user's input is their call, and the projection
-     * itself is perfectly good.
+     * <p>Deliberately takes no bit-depth arguments, so it is depth-independent <b>by
+     * construction</b> rather than by policy: a name that states no timepoint is malformed
+     * whatever is being written from it. The per-depth consequences are supporting detail in the
+     * message, not its justification — they are symptoms of the missing index, and leading with
+     * them would read as a consumer quirk to be worked around.
      */
-    static String digitlessNameWarning(String filename, boolean write16, boolean write32) {
-        if (ANY_DIGIT.matcher(filename).find()) return null;
-        StringBuilder sb = new StringBuilder();
-        // Not "carries no frame number" — the 32-bit name does carry one (the '32'), just the
-        // wrong one, and the per-depth lines below have to be free to say so.
-        sb.append("timepoint name '").append(filename).append("' contains no digits, so the")
-          .append(" extractor cannot map its z-origin output to the right frame:");
-        if (write16) {
-            sb.append("\n  'z_origin_").append(filename).append("' — the extractor (Tool 2)")
-              .append(" takes the frame index from the last run of digits in the filename,")
-              .append(" finds none, and refuses the whole z_origin folder.");
+    static String missingTimepointIndexError(List<String> timepointLabels) {
+        List<String> offenders = new ArrayList<>();
+        for (String label : timepointLabels) {
+            if (!ANY_DIGIT.matcher(label).find()) offenders.add(label);
         }
-        if (write32) {
-            sb.append("\n  'z_origin_32bit_").append(filename).append("' — this name DOES carry a")
-              .append(" digit run: the '32' of '32bit'. The extractor takes the last digit run as")
-              .append(" the frame index, so it reads this timepoint as frame 32. Alongside")
-              .append(" normally-named timepoints the folder then loads with NO error at all and")
-              .append(" this timepoint silently occupies frame 32 — worse than a refusal, because")
-              .append(" nothing reports it and the Z coordinates come out attached to the wrong")
-              .append(" frame. It is refused only if something else also resolves to 32 (a second")
-              .append(" digit-less timepoint, or a real 0032.tif), as a duplicate frame number.");
-        }
-        sb.append("\n  Rename the input timepoint file to carry a frame index (e.g. 0001.tif)")
-          .append(" and re-run.");
-        return sb.toString();
+        if (offenders.isEmpty()) return null;
+        return "These timepoint files carry no timepoint index — their names contain no digits: "
+                + offenders
+                + "\nA timepoint's identity is the number in its filename, so a digit-free name"
+                + " leaves the file with no position in the sequence and this dataset with no"
+                + " timepoint ordering at all. Nothing has been written."
+                + "\nRename every timepoint file to carry its index (e.g. 0001.tif, 0002.tif) and"
+                + " re-run."
+                + "\nFor reference, what the output would have been: the 16-bit z-origin"
+                + " (z_origin_<name>) would carry no frame number and the extractor would refuse"
+                + " the folder, while the 32-bit z-origin (z_origin_32bit_<name>) would have the"
+                + " '32' of '32bit' read as its frame number and load under the wrong frame.";
     }
 
     /**
-     * The one-line form of {@link #digitlessNameWarning}, for every offending timepoint after
-     * the first in a dataset — or {@code null} when the name carries a digit.
+     * Rejects a dataset where two timepoint filenames claim the same position in the sequence —
+     * returning the error message, or {@code null} when every index is unique.
      *
-     * <p>Input naming is normally uniform, so the realistic case is <em>every</em> timepoint
-     * lacking digits. Repeating the four-line explanation 100 times would bury the rest of the
-     * run log, so the explanation is logged once per dataset and the remaining timepoints get
-     * this line: the same facts still apply, they are just not restated. Says nothing the full
-     * warning does not.
+     * <p>Distinct filenames are not distinct <em>indices</em>: {@code run1_0007.tif} and
+     * {@code run2_0007.tif} both resolve to timepoint 7. Two files cannot hold one position, so
+     * this is the same class of malformed input as a name with no index at all, and gets the
+     * same treatment — refused up front, listing every collision grouped by the index collided
+     * on, mirroring {@code TiffStackLoader.load}'s p10.4 message so producer and consumer read
+     * alike. Not a correctness fix: p10.4 already refuses such a folder loudly at load time.
+     * This just fails in seconds instead of after a full projection run.
+     *
+     * <p><b>Computed on the label, which provably equals the output-name index</b> — the
+     * question that matters is what index the <em>output</em> file resolves to, but every label
+     * reaching here carries a digit run of its own (the digit-free check ran first), and a
+     * label's digits always sit after the {@code z_origin_32bit_} prefix, so the label's last
+     * run wins the last-digit-run rule for both {@code z_origin_<label>} and
+     * {@code z_origin_32bit_<label>} alike. Verified against
+     * {@code TiffStackLoader.extractFrameNumber}: {@code z_origin_run1_0007.tif} and
+     * {@code z_origin_32bit_run1_0007.tif} both give 7.
+     *
+     * <p>Grouped by <b>numeric value</b>, not by the raw digit text, because mixed zero-padding
+     * widths are legal and {@code z_7.tif} / {@code z_0007.tif} really do collide while
+     * {@code z_0008.tif} does not (same distinction p10.4 draws). Leading zeros are stripped
+     * rather than parsed, which gives {@code Integer.parseInt}'s equivalence classes without
+     * risking an overflow on an absurd digit run.
      */
-    static String digitlessNameBrief(String filename, boolean write16, boolean write32) {
-        if (ANY_DIGIT.matcher(filename).find()) return null;
-        StringBuilder sb = new StringBuilder();
-        sb.append("timepoint name '").append(filename).append("' also contains no digits → ");
-        if (write16) sb.append('\'').append("z_origin_").append(filename).append('\'');
-        if (write16 && write32) sb.append(", ");
-        if (write32) sb.append('\'').append("z_origin_32bit_").append(filename).append('\'');
-        sb.append(" (same as above).");
-        return sb.toString();
+    static String duplicateTimepointIndexError(List<String> timepointLabels) {
+        Map<String, List<String>> byIndex = new LinkedHashMap<>();
+        for (String label : timepointLabels) {
+            String digits = lastDigitRun(label);
+            if (digits == null) continue; // digit-free: missingTimepointIndexError's business
+            byIndex.computeIfAbsent(stripLeadingZeros(digits), k -> new ArrayList<>()).add(label);
+        }
+        List<String> collisions = new ArrayList<>();
+        for (Map.Entry<String, List<String>> e : byIndex.entrySet()) {
+            if (e.getValue().size() > 1) {
+                collisions.add("index " + e.getKey() + " ← " + e.getValue());
+            }
+        }
+        if (collisions.isEmpty()) return null;
+        return "These timepoint files claim the same position in the sequence — they resolve to the"
+                + " same timepoint index: " + collisions
+                + "\nA timepoint's index is the last run of digits in its filename, so"
+                + " run1_0007.tif and run2_0007.tif both read as timepoint 7, and 7.tif and"
+                + " 0007.tif both read as 7 whatever the padding. Two files cannot hold one"
+                + " position in the sequence. Nothing has been written."
+                + "\nRename every timepoint file so each carries its own index (e.g. 0001.tif,"
+                + " 0002.tif) and re-run."
+                + "\nFor reference, what the output would have been: the extractor derives the"
+                + " frame index the same way, so it would refuse the z-origin folder as duplicate"
+                + " frame numbers.";
+    }
+
+    /** The last run of digits in {@code name}, or {@code null} if it holds none. */
+    private static String lastDigitRun(String name) {
+        Matcher m = DIGIT_RUN.matcher(name);
+        String last = null;
+        while (m.find()) last = m.group();
+        return last;
+    }
+
+    /** {@code "0007"} → {@code "7"}, {@code "000"} → {@code "0"}. */
+    private static String stripLeadingZeros(String digits) {
+        int i = 0;
+        while (i < digits.length() - 1 && digits.charAt(i) == '0') i++;
+        return digits.substring(i);
     }
 
     /**
@@ -308,7 +450,10 @@ public class ZProjectorPlugin implements PlugIn {
      * extractor input folder.
      *
      * @return how many timepoints were skipped (0 when everything was written)
-     * @throws IOException if <em>no</em> timepoint could be projected, naming the first failure
+     * @throws IOException if a timepoint filename carries no timepoint index, or if two resolve
+     *                     to the same index — both refused up front, before any projection or
+     *                     output — or if <em>no</em> timepoint could be projected, naming the
+     *                     first failure
      */
     private static int processDataset(File datasetDir, ZProjectorDialog.Config cfg, ZProjector.Mode mode)
             throws Exception {
@@ -325,6 +470,28 @@ public class ZProjectorPlugin implements PlugIn {
         List<String> zLayerNames = source.zLayerNames();
         List<String> timepoints  = source.timepointLabels();
 
+        // Pre-flight, before any projection or output: a timepoint whose name states no index
+        // has no place in the sequence, so the dataset has no ordering and is malformed. Refuse
+        // the whole dataset naming every offender, rather than skipping timepoints (a skip
+        // manufactures a frame gap the extractor accepts silently, and since input naming is
+        // normally uniform, skipping them all would write nothing at all).
+        String nameError = missingTimepointIndexError(timepoints);
+        if (nameError != null) {
+            throw new IOException(nameError);
+        }
+
+        // Must stay AFTER the digit-free check, for two reasons. A digit-free name has no index
+        // to compare in the first place; and its *output* index would come from the '32' of the
+        // z_origin_32bit_ prefix, so it would differ between the two depths. With digit-free
+        // names already refused, every label carries its own digit run, which always sits after
+        // that prefix and so wins the last-digit-run rule identically for z_origin_<label> and
+        // z_origin_32bit_<label> — which is precisely what makes this check depth-independent.
+        // Reordering these two would break that.
+        String duplicateError = duplicateTimepointIndexError(timepoints);
+        if (duplicateError != null) {
+            throw new IOException(duplicateError);
+        }
+
         IJ.log(String.format("[ZProjector] %s '%s': %d z-layers (%s … %s), %d timepoint(s) → %s",
                 mode, datasetDir.getName(), zLayerNames.size(),
                 zLayerNames.get(0), zLayerNames.get(zLayerNames.size() - 1),
@@ -338,8 +505,6 @@ public class ZProjectorPlugin implements PlugIn {
         int refWidth = -1, refHeight = -1;
         String refLabel = null;
         int skippedForSize = 0;
-        // The digit-less-name explanation is logged once per dataset, not once per timepoint.
-        boolean digitlessExplained = false;
         String firstFailure = null;
         for (int t = 0; t < total; t++) {
             String filename = timepoints.get(t);
@@ -397,19 +562,6 @@ public class ZProjectorPlugin implements PlugIn {
                 refLabel  = filename;
             }
             written++;
-
-            // The output names are '<prefix><timepoint name>', so a digit-less input name
-            // yields output the extractor cannot map to its real frame. Report it at the point
-            // of writing — the projection is fine, only the name is unusable downstream. The
-            // full explanation is logged once per dataset (input naming is normally uniform, so
-            // all 100 timepoints of a dataset typically offend); the rest get one line each.
-            String nameWarning = digitlessExplained
-                    ? digitlessNameBrief(filename, cfg.write16Bit, cfg.write32Bit)
-                    : digitlessNameWarning(filename, cfg.write16Bit, cfg.write32Bit);
-            if (nameWarning != null) {
-                IJ.log("[ZProjector]   WARNING: " + nameWarning);
-                digitlessExplained = true;
-            }
 
             ZProjector.Result result = projected.result;
 

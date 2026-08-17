@@ -3,6 +3,8 @@ package ztracker.projector;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
+import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -17,8 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ul>
  *   <li>{@link ZProjectorPlugin#resolveDatasetOutDir} — the per-dataset output-folder rule.
  *       Single scope drops the redundant {@code <modeFolder>/} grouping level; batch keeps it.</li>
- *   <li>{@link ZProjectorPlugin#dimensionMismatch} — the p10.8 cross-timepoint size check.</li>
- *   <li>{@link ZProjectorPlugin#digitlessNameWarning} — the p10.8 unusable-output-name warning.</li>
+ *   <li>{@link ZProjectorPlugin#dimensionMismatch} / {@link ZProjectorPlugin#dimensionSkipSummary}
+ *       — the p10.8 cross-timepoint size check and its per-dataset note.</li>
+ *   <li>{@link ZProjectorPlugin#missingTimepointIndexError} — the p10.9 pre-flight refusal of
+ *       timepoint filenames that state no index.</li>
  * </ul>
  */
 class ZProjectorPluginTest {
@@ -111,79 +115,173 @@ class ZProjectorPluginTest {
         assertTrue(note.contains("00001.tif"), note);
     }
 
-    // ── p10.8: digit-less output-name warning ─────────────────────────────────
+    // ── p10.9: pre-flight timepoint-index check ───────────────────────────────
 
-    @Test
-    void timepointNameWithDigits_producesNoWarning() {
-        assertNull(ZProjectorPlugin.digitlessNameWarning("00001.tif", true, true));
+    private static List<String> names(String... n) {
+        return Arrays.asList(n);
     }
 
     @Test
-    void digitsAnywhereInTheNameSuffice_matchingTool2sOwnRule() {
-        // Tool 2 only asks "is there a digit run?", so neither does this warning — it does not
-        // second-guess whether the digits are in a sensible place.
-        assertNull(ZProjectorPlugin.digitlessNameWarning("scan32.tif", true, true));
+    void everyTimepointNameCarryingDigits_isAccepted() {
+        assertNull(ZProjectorPlugin.missingTimepointIndexError(
+                names("0001.tif", "0002.tif", "0010.tif")));
     }
 
     @Test
-    void digitlessName_with16BitOnly_namesTheZOriginFileAndSaysTheFolderIsRefused() {
-        String msg = ZProjectorPlugin.digitlessNameWarning("cells.tif", true, false);
+    void digitsAnywhereInTheNameSuffice_notJustATrailingIndex() {
+        // The rule is "does the name state a number at all", not where it sits.
+        assertNull(ZProjectorPlugin.missingTimepointIndexError(names("scan32.tif", "t7_a.tif")));
+    }
+
+    @Test
+    void oneDigitlessName_amongGoodOnes_isReportedAndNamed() {
+        String msg = ZProjectorPlugin.missingTimepointIndexError(
+                names("0001.tif", "cells.tif", "0003.tif"));
         assertNotNull(msg);
-        assertTrue(msg.contains("z_origin_cells.tif"), msg);
-        assertTrue(msg.contains("refuses"), msg);
-        assertTrue(!msg.contains("z_origin_32bit_"), msg); // 32-bit wasn't written — don't claim it was
+        assertTrue(msg.contains("cells.tif"), msg);
     }
 
     @Test
-    void digitlessName_with32BitOnly_leadsWithTheSilentWrongFrame_notARefusal() {
-        // 'z_origin_32bit_cells.tif' *does* carry a digit run — the 32 of "32bit" — so mixed with
-        // normally-named timepoints Tool 2 loads the folder with no error and puts this one at
-        // frame 32. Verified empirically: frames [7, 32] load fine for cells.tif + 0007.tif.
-        // That silent outcome is worse than a refusal, so the message must not promise a refusal.
-        String msg = ZProjectorPlugin.digitlessNameWarning("cells.tif", false, true);
+    void everyOffendingNameIsListedAtOnce_notJustTheFirst() {
+        // Mirrors TiffStackLoader.load: report all of them up front, so one run tells the user
+        // everything to rename.
+        String msg = ZProjectorPlugin.missingTimepointIndexError(
+                names("cells.tif", "0002.tif", "other.tif", "third.tiff"));
         assertNotNull(msg);
-        assertTrue(msg.contains("z_origin_32bit_cells.tif"), msg);
-        assertTrue(msg.contains("frame 32"), msg);
-        assertTrue(msg.contains("NO error"), msg);      // the silent case is stated outright
-        assertTrue(msg.contains("silently"), msg);
-        assertTrue(msg.contains("only if"), msg);       // refusal is the conditional case
-        assertTrue(msg.contains("duplicate"), msg);
-        assertTrue(!msg.contains("'z_origin_cells.tif'"), msg); // 16-bit wasn't written
+        assertTrue(msg.contains("cells.tif"), msg);
+        assertTrue(msg.contains("other.tif"), msg);
+        assertTrue(msg.contains("third.tiff"), msg);
     }
 
     @Test
-    void digitlessNameBrief_isOneLine_andStillNamesTheOutputFiles() {
-        // The second-and-later form: same facts, explanation not restated.
-        String brief = ZProjectorPlugin.digitlessNameBrief("cells_b.tif", true, true);
-        assertNotNull(brief);
-        assertEquals(1, brief.split("\n", -1).length, "must be a single line: " + brief);
-        assertTrue(brief.contains("cells_b.tif"), brief);
-        assertTrue(brief.contains("z_origin_cells_b.tif"), brief);
-        assertTrue(brief.contains("z_origin_32bit_cells_b.tif"), brief);
-    }
-
-    @Test
-    void digitlessNameBrief_namesOnlyTheDepthsBeingWritten() {
-        String only16 = ZProjectorPlugin.digitlessNameBrief("cells.tif", true, false);
-        assertTrue(only16.contains("z_origin_cells.tif"), only16);
-        assertTrue(!only16.contains("32bit"), only16);
-
-        String only32 = ZProjectorPlugin.digitlessNameBrief("cells.tif", false, true);
-        assertTrue(only32.contains("z_origin_32bit_cells.tif"), only32);
-        assertTrue(!only32.contains("'z_origin_cells.tif'"), only32);
-    }
-
-    @Test
-    void digitlessNameBrief_staysSilentForANameWithDigits_sameAsTheFullForm() {
-        assertNull(ZProjectorPlugin.digitlessNameBrief("00001.tif", true, true));
-    }
-
-    @Test
-    void digitlessName_withBothDepths_describesEachOutputSeparately() {
-        String msg = ZProjectorPlugin.digitlessNameWarning("cells.tif", true, true);
+    void error_leadsWithTheMissingTimepointIndex_notWithTheExtractorsRule() {
+        // The extractor's behaviour is a symptom, not the reason: leading with it would read as
+        // a consumer quirk to work around rather than malformed input.
+        String msg = ZProjectorPlugin.missingTimepointIndexError(names("cells.tif"));
         assertNotNull(msg);
-        assertTrue(msg.contains("z_origin_cells.tif"), msg);
-        assertTrue(msg.contains("z_origin_32bit_cells.tif"), msg);
-        assertTrue(msg.contains("Rename"), msg);
+        assertTrue(msg.indexOf("no timepoint index") >= 0, msg);
+        assertTrue(msg.indexOf("no timepoint index") < msg.indexOf("extractor"),
+                "the missing index must come before any mention of the extractor: " + msg);
+        assertTrue(msg.contains("Nothing has been written."), msg);
+    }
+
+    @Test
+    void error_isTheSameWhicheverDepthsAreSelected_beingDepthIndependentByConstruction() {
+        // The helper takes no depth arguments at all — this pins that it stays that way.
+        String msg = ZProjectorPlugin.missingTimepointIndexError(names("cells.tif"));
+        assertNotNull(msg);
+        assertTrue(msg.contains("z_origin_<name>"), msg);
+        assertTrue(msg.contains("z_origin_32bit_<name>"), msg);
+    }
+
+    // ── p10.9: pre-flight duplicate timepoint-index check ─────────────────────
+
+    @Test
+    void distinctTimepointIndices_areAccepted() {
+        assertNull(ZProjectorPlugin.duplicateTimepointIndexError(
+                names("0001.tif", "0002.tif", "0003.tif")));
+    }
+
+    @Test
+    void twoNamesResolvingToTheSameIndex_areReported_groupedByThatIndex() {
+        // The p10.4 case, caught at scan time instead of at load time.
+        String msg = ZProjectorPlugin.duplicateTimepointIndexError(
+                names("run1_0007.tif", "run2_0007.tif"));
+        assertNotNull(msg);
+        assertTrue(msg.contains("index 7"), msg);
+        assertTrue(msg.contains("run1_0007.tif"), msg);
+        assertTrue(msg.contains("run2_0007.tif"), msg);
+    }
+
+    @Test
+    void mixedZeroPaddingWidths_areDistinctIndices_notCollisions() {
+        // Guards against over-eager rejection: these are three different timepoints.
+        assertNull(ZProjectorPlugin.duplicateTimepointIndexError(
+                names("z_7.tif", "z_0008.tif", "z_00000009.tif")));
+    }
+
+    @Test
+    void sameNumberAtDifferentPaddingWidths_doesCollide() {
+        // ...but 7 and 0007 are the same index, which is why grouping is numeric, not textual.
+        String msg = ZProjectorPlugin.duplicateTimepointIndexError(
+                names("z_7.tif", "z_0007.tif"));
+        assertNotNull(msg);
+        assertTrue(msg.contains("index 7"), msg);
+    }
+
+    @Test
+    void theIndexIsTheLastDigitRun_notTheFirst() {
+        // 0007_run1.tif resolves to 1, so it does NOT collide with 0007.tif — matching
+        // TiffStackLoader.extractFrameNumber, which takes the last run.
+        assertNull(ZProjectorPlugin.duplicateTimepointIndexError(
+                names("0007.tif", "0007_run1.tif")));
+        // ...and it DOES collide with another name ending in 1.
+        assertNotNull(ZProjectorPlugin.duplicateTimepointIndexError(
+                names("0007_run1.tif", "0009_run1.tif")));
+    }
+
+    @Test
+    void wellFormedNamesAreNotBlamed_onlyTheCollidingOnesAreListed() {
+        String msg = ZProjectorPlugin.duplicateTimepointIndexError(
+                names("0001.tif", "run1_0007.tif", "run2_0007.tif", "0002.tif"));
+        assertNotNull(msg);
+        // Assert on the collision group itself, not the whole message: the rename hint cites
+        // "e.g. 0001.tif, 0002.tif" as *good* examples, so a plain contains() on those names
+        // would false-alarm (the same trap TiffStackLoader's own help text sets).
+        assertTrue(msg.contains("[index 7 ← [run1_0007.tif, run2_0007.tif]]"),
+                "only the two colliding names should be grouped: " + msg);
+    }
+
+    @Test
+    void digitFreeNamesAreLeftToTheOtherCheck_notCollapsedIntoOneIndexHere() {
+        // Two digit-free names must not be reported as an index collision — that would blame the
+        // wrong thing. The digit-free check runs first and refuses them on its own terms.
+        assertNull(ZProjectorPlugin.duplicateTimepointIndexError(names("cells.tif", "other.tif")));
+    }
+
+    // ── p10.9: write-nothing dialog text ──────────────────────────────────────
+
+    @Test
+    void writeNothingMessage_statesHowManyUnitsProducedNothing_andTheReasonInline() {
+        String msg = ZProjectorPlugin.writeNothingMessage(1,
+                names("MAX_Z 'rec15': These timepoint files carry no timepoint index."));
+        assertTrue(msg.contains("Nothing was written."), msg);
+        assertTrue(msg.contains("0 of 1"), msg);
+        assertTrue(msg.contains("Reason:"), msg);           // singular for one failure
+        assertTrue(msg.contains("rec15"), msg);             // the reason is inline, not deferred
+        assertTrue(!msg.contains("Log window"), msg);       // ...so no "see the Log" for one
+    }
+
+    @Test
+    void writeNothingMessage_pluralisesAndCapsTheReasons_statingHowManyItOmitted() {
+        // A batch run with many failed datasets must not build an unreadable dialog — but the
+        // count it left out has to be explicit, not silently dropped.
+        String msg = ZProjectorPlugin.writeNothingMessage(6,
+                names("a: r", "b: r", "c: r", "d: r", "e: r", "f: r"));
+        assertTrue(msg.contains("0 of 6"), msg);
+        assertTrue(msg.contains("Reasons:"), msg);          // plural
+        assertTrue(msg.contains("…and 3 more"), msg);       // 6 - 3 shown
+        assertTrue(msg.contains("Log window"), msg);
+    }
+
+    @Test
+    void writeNothingMessage_wrapsEveryLine_sinceMultiLineLabelDoesNot() {
+        // ij's MessageDialog renders through MultiLineLabel, which splits on '\n' only and does
+        // no word wrapping — an unwrapped 200-char line becomes a dialog wider than the screen.
+        String longReason = "MAX_Z 'rec15': These timepoint files carry no timepoint index — their"
+                + " names contain no digits: [cells.tif, other.tif]. A timepoint's identity is the"
+                + " number in its filename, so a digit-free name leaves the file with no position"
+                + " in the sequence and this dataset with no timepoint ordering at all.";
+        String msg = ZProjectorPlugin.writeNothingMessage(1, names(longReason));
+        for (String line : msg.split("\n", -1)) {
+            assertTrue(line.length() <= 90, "line too wide for a dialog (" + line.length() + "): " + line);
+        }
+    }
+
+    @Test
+    void writeNothingMessage_keepsBlankLinesAsASpace_soTheySurviveMultiLineLabel() {
+        // StringTokenizer skips empty tokens, so a truly empty line would collapse.
+        String msg = ZProjectorPlugin.writeNothingMessage(1, names("a: r"));
+        assertTrue(msg.contains("\n \n"), msg);
     }
 }
