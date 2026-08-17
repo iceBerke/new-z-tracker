@@ -215,6 +215,53 @@ class TiffStackLoaderTest {
                 "message should name every offending file: " + e.getMessage());
     }
 
+    // ── Duplicate frame numbers (p10.4) ───────────────────────────────────────
+
+    @Test
+    void load_rejectsTwoFilesResolvingToTheSameFrameNumber(@TempDir Path dir) throws Exception {
+        // frameToIdx is keyed by frame number, so without this check the second file
+        // silently overwrites the first and one frame vanishes from the stack.
+        writeShortTiff(new File(dir.toFile(), "a_0007.tif"), new int[][]{{1}});
+        writeShortTiff(new File(dir.toFile(), "b_0007.tif"), new int[][]{{2}});
+
+        IOException e = assertThrows(IOException.class, () -> TiffStackLoader.load(dir.toFile()));
+        assertTrue(e.getMessage().contains("a_0007.tif") && e.getMessage().contains("b_0007.tif"),
+                "message should name every colliding file: " + e.getMessage());
+        assertTrue(e.getMessage().contains("7"),
+                "message should name the frame number they collided on: " + e.getMessage());
+    }
+
+    @Test
+    void load_rejectsCollisionCausedByTheLastDigitRunRule(@TempDir Path dir) throws Exception {
+        // The realistic case for Tool 2 specifically: the run number is *not* the frame
+        // index (the last digit run is), so two runs of the same frame collide.
+        writeShortTiff(new File(dir.toFile(), "run1_0007.tif"), new int[][]{{1}});
+        writeShortTiff(new File(dir.toFile(), "run2_0007.tif"), new int[][]{{2}});
+
+        IOException e = assertThrows(IOException.class, () -> TiffStackLoader.load(dir.toFile()));
+        assertTrue(e.getMessage().contains("run1_0007.tif") && e.getMessage().contains("run2_0007.tif"),
+                "message should name every colliding file: " + e.getMessage());
+        assertTrue(e.getMessage().contains("7"),
+                "message should name the frame number they collided on: " + e.getMessage());
+    }
+
+    @Test
+    void load_distinctFrameNumbersAcrossMixedPaddingWidths_areNotTreatedAsCollisions(@TempDir Path dir)
+            throws Exception {
+        // Guard against over-eager rejection: differing padding widths are legal and these
+        // are three genuinely different frames.
+        writeShortTiff(new File(dir.toFile(), "z_7.tif"),        new int[][]{{1}});
+        writeShortTiff(new File(dir.toFile(), "z_0008.tif"),     new int[][]{{2}});
+        writeShortTiff(new File(dir.toFile(), "z_00000009.tif"), new int[][]{{3}});
+
+        LoadedStack stack = TiffStackLoader.load(dir.toFile());
+
+        assertEquals(3, stack.frameCount());
+        assertEquals(1, stack.pixels[stack.frameToIdx.get(7)][0][0]);
+        assertEquals(2, stack.pixels[stack.frameToIdx.get(8)][0][0]);
+        assertEquals(3, stack.pixels[stack.frameToIdx.get(9)][0][0]);
+    }
+
     // ── Per-frame dimension guard (p10.1) ─────────────────────────────────────
 
     @Test

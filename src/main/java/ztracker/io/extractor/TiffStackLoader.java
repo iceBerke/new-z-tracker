@@ -58,9 +58,9 @@ public class TiffStackLoader {
      * @param folder directory containing .tif / .tiff files
      * @return loaded stack with frame mapping
      * @throws IOException if the folder holds no TIFFs, a filename carries no frame number,
-     *                     a file cannot be read, the bit depth is unsupported or mixed across
-     *                     the folder, or a frame's pixel dimensions differ from the first
-     *                     frame's
+     *                     two filenames resolve to the same frame number, a file cannot be
+     *                     read, the bit depth is unsupported or mixed across the folder, or
+     *                     a frame's pixel dimensions differ from the first frame's
      */
     public static LoadedStack load(File folder) throws IOException {
         File[] tifFiles = folder.listFiles(
@@ -83,6 +83,25 @@ public class TiffStackLoader {
                     + "\nThe frame index is the last run of digits in the filename (e.g."
                     + " z_origin_0007.tif, z_origin_32bit_0007.tif). Rename so every file"
                     + " carries its frame number.");
+        }
+
+        // A frame index must identify exactly one file. Two names resolving to the same
+        // number would overwrite each other in frameToIdx below, leaving the earlier file
+        // silently unloaded — so report the collisions instead, naming every file involved.
+        Map<Integer, List<String>> byFrame = new LinkedHashMap<>();
+        for (File f : tifFiles) {
+            byFrame.computeIfAbsent(extractFrameNumber(f), k -> new ArrayList<>()).add(f.getName());
+        }
+        List<String> collisions = new ArrayList<>();
+        for (Map.Entry<Integer, List<String>> e : byFrame.entrySet()) {
+            if (e.getValue().size() > 1) collisions.add("frame " + e.getKey() + " ← " + e.getValue());
+        }
+        if (!collisions.isEmpty()) {
+            throw new IOException(
+                    "These TIFF files resolve to the same frame number: " + collisions
+                    + "\nThe frame index is the last run of digits in the filename, so names like"
+                    + " run1_0007.tif and run2_0007.tif both read as frame 7. Rename so every file"
+                    + " has its own frame number.");
         }
 
         // Sort by the trailing integer in the filename (natural sort)

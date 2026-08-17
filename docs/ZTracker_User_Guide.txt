@@ -269,7 +269,7 @@ TIP:
 QUICK TROUBLESHOOTING
 ------------------------------------------------------------------------
 Symptom                                                     Likely fix
-----------------------------------------------------------  ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Lots of points show "missing frame"                         Revisit Step 4 — the frame offset is probably wrong (try +1 or 0).
 Lots of points show "out of bounds"                         Check your CSV X/Y match the TIFF image size, and check the pixel convention in Step 5.
 Columns detected wrong                                      Fix them manually in Step 3.
@@ -277,6 +277,7 @@ Plugin not in the menu                                      Restart Fiji, or use
 Nothing seems to export                                     Make sure at least one format is ticked in Step 6, and read export_report.txt.
 "Inconsistent image dimensions in TIFF folder"              One TIFF is a different size from the first one in the folder — the message names it and gives both sizes. Remove it or re-crop everything to one size. Worth knowing: Part 1 doesn't compare sizes between timepoints, so a projection run can produce a folder like this.
 "These TIFF filenames contain no frame number"              One or more TIFFs have no digits in the name, so there's no frame index to read — the message lists them all. Rename each so it carries its frame number (e.g. z_origin_0007.tif).
+"These TIFF files resolve to the same frame number"         Two or more TIFFs point at the same frame, so one would have replaced the other — the message shows the frame number and every file that landed on it. Usually two runs mixed into one folder (run1_0007.tif, run2_0007.tif are both frame 7). Separate them into their own folders, or rename so each frame appears once.
 "requires 32-bit float TIFFs" error                         You opened the TopoJ / direct-Z extractor with indexed images — use the standard 3D Z-Coordinate Extractor (with its JSON map) instead.
 Part 1: "no Z-layer sub-folders" or "no .tif stacks found"  The Input type doesn't match your folder — switch it (or the Scope) and check the grey structure line under Scope.
 Part 1: "slice has no readable Z in its label"              Your TIFF stack's slices aren't labelled with their depth (z = -400.000). Re-save the stack from Fiji with the depth labels, or use the Z-layer sub-folder layout instead.

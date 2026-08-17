@@ -137,6 +137,22 @@ class TopoJStackLoaderTest {
         assertThrows(Exception.class, () -> TopoJStackLoader.load(dir.toFile()));
     }
 
+    // ── Duplicate frame numbers (p10.4) ───────────────────────────────────────
+
+    @Test
+    void load_rejectsTwoFilesResolvingToTheSameFrameNumber(@TempDir Path dir) throws Exception {
+        // Both names end with an integer that reads as 7, so without this check the second
+        // silently overwrites the first in frameToIdx and one frame vanishes.
+        writeFloatTiff(new File(dir.toFile(), "topoj_0007.tif"),    new float[][]{{1.0f}});
+        writeFloatTiff(new File(dir.toFile(), "height_map_7.tif"),  new float[][]{{2.0f}});
+
+        IOException e = assertThrows(IOException.class, () -> TopoJStackLoader.load(dir.toFile()));
+        assertTrue(e.getMessage().contains("topoj_0007.tif") && e.getMessage().contains("height_map_7.tif"),
+                "message should name every colliding file: " + e.getMessage());
+        assertTrue(e.getMessage().contains("7"),
+                "message should name the frame number they collided on: " + e.getMessage());
+    }
+
     // ── Per-frame dimension guard (p10.1) ─────────────────────────────────────
 
     @Test

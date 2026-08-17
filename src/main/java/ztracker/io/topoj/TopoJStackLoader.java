@@ -96,9 +96,9 @@ public class TopoJStackLoader {
      * @param folder directory containing .tif / .tiff files
      * @return loaded float stack with frame mapping
      * @throws IOException if the folder holds no TIFFs, a filename does not end with a frame
-     *                     number, a file cannot be read, a file is not 32-bit float (or bit
-     *                     depths are mixed), or a frame's pixel dimensions differ from the
-     *                     first frame's
+     *                     number, two filenames resolve to the same frame number, a file
+     *                     cannot be read, a file is not 32-bit float (or bit depths are
+     *                     mixed), or a frame's pixel dimensions differ from the first frame's
      */
     public static LoadedFloatStack load(File folder) throws IOException {
         File[] tifFiles = folder.listFiles(
@@ -122,6 +122,25 @@ public class TopoJStackLoader {
                     + " the filename ends with (any prefix, any zero-padding width — e.g."
                     + " frame7.tif, topoj_0007.tif). Rename so each file ends with its frame"
                     + " number before the .tif extension.");
+        }
+
+        // A frame index must identify exactly one file. Two names ending with the same
+        // integer would overwrite each other in frameToIdx below, leaving the earlier file
+        // silently unloaded — so report the collisions instead, naming every file involved.
+        Map<Integer, List<String>> byFrame = new LinkedHashMap<>();
+        for (File f : tifFiles) {
+            byFrame.computeIfAbsent(extractFrameNumber(f), k -> new ArrayList<>()).add(f.getName());
+        }
+        List<String> collisions = new ArrayList<>();
+        for (Map.Entry<Integer, List<String>> e : byFrame.entrySet()) {
+            if (e.getValue().size() > 1) collisions.add("frame " + e.getKey() + " ← " + e.getValue());
+        }
+        if (!collisions.isEmpty()) {
+            throw new IOException(
+                    "These TIFF files resolve to the same frame number: " + collisions
+                    + "\nThe frame index is the integer the filename ends with, so topoj_0007.tif"
+                    + " and height_map_7.tif both read as frame 7. Rename so each file has its own"
+                    + " frame number.");
         }
 
         // Sort by the trailing integer in the filename (natural sort)
