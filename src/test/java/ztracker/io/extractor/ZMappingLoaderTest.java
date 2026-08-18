@@ -10,7 +10,9 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ZMappingLoaderTest {
 
@@ -92,6 +94,49 @@ class ZMappingLoaderTest {
 
         assertEquals(3, mapping.size());
         assertEquals(0.5, mapping.get(1));
+    }
+
+    @Test
+    void load_duplicateIndex_isRefused_namingTheIndexAndBothValues(@TempDir Path dir)
+            throws IOException {
+        // put() used to keep the LAST value silently, so this file parsed with index 0 at -1.5
+        // and nothing said so. p10.4 (two TIFFs → one frame) and p10.9 (two timepoints → one
+        // index) both refuse the analogous collision loudly; this was the last place a
+        // duplicate key was still accepted.
+        Path file = writeJson(dir, "dup.json",
+                "{\"0\": -600.0, \"1\": -599.0, \"0\": -1.5}");
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> ZMappingLoader.load(file));
+        assertTrue(e.getMessage().contains("index 0"), e.getMessage());
+        assertTrue(e.getMessage().contains("-600.0") && e.getMessage().contains("-1.5"),
+                "both colliding values must be named: " + e.getMessage());
+        assertFalse(e.getMessage().contains("index 1"),
+                "only the colliding index should be listed: " + e.getMessage());
+    }
+
+    @Test
+    void load_repeatedIndexWithTheSameValue_isStillRefused(@TempDir Path dir) throws IOException {
+        // Harmless in effect, but still a file that says one layer twice — refused for the
+        // same reason p10.4 refuses two files resolving to one frame whatever their content.
+        Path file = writeJson(dir, "dupsame.json", "{\"0\": -600.0, \"0\": -600.0}");
+
+        assertThrows(IllegalArgumentException.class, () -> ZMappingLoader.load(file));
+    }
+
+    @Test
+    void load_strayEntryOutsideTheObject_collidesAndIsRefused(@TempDir Path dir)
+            throws IOException {
+        // The parser is a regex over the whole file, so text outside the object counts as an
+        // entry. That tolerance is unchanged — but it can now collide, which the message says
+        // outright rather than leaving the user to wonder why a "comment" broke the file.
+        Path file = writeJson(dir, "stray.json",
+                "{\"0\": -600.0, \"1\": -599.0}\nnote: layer \"0\": 12.0 was re-measured\n");
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> ZMappingLoader.load(file));
+        assertTrue(e.getMessage().contains("whole file"),
+                "the message must explain the whole-file scan: " + e.getMessage());
     }
 
     @Test

@@ -100,6 +100,11 @@ public class TrackExportManager {
         int exported2D = 0, exported3D = 0;
         int skipped2DNoValidPoints = 0, skipped3DNoValidPoints = 0;
         int droppedInvalidXY = 0, droppedMissingFrame = 0, droppedOutOfBounds = 0, droppedUnmapped = 0;
+        // Tool 3's drop reason. It reached the per-track report (which merges the raw status
+        // string) but had no branch here, so a no-data drop was invisible in the run summary —
+        // counted in neither this line nor any other. Local, like its siblings: no
+        // ExtractionResult field is involved, so nothing about Tool 3's construction changes.
+        int droppedNoData = 0;
         List<String> reportLines = new ArrayList<>();
 
         // Accumulate data for Fiji bulk export
@@ -148,6 +153,7 @@ public class TrackExportManager {
                     if (ExtractionResult.STATUS_MISSING_FRAME.equals(reason)) droppedMissingFrame++;
                     else if (ExtractionResult.STATUS_OUT_OF_BOUNDS.equals(reason)) droppedOutOfBounds++;
                     else if (ExtractionResult.STATUS_UNMAPPED_INDEX.equals(reason)) droppedUnmapped++;
+                    else if (ExtractionResult.STATUS_NO_DATA.equals(reason)) droppedNoData++;
                 }
             }
 
@@ -262,10 +268,12 @@ public class TrackExportManager {
                 // 3D's shortfall can come from invalid X/Y alone, Z alone, or both — a 3D point
                 // needs valid X/Y AND valid Z — so this is NOT specifically "no valid Z".
                 + "Skipped: 2D(noValidPoints)=%d, 3D(noValidPoints)=%d | "
-                + "Dropped points: invalidXY=%d, missingFrame=%d, outOfBounds=%d, unmappedIndex=%d",
+                + "Dropped points: invalidXY=%d, missingFrame=%d, outOfBounds=%d, unmappedIndex=%d,"
+                + " noData=%d",
                 exported2D, exported3D,
                 skipped2DNoValidPoints, skipped3DNoValidPoints,
-                droppedInvalidXY, droppedMissingFrame, droppedOutOfBounds, droppedUnmapped);
+                droppedInvalidXY, droppedMissingFrame, droppedOutOfBounds, droppedUnmapped,
+                droppedNoData);
 
         // ── Per-track report (Fiji Log view is capped for readability)
         logPerTrackReport(reportLines);

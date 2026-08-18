@@ -134,6 +134,10 @@ public class TrackCsvLoader {
         int skippedBadXY  = 0;
         int skippedOther  = 0;
         int lineNum       = 0;
+        // Rows whose radius cell stated no usable radius, so the default was substituted.
+        // Unlike the three counters above these rows are KEPT — only the radius is replaced.
+        int substitutedRadius = 0;
+        List<String> badRadiusCells = new ArrayList<>();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(csvPath.toFile()))) {
             String line;
@@ -165,9 +169,25 @@ public class TrackCsvLoader {
                 try {
                     int    frame = (int) Double.parseDouble(safeGet(parts, frameIdx).trim());
                     String tid   = safeGet(parts, trackIdx).trim();
-                    double rad   = (radiusIdx >= 0)
-                            ? parseDoubleOrDefault(safeGet(parts, radiusIdx), config.defaultRadius)
-                            : config.defaultRadius;
+
+                    // A radius cell that states no usable radius falls back to the default —
+                    // but never silently: substituting a value the CSV did not ask for is
+                    // itself a quiet failure, so each one is counted and the first few are
+                    // named with their line number and raw text so the cell can be found.
+                    double rad = config.defaultRadius;
+                    if (radiusIdx >= 0) {
+                        String rawRadius = safeGet(parts, radiusIdx);
+                        Double parsedRadius = parseRadius(rawRadius);
+                        if (parsedRadius != null) {
+                            rad = parsedRadius;
+                        } else {
+                            substitutedRadius++;
+                            if (badRadiusCells.size() < MAX_BAD_RADIUS_LISTED) {
+                                badRadiusCells.add("line " + lineNum + ": \""
+                                        + rawRadius.trim() + "\"");
+                            }
+                        }
+                    }
 
                     xList.add(x);
                     yList.add(y);
@@ -182,6 +202,17 @@ public class TrackCsvLoader {
 
         if (skippedNaN > 0) {
             IJ.log("[TrackCsvLoader] Skipped " + skippedNaN + " rows with empty Frame or Track_ID.");
+        }
+        if (substitutedRadius > 0) {
+            String examples = badRadiusCells.toString();
+            if (substitutedRadius > badRadiusCells.size()) {
+                examples = examples.substring(0, examples.length() - 1)
+                        + ", …and " + (substitutedRadius - badRadiusCells.size()) + " more]";
+            }
+            IJ.log("[TrackCsvLoader] Used the default radius (" + config.defaultRadius
+                    + " px) for " + substitutedRadius + " row(s) whose radius cell was blank,"
+                    + " unparseable, NaN, infinite, or not positive — the rows themselves were"
+                    + " kept: " + examples);
         }
         if (skippedBadXY > 0) {
             IJ.log("[TrackCsvLoader] Skipped " + skippedBadXY + " rows with missing/unparseable X or Y.");
@@ -245,6 +276,9 @@ public class TrackCsvLoader {
         return i;
     }
 
+    /** How many offending radius cells the log names before summarising the rest. */
+    private static final int MAX_BAD_RADIUS_LISTED = 5;
+
     private static String safeGet(String[] parts, int idx) {
         return (idx >= 0 && idx < parts.length) ? parts[idx] : "";
     }
@@ -255,9 +289,44 @@ public class TrackCsvLoader {
         return t.equals("NAN") || t.equals("NA") || t.equals("NULL");
     }
 
-    private static double parseDoubleOrDefault(String s, double def) {
-        try { return Double.parseDouble(s.trim()); }
-        catch (NumberFormatException e) { return def; }
+    /**
+     * Parses a radius cell, or {@code null} when it does not state a usable radius — blank,
+     * unparseable, {@code NaN}, infinite, or not <b>positive</b>. The caller substitutes the
+     * default and counts the substitution.
+     *
+     * <p>The NaN and infinity checks are explicit for the same reason {@link #parseCoordinate}
+     * needs them: {@code Double.parseDouble("NaN")} and {@code ("Infinity")} both <b>succeed</b>
+     * in Java, so such a cell sails past the {@code catch} and becomes a real
+     * {@code NaN}/{@code Infinity} radius. That guard was applied to X/Y and missed here.
+     *
+     * <p>These misbehave differently downstream and the infinite case is the serious one.
+     * A {@code NaN} radius makes {@code ZSampler.sampleRadius} take zero samples — the detection
+     * is then reported as <em>out of bounds</em>, sending the user to check coordinates or the
+     * frame offset when the fault is a radius cell. An <b>infinite</b> radius is worse than
+     * misleading: {@code (int) Math.ceil(Infinity)} is {@code Integer.MAX_VALUE}, so the disk
+     * loop would run about 1.8e19 iterations and hang Fiji with no error and no progress.
+     *
+     * <p><b>Non-positive values are folded in too</b>, because leaving them out left an
+     * arbitrary split: {@code -1.0} and below make the disk loop never run (zero samples, then
+     * misreported as out of bounds), while {@code -0.4} and {@code 0} ceil to 0 and quietly
+     * sample a single pixel — behaving like {@code SINGLE_PIXEL} without saying so. The second
+     * is the worse of the two precisely because it <em>succeeds</em>. Anything that is not a
+     * positive finite number is treated as stating no radius at all.
+     *
+     * <p>Note this does <b>not</b> cover a large <em>finite</em> radius, which produces the same
+     * hang ({@code 1e300} also ceils to {@code Integer.MAX_VALUE}) — that needs a bound at the
+     * sampling site rather than a parse guard, and is deliberately out of scope here.
+     */
+    private static Double parseRadius(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (t.isEmpty()) return null;
+        try {
+            double v = Double.parseDouble(t);
+            return (Double.isNaN(v) || Double.isInfinite(v) || v <= 0) ? null : v;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** Parses an X/Y coordinate; returns null if blank, malformed, or literally "NaN"

@@ -13,6 +13,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class TrackCsvLoaderTest {
 
@@ -41,6 +42,58 @@ class TrackCsvLoaderTest {
         assertArrayEquals(new double[]{20.5, 21.0}, data.y);
         assertArrayEquals(new int[]{0, 1}, data.frame);
         assertArrayEquals(new double[]{3.5, 3.5}, data.radius); // no radius column present
+    }
+
+    @Test
+    void radiusCell_nanOrInfinite_fallsBackToTheDefault_notThroughToTheSampler(@TempDir Path dir)
+            throws IOException {
+        // Double.parseDouble("NaN") and ("Infinity") both SUCCEED, so neither reaches the
+        // catch — the same trap parseCoordinate guards for X/Y and this missed. A NaN radius
+        // made ZSampler take zero samples and the detection was reported "out of bounds",
+        // blaming the coordinates; an INFINITE radius is worse, since
+        // (int) Math.ceil(Infinity) == Integer.MAX_VALUE and the disk loop then runs ~1.8e19
+        // iterations, hanging Fiji with no error at all.
+        String csv = "X,Y,FRAME,TRACK_ID,RADIUS\n"
+                + "1.0,1.0,0,1,NaN\n"
+                + "2.0,2.0,1,1,Infinity\n"
+                + "3.0,3.0,2,1,-Infinity\n"
+                + "4.0,4.0,3,1,\n"          // blank — already fell back before this patch
+                + "5.0,5.0,4,1,garbage\n"   // unparseable — likewise
+                + "6.0,6.0,5,1,2.5\n";      // a real radius must still come through
+        Path file = writeCsv(dir, "radius.csv", csv);
+        CsvConfig config = new CsvConfig(0, 0, 3.5);
+
+        ColumnConfig cols = TrackCsvLoader.detectColumns(file, config);
+        TrackData data = TrackCsvLoader.load(file, config, cols);
+
+        assertEquals(6, data.radius.length);
+        assertArrayEquals(new double[]{3.5, 3.5, 3.5, 3.5, 3.5, 2.5}, data.radius);
+        for (double r : data.radius) {
+            assertFalse(Double.isNaN(r), "no radius may reach the sampler as NaN");
+            assertFalse(Double.isInfinite(r), "no radius may reach the sampler as infinite");
+        }
+    }
+
+    @Test
+    void radiusCell_notPositive_alsoFallsBackToTheDefault(@TempDir Path dir) throws IOException {
+        // Leaving non-positive values out left an arbitrary split: -1.0 and below make the
+        // disk loop never run (zero samples, then misreported as out of bounds), while -0.4
+        // and 0 ceil to 0 and quietly sample ONE pixel — succeeding as if SINGLE_PIXEL had
+        // been chosen. The silently-succeeding case is the worse of the two.
+        String csv = "X,Y,FRAME,TRACK_ID,RADIUS\n"
+                + "1.0,1.0,0,1,-1.0\n"
+                + "2.0,2.0,1,1,-0.4\n"
+                + "3.0,3.0,2,1,0\n"
+                + "4.0,4.0,3,1,0.0\n"
+                + "5.0,5.0,4,1,0.25\n";   // the smallest POSITIVE radius must survive intact
+        Path file = writeCsv(dir, "radius_np.csv", csv);
+        CsvConfig config = new CsvConfig(0, 0, 3.5);
+
+        TrackData data = TrackCsvLoader.load(
+                file, config, TrackCsvLoader.detectColumns(file, config));
+
+        assertArrayEquals(new double[]{3.5, 3.5, 3.5, 3.5, 0.25}, data.radius);
+        assertEquals(5, data.x.length, "the rows themselves are kept — only the radius changes");
     }
 
     @Test

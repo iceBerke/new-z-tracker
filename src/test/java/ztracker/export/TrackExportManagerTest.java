@@ -445,6 +445,40 @@ class TrackExportManagerTest {
     }
 
     @Test
+    void export_noDataDrop_isCountedInTheRunSummary_notOnlyThePerTrackReport(
+            @TempDir Path outDir) throws IOException {
+        // Tool 3's drop reason. It always reached the per-track report (which merges the raw
+        // status string) but the summary line's else-if chain had no branch for it, so a
+        // no-data drop was counted in no summary bucket at all — dropped and invisible.
+        TrackData track = new TrackData(
+                new double[]{1.0, 2.0},
+                new double[]{1.0, 2.0},
+                new int[]{0, 1},
+                new double[]{3.5, 3.5},
+                new String[]{"1", "1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+        ExtractionResult result = new ExtractionResult(
+                new double[]{Double.NaN, 12.0},   // first point: every sampled pixel was NaN
+                new double[]{Double.NaN, 0.1},
+                new int[]{5, 5},
+                new int[]{0, 0},
+                new String[]{ExtractionResult.STATUS_NO_DATA, ExtractionResult.STATUS_OK},
+                "Radius-based", "Median", "Pixel = corner (floor to containing cell)", 0, 0, 0);
+
+        TrackExportManager.export(track, result, new ExportConfig(true, false, false), outDir, "");
+
+        String content = String.join("\n", Files.readAllLines(
+                outDir.resolve("export_report.txt"), StandardCharsets.UTF_8));
+        assertTrue(content.contains("noData=1"),
+                "a no-data drop must be counted in the summary line: " + content);
+        // and must not be misfiled under any of the pre-existing buckets
+        assertTrue(content.contains("unmappedIndex=0"), content);
+        assertTrue(content.contains("outOfBounds=0"), content);
+        assertTrue(content.contains("missingFrame=0"), content);
+        assertTrue(content.contains("invalidXY=0"), content);
+    }
+
+    @Test
     void export_summaryLine_reportsNoValidPointsSkipsSeparatelyFor2DAnd3D(
             @TempDir Path outDir) throws IOException {
         // All 3 detections have an invalid X -> zero valid-XY points remain, so both 2D and

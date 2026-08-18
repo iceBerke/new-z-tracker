@@ -14,7 +14,11 @@ public class TrackData {
     public final double[] x;
     public final double[] y;
     public final int[]    frame;
-    public final double[] radius;    // NaN if not present in CSV
+    /** Per-detection radius in pixels. Never NaN from {@code TrackCsvLoader}: when the CSV has
+     *  no radius column, or a cell is blank/unparseable/NaN/infinite, the loader substitutes
+     *  {@link #defaultRadius}. Use {@link #hasRadiusColumn()} to tell a real column from the
+     *  default, rather than testing these values. */
+    public final double[] radius;
     public final String[] trackId;   // String to handle both integer and string IDs
 
     // ── Metadata ─────────────────────────────────────────────────────────────

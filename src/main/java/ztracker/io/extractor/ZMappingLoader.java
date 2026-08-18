@@ -5,7 +5,9 @@ import ij.IJ;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,17 +42,37 @@ public class ZMappingLoader {
     public static Map<Integer, Double> load(Path jsonPath) throws IOException {
         String content = new String(Files.readAllBytes(jsonPath));
         Map<Integer, Double> mapping = new HashMap<>();
+        List<String> duplicates = new ArrayList<>();
 
         Matcher matcher = ENTRY_PATTERN.matcher(content);
         while (matcher.find()) {
             int    index   = Integer.parseInt(matcher.group(1));
             double zValue  = Double.parseDouble(matcher.group(2));
-            mapping.put(index, zValue);
+            // put() would silently keep the LAST value for a repeated index, leaving the
+            // mapping quietly wrong with no way to tell. Collect every collision instead and
+            // refuse the file below, naming both values — the same treatment p10.4 gives two
+            // TIFFs resolving to one frame number and p10.9 gives two timepoints claiming one
+            // index. This was the last place a duplicate key was still accepted silently.
+            Double previous = mapping.put(index, zValue);
+            if (previous != null) {
+                duplicates.add("index " + index + " ← " + previous + " and " + zValue);
+            }
         }
 
         if (mapping.isEmpty()) {
             throw new IllegalArgumentException(
                     "No valid entries found in Z-mapping JSON: " + jsonPath);
+        }
+
+        if (!duplicates.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "These Z-mapping entries claim the same index: " + duplicates
+                    + "\nThe mapping is index → Z, so a repeated index gives one layer two"
+                    + " depths and the file does not say which is meant."
+                    + "\nNote this parser is a regex over the whole file rather than a JSON"
+                    + " parser, so a stray \"<index>\": <value> anywhere — including outside"
+                    + " the main object — counts as an entry and can collide with a real one."
+                    + "\nRemove the duplicate entries and re-run: " + jsonPath);
         }
 
         int    minIdx = mapping.keySet().stream().mapToInt(Integer::intValue).min().orElse(0);

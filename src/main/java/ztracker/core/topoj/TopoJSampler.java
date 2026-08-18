@@ -70,7 +70,23 @@ public class TopoJSampler {
     private static double[] sampleRadius(LoadedFloatStack stack, double x, double y,
                                          int stackIdx, double radius,
                                          ZSampler.PixelConvention convention) {
-        int r     = (int) Math.ceil(radius);
+        // The disk loop costs (2r+1)^2 iterations, so an unbounded r is not merely slow: a
+        // radius of 1e300 (or Infinity) makes (int) Math.ceil give Integer.MAX_VALUE, ~1.8e19
+        // iterations, and Fiji freezes with no error and no progress. TrackCsvLoader.parseRadius
+        // CANNOT catch this — 1e300 is a positive finite number and passes the load-time guard
+        // unchanged; only the sampler knows the frame size.
+        //
+        // The ceiling is the frame DIAGONAL, which is provably sufficient: from any anchor, the
+        // farthest in-bounds pixel is at most the diagonal away, so beyond it no additional
+        // pixel can ever be reached. The clamp is therefore LOSSLESS — it changes no result for
+        // any radius the image can actually hold — not a correction of bad data. Do not "fix"
+        // it into a refusal: sampleRadius has no error channel but an exception, which would
+        // abort the whole run over one CSV cell, contradicting the rule that a bad detection
+        // drops that point and never the run.
+        //
+        // Written separately here and in ZSampler with no shared helper, per the p10.1
+        // precedent for a guard both samplers need.
+        int r     = Math.min((int) Math.ceil(radius), maxUsefulRadius(stack.width, stack.height));
         int cx    = containingPixel(x, convention);
         int cy    = containingPixel(y, convention);
         double r2 = radius * radius;
@@ -137,6 +153,15 @@ public class TopoJSampler {
         return convention == ZSampler.PixelConvention.PIXEL_CENTER
                 ? (int) Math.round(v)
                 : (int) Math.floor(v);
+    }
+
+    /**
+     * The largest disk radius that can reach any new pixel in a {@code width x height} frame —
+     * its diagonal. Computed in {@code double} so {@code width * height} cannot overflow.
+     * Deliberately duplicated from {@code ZSampler} rather than shared (p10.1 precedent).
+     */
+    private static int maxUsefulRadius(int width, int height) {
+        return (int) Math.ceil(Math.sqrt((double) width * width + (double) height * height));
     }
 
     private static boolean inBounds(LoadedFloatStack stack, int si, int px, int py) {

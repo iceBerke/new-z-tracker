@@ -25,6 +25,49 @@ class ZSamplerTest {
     }
 
     @Test
+    void radius_absurdlyLarge_terminatesAndReturnsEveryPixel_theClampIsLossless() {
+        // (2r+1)^2 iterations: an unclamped 1e300 ceils to Integer.MAX_VALUE and runs ~1.8e19
+        // iterations, freezing Fiji with no error. TrackCsvLoader.parseRadius cannot catch it —
+        // 1e300 is a positive finite number — so the bound has to live here. The clamp is the
+        // frame diagonal, beyond which no further pixel is reachable, so the RESULT is
+        // unchanged: a huge radius still samples the whole frame. This test would hang, not
+        // fail, if the clamp were removed.
+        int[][] frame = {
+            {1, 2, 3},
+            {4, 5, 6},
+            {7, 8, 9}
+        };
+        LoadedStack stack = singleFrameStack(frame);
+
+        double[] huge = ZSampler.sample(stack, 1, 1, 0, 0, 1e300, ZSampler.Method.RADIUS, CENTER);
+        double[] inf  = ZSampler.sample(stack, 1, 1, 0, 0, Double.POSITIVE_INFINITY,
+                ZSampler.Method.RADIUS, CENTER);
+
+        assertEquals(9, huge.length, "a radius past the diagonal still samples the whole frame");
+        assertArrayEquals(new double[]{1, 2, 3, 4, 5, 6, 7, 8, 9}, huge);
+        assertArrayEquals(huge, inf, "infinite and merely-absurd radii must agree");
+    }
+
+    @Test
+    void radius_atAndBelowTheDiagonal_isUnaffectedByTheClamp() {
+        // Guard the guard: the clamp must not alter any radius the image can actually hold.
+        int[][] frame = {
+            {1, 2, 3},
+            {4, 5, 6},
+            {7, 8, 9}
+        };
+        LoadedStack stack = singleFrameStack(frame);
+
+        // diagonal of 3x3 is ceil(sqrt(18)) = 5; everything at or under it behaves normally
+        assertArrayEquals(new double[]{2, 4, 5, 6, 8},
+                ZSampler.sample(stack, 1, 1, 0, 0, 1.0, ZSampler.Method.RADIUS, CENTER));
+        assertEquals(9, ZSampler.sample(stack, 1, 1, 0, 0, 5.0,
+                ZSampler.Method.RADIUS, CENTER).length);
+        assertEquals(9, ZSampler.sample(stack, 1, 1, 0, 0, 100.0,
+                ZSampler.Method.RADIUS, CENTER).length);
+    }
+
+    @Test
     void singlePixel_readsValueAbove16BitRange() {
         // 32-bit indexed TIFFs can carry indices beyond the 16-bit 0-65535 range.
         int[][] frame = {

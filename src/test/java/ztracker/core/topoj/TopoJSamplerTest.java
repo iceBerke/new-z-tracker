@@ -32,6 +32,33 @@ class TopoJSamplerTest {
     }
 
     @Test
+    void radius_absurdlyLarge_terminatesAndReturnsEveryPixel_theClampIsLossless() {
+        // Tool 3's own copy of the guard — written separately from ZSampler's with no shared
+        // helper (p10.1 precedent), so it needs its own test. Unclamped, 1e300 ceils to
+        // Integer.MAX_VALUE and the disk loop runs ~1.8e19 iterations, freezing Fiji silently.
+        // The clamp is the frame diagonal and so is lossless: the whole frame is still sampled.
+        // Without the clamp this test hangs rather than fails.
+        float[][] frame = {
+            {1.5f, 2.5f, 3.5f},
+            {4.5f, 5.5f, 6.5f},
+            {7.5f, 8.5f, 9.5f}
+        };
+        LoadedFloatStack stack = singleFrameStack(frame);
+
+        double[] huge = TopoJSampler.sample(stack, 1, 1, 0, 0, 1e300,
+                ZSampler.Method.RADIUS, CENTER);
+        double[] inf  = TopoJSampler.sample(stack, 1, 1, 0, 0, Double.POSITIVE_INFINITY,
+                ZSampler.Method.RADIUS, CENTER);
+
+        assertEquals(9, huge.length, "a radius past the diagonal still samples the whole frame");
+        assertArrayEquals(new double[]{1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5}, huge, 1e-9);
+        assertArrayEquals(huge, inf, 1e-9, "infinite and merely-absurd radii must agree");
+        // and a radius the image can hold is untouched by the clamp
+        assertEquals(5, TopoJSampler.sample(stack, 1, 1, 0, 0, 1.0,
+                ZSampler.Method.RADIUS, CENTER).length);
+    }
+
+    @Test
     void singlePixel_preservesFractionalAndNegativeZ() {
         // Direct-Z values are physical µm — fractional and negative values must survive intact
         // (unlike Tool 2's integer indices).
