@@ -15,7 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <patch.version>p10.13</patch.version>
+        <patch.version>p10.14</patch.version>
     </properties>
 
     <repositories>
@@ -55,6 +55,55 @@
                         <arg>-Xlint:-options</arg>
                     </compilerArgs>
                 </configuration>
+            </plugin>
+
+            <!-- Tests run in TWO surefire executions, and the split is the point (p10.14).
+                 ProjectionStackScannerMemoryTest asserts Tool 1's TIFF-stack input still reads
+                 slices one at a time instead of loading the whole timepoint. That is a memory
+                 property, and the only thing that can prove it is a heap too small for the
+                 forbidden design: the fixture is 400 MiB held as float[][] per slice but 12 MiB
+                 streamed, so -Xmx96m passes only if the streaming design is intact. Without the
+                 cap the test asserts nothing at all: a load-all refactor produces identical
+                 numbers and would pass. surefire cannot vary -Xmx per test class within one
+                 execution, hence the second one.
+
+                 Declaring this plugin PINS surefire at 3.2.5, which is what the super-POM
+                 default already resolved to here - a deliberate consequence of having to
+                 declare it, not an incidental version bump. Nothing else about the main
+                 execution changes; it runs every test it ran before, minus the one class the
+                 other execution owns.
+
+                 "Tests run:" therefore prints twice - see CLAUDE.md's rule on taking test
+                 counts from a clean run, which now sums the two executions. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <executions>
+                    <execution>
+                        <id>default-test</id>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/ProjectionStackScannerMemoryTest.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>streaming-invariant-test</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <includes>
+                                <include>**/ProjectionStackScannerMemoryTest.java</include>
+                            </includes>
+                            <!-- The assertion itself. Do not raise this: the load-all design
+                                 needs 400 MiB, over 4x this cap (measured: it dies after 22 of
+                                 the 100 slices), while the streaming design peaks near 12 MiB.
+                                 Raising the cap silently retires the guard. -->
+                            <argLine>-Xmx96m</argLine>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- Package as a fat jar so Fiji can load it as a single file -->
