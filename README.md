@@ -213,8 +213,17 @@ a Z-layer **at all**: it is not an error, it is simply not seen.
 
 Layers are sorted **numerically**, not alphabetically, so negatives sort correctly (`-300` before
 `-299`) and **gaps and uneven spacing are fine** — the layers need not be contiguous or evenly
-spaced. Nothing depends on zero-padding: `-5` and `-005` would be the same depth (and so must not
-both exist).
+spaced. Nothing depends on zero-padding: `-5` and `-005` are the same depth.
+
+Having both is **not** rejected — this is a convention, not a rule the tool checks. Each folder
+still gets its own layer index, both are read, both compete in the projection, and the JSON maps
+the two indices to that one depth, so the Z reported for either is correct. Keep them apart anyway:
+a duplicate depth usually means a name is wrong, and if one of them was meant to be a *different*
+depth then that depth is simply missing from the dataset. (Which of two same-depth layers wins a
+tie depends on the order the folders come back from the filesystem, so the recorded index — though
+never the Z — can differ between machines.) Note the TIFF-stack input type **does** reject two
+slices sharing a Z; that difference is internal to how the two layouts work, not a rule that
+applies to one and not the other.
 
 If *no* sub-folder parses as a number the dataset is rejected, and the message distinguishes the
 three cases — the folder could not be read at all, it holds no sub-folders, or sub-folders were
