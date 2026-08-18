@@ -38,8 +38,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ul>
  *   <li><b>load-all</b> = 1024·1024·100·4 B = <b>400 MiB</b> — 4.17× the cap, so the forbidden
  *       design cannot complete (measured: it dies after 22 of the 100 slices);</li>
- *   <li><b>streaming</b> = 1024·1024·12 B = <b>12 MiB</b> — one reused float buffer plus the
- *       accumulator's float projection and int z-origin — 12.5% of the cap.</li>
+ *   <li><b>streaming</b> = 1024·1024·13 B = <b>13 MiB</b> — one reused float buffer plus the
+ *       accumulator's float projection and int z-origin, plus the source slice's own
+ *       {@code ImageProcessor} live alongside them (hence 13 and not 12, for this 8-bit
+ *       fixture) — 13.5% of the cap.</li>
  * </ul>
  * The assertion is <b>completion with a correct result</b>, never an expected
  * {@code OutOfMemoryError}: a JVM can thrash for a long time before throwing, which would make

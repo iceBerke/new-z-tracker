@@ -49,9 +49,13 @@ import java.util.regex.Pattern;
  * One timepoint here is one large file — a 401-slice 1051×1674 stack is ~700 MB, and holding
  * every slice as {@code float[][]} at once would need ~2.8 GB. So slices are read
  * <b>one at a time</b> from a virtual (on-demand) stack and folded straight into
- * {@link ZProjector.Accumulator}, keeping peak memory at roughly one slice plus two
- * full-frame result buffers. Files that cannot be opened virtually (e.g. compressed TIFFs)
- * fall back to a normal in-memory open.
+ * {@link ZProjector.Accumulator}, keeping peak memory at {@code w × h × (12 + bytes-per-pixel)}
+ * — <b>13 B/px for 8-bit</b> input, 14 for 16-bit, 16 for 32-bit — and in no case a function of
+ * stack depth. That is 12 for the three full-frame arrays (the reused {@code float[][]} buffer
+ * plus the accumulator's {@code float} projection and {@code int} z-origin) <b>plus the source
+ * slice's own {@code ImageProcessor}</b>, which is live alongside them; do not count it back
+ * down to 12 from the arrays this class allocates itself. Files that cannot be opened virtually
+ * (e.g. compressed TIFFs) fall back to a normal in-memory open.
  */
 public final class ProjectionStackScanner {
 

@@ -61,7 +61,7 @@
                  ProjectionStackScannerMemoryTest asserts Tool 1's TIFF-stack input still reads
                  slices one at a time instead of loading the whole timepoint. That is a memory
                  property, and the only thing that can prove it is a heap too small for the
-                 forbidden design: the fixture is 400 MiB held as float[][] per slice but 12 MiB
+                 forbidden design: the fixture is 400 MiB held as float[][] per slice but 13 MiB
                  streamed, so -Xmx96m passes only if the streaming design is intact. Without the
                  cap the test asserts nothing at all: a load-all refactor produces identical
                  numbers and would pass. surefire cannot vary -Xmx per test class within one
@@ -98,7 +98,7 @@
                             </includes>
                             <!-- The assertion itself. Do not raise this: the load-all design
                                  needs 400 MiB, over 4x this cap (measured: it dies after 22 of
-                                 the 100 slices), while the streaming design peaks near 12 MiB.
+                                 the 100 slices), while the streaming design peaks near 13 MiB.
                                  Raising the cap silently retires the guard. -->
                             <argLine>-Xmx96m</argLine>
                         </configuration>
