@@ -47,6 +47,17 @@ public final class ZProjector {
     /**
      * Projects one timepoint's z-stack pixel-by-pixel.
      *
+     * <p><b>NaN handling (p10.11).</b> A {@code NaN} is not a measurement, so it never wins:
+     * the result is the extremum over the <em>real</em> values at that pixel, whichever layers
+     * hold them. Only relevant to 32-bit float input (8-/16-bit cannot represent NaN) — the
+     * realistic source being Fiji's {@code Process > Math > NaN Background}.
+     *
+     * <p><b>Documented limit:</b> if <em>every</em> layer is NaN at a pixel there is no real
+     * value to name, and the pixel reports layer index 0 — indistinguishable downstream from a
+     * genuine layer-0 origin. The indexed z-origin format carries layer indices with no spare
+     * "no data" value, so expressing it would be a format decision, not a local fix; see
+     * CLAUDE.md for why that was not taken.
+     *
      * @param mode         {@link Mode#MAX_Z} (brightest wins) or {@link Mode#MIN_Z} (darkest wins)
      * @param slices       one intensity array per <em>present</em> z-layer, each {@code [height][width]};
      *                     all slices must share the same dimensions
@@ -94,7 +105,13 @@ public final class ZProjector {
                     float v = slices.get(k)[y][x];
                     // Strict comparison keeps the FIRST winning slice on ties,
                     // matching numpy's argmax/argmin (which return the first extreme).
-                    if (max ? (v > best) : (v < best)) {
+                    // The isNaN guard is the p10.11 fix: every comparison against NaN is
+                    // false in Java, so a NaN seed could never be beaten and pinned the pixel
+                    // to slice 0 — a valid mapping key, hence a confident wrong Z downstream.
+                    // A NaN is displaced by any real value; it never displaces one. Inert on
+                    // NaN-free input (best is then never NaN, so this collapses to the
+                    // comparison above). Accumulator.add carries the identical line.
+                    if (Float.isNaN(best) ? !Float.isNaN(v) : (max ? (v > best) : (v < best))) {
                         best      = v;
                         bestSlice = k;
                     }
@@ -176,7 +193,13 @@ public final class ZProjector {
                 for (int x = 0; x < width; x++) {
                     float v = row[x];
                     // Strict comparison — first slice added keeps the tie, as in project().
-                    if (max ? (v > best[x]) : (v < best[x])) {
+                    // The isNaN guard is deliberately the IDENTICAL line project() carries:
+                    // both paths must take the same rule or the Accumulator ≡ project
+                    // equivalence stops holding. Guarding the comparison rather than seeding
+                    // from the first non-NaN is what lets this path express it at all — it is
+                    // streaming and cannot look ahead for a seed.
+                    if (Float.isNaN(best[x]) ? !Float.isNaN(v)
+                                             : (max ? (v > best[x]) : (v < best[x]))) {
                         best[x] = v;
                         org[x]  = globalZIndex;
                     }

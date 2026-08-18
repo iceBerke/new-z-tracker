@@ -27,6 +27,81 @@ class ZProjectorTest {
         return s;
     }
 
+    // ── NaN handling (p10.11) ─────────────────────────────────────────────────
+
+    @Test
+    void nanInLowestLayer_doesNotWin_soZOriginNamesTheRealExtremumsLayer() {
+        // The reported bug: every comparison against NaN is false in Java, so a NaN seed could
+        // never be beaten and pinned the pixel to layer 0 — a VALID mapping key, so Tool 2
+        // resolved it to a real depth and reported STATUS_OK. A confident wrong Z.
+        float[][] l0 = slice(2, 1, Float.NaN, 10f);
+        float[][] l1 = slice(2, 1, 500f,      20f);
+        float[][] l2 = slice(2, 1, 900f,      30f);
+
+        ZProjector.Result max = ZProjector.project(
+                ZProjector.Mode.MAX_Z, Arrays.asList(l0, l1, l2), new int[]{0, 1, 2});
+        assertArrayEquals(new float[]{900f, 30f}, max.projection[0]);
+        assertArrayEquals(new int[]{2, 2}, max.zOriginIndex[0]);
+
+        // Symmetric: the mechanism is comparison-with-NaN, which is false in both directions.
+        ZProjector.Result min = ZProjector.project(
+                ZProjector.Mode.MIN_Z, Arrays.asList(l0, l1, l2), new int[]{0, 1, 2});
+        assertArrayEquals(new float[]{500f, 10f}, min.projection[0]);
+        assertArrayEquals(new int[]{1, 0}, min.zOriginIndex[0]);
+    }
+
+    @Test
+    void nanInALaterLayer_wasAlreadyHarmless_andStaysThatWay() {
+        // Guard against over-correcting: a NaN below the first layer never could win (NaN > x
+        // is false), so this case was always right and must not move.
+        float[][] l0 = slice(1, 1, 100f);
+        float[][] l1 = slice(1, 1, Float.NaN);
+        float[][] l2 = slice(1, 1, 900f);
+
+        ZProjector.Result max = ZProjector.project(
+                ZProjector.Mode.MAX_Z, Arrays.asList(l0, l1, l2), new int[]{0, 1, 2});
+        assertArrayEquals(new float[]{900f}, max.projection[0]);
+        assertArrayEquals(new int[]{2}, max.zOriginIndex[0]);
+
+        ZProjector.Result min = ZProjector.project(
+                ZProjector.Mode.MIN_Z, Arrays.asList(l0, l1, l2), new int[]{0, 1, 2});
+        assertArrayEquals(new float[]{100f}, min.projection[0]);
+        assertArrayEquals(new int[]{0}, min.zOriginIndex[0]);
+    }
+
+    @Test
+    void allNanColumn_stillReportsLayerZero_theDocumentedLimit() {
+        // NOT an endorsement — a pin. The indexed z-origin format carries layer indices with no
+        // spare "no data" value, so there is nothing truthful to write here; layer 0 is what
+        // comes out. Expressing it would be a format decision across both tools (see CLAUDE.md).
+        // This test exists so that changing it is a deliberate choice, never an accident.
+        float[][] l0 = slice(2, 1, Float.NaN, 1f);
+        float[][] l1 = slice(2, 1, Float.NaN, 2f);
+        float[][] l2 = slice(2, 1, Float.NaN, 3f);
+
+        for (ZProjector.Mode mode : ZProjector.Mode.values()) {
+            ZProjector.Result r = ZProjector.project(
+                    mode, Arrays.asList(l0, l1, l2), new int[]{7, 8, 9});
+            assertEquals(7, r.zOriginIndex[0][0], mode + ": all-NaN pixel reports the first layer");
+            assertEquals(Float.NaN, r.projection[0][0], mode + ": and its projected value is NaN");
+        }
+    }
+
+    @Test
+    void nanIsIgnoredEvenWhenEveryLayerButOneHoldsIt() {
+        // The single real value must win regardless of where it sits.
+        float[][] l0 = slice(1, 1, Float.NaN);
+        float[][] l1 = slice(1, 1, Float.NaN);
+        float[][] l2 = slice(1, 1, 42f);
+
+        for (ZProjector.Mode mode : ZProjector.Mode.values()) {
+            ZProjector.Result r = ZProjector.project(
+                    mode, Arrays.asList(l0, l1, l2), new int[]{0, 1, 2});
+            assertArrayEquals(new float[]{42f}, r.projection[0], "" + mode);
+            assertArrayEquals(new int[]{2}, r.zOriginIndex[0], "" + mode);
+        }
+    }
+
     @Test
     void maxZ_picksBrightestPixelAndRecordsItsLayerIndex() {
         // 2x1 image, three layers. Per pixel the brightest value lives in a different layer.

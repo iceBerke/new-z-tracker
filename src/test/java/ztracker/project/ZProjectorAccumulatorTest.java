@@ -25,7 +25,7 @@ class ZProjectorAccumulatorTest {
     // ── Parity with project() ─────────────────────────────────────────────────
 
     @Test
-    void accumulator_matchesProject_onRandomStacks_bothModes() {
+    void accumulator_matchesProject_onRandomStacks_bothModes_includingNaN() {
         Random rnd = new Random(20260812L);
         for (int trial = 0; trial < 20; trial++) {
             int slices = 1 + rnd.nextInt(6);
@@ -39,7 +39,11 @@ class ZProjectorAccumulatorTest {
                 for (int y = 0; y < h; y++) {
                     for (int x = 0; x < w; x++) {
                         // Small integral range, so ties happen often — that's the interesting case.
-                        s[y][x] = rnd.nextInt(4);
+                        // Plus NaN at ~1 pixel in 5 (p10.11): without it this parity proof would
+                        // keep passing while covering none of the isNaN guard, which is a test
+                        // that looks like proof and is not. The rate is low enough that plenty of
+                        // NaN-free and all-NaN columns both occur across 20 trials.
+                        s[y][x] = rnd.nextInt(5) == 0 ? Float.NaN : rnd.nextInt(4);
                     }
                 }
                 stack.add(s);
@@ -61,6 +65,32 @@ class ZProjectorAccumulatorTest {
                             "z-origin row " + y + " (trial " + trial + ", " + mode + ")");
                 }
             }
+        }
+    }
+
+    @Test
+    void accumulator_appliesTheSameNaNRuleAsProject_streamingCannotSeedFromFirstNonNaN() {
+        // The streaming path cannot look ahead to seed from the first non-NaN slice, which is
+        // exactly why the fix guards the COMPARISON instead. Both paths must carry the identical
+        // rule or the two input layouts would quietly disagree on the same pixels.
+        List<float[][]> stack = Arrays.asList(
+                new float[][]{{Float.NaN, Float.NaN}},   // lowest Z: NaN in both pixels
+                new float[][]{{500f,      Float.NaN}},
+                new float[][]{{900f,      Float.NaN}});  // pixel 1 is an all-NaN column
+        int[] globalZ = {4, 5, 6};
+
+        for (ZProjector.Mode mode : ZProjector.Mode.values()) {
+            ZProjector.Result expected = ZProjector.project(mode, stack, globalZ);
+            ZProjector.Accumulator acc = new ZProjector.Accumulator(mode);
+            for (int k = 0; k < stack.size(); k++) acc.add(stack.get(k), globalZ[k]);
+            ZProjector.Result actual = acc.result();
+
+            assertArrayEquals(expected.projection[0], actual.projection[0], "projection " + mode);
+            assertArrayEquals(expected.zOriginIndex[0], actual.zOriginIndex[0], "z-origin " + mode);
+            // and the values themselves, so this fails loudly if BOTH paths regress together
+            assertEquals(mode == ZProjector.Mode.MAX_Z ? 6 : 5, actual.zOriginIndex[0][0],
+                    mode + ": the real extremum's layer, not the NaN's");
+            assertEquals(4, actual.zOriginIndex[0][1], mode + ": all-NaN column keeps layer 0");
         }
     }
 
