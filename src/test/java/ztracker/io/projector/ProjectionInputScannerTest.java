@@ -6,6 +6,7 @@ import ij.process.ByteProcessor;
 import ij.process.ColorProcessor;
 import ij.process.FloatProcessor;
 import ij.process.ShortProcessor;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,6 +14,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,6 +35,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * rather than mocked (the same reason {@code ProjectionExporterTest} uses real TIFF I/O).
  */
 class ProjectionInputScannerTest {
+
+    /**
+     * The ignored-sub-folder note dedups per <em>run</em> via static state, and several tests here
+     * create non-numeric sibling folders, so each test starts from a clean run boundary — exactly
+     * what {@code ZProjectorPlugin.run()} does.
+     */
+    @BeforeEach
+    void startFreshRun() {
+        ProjectionInputScanner.resetIgnoredSubFolderReport();
+    }
 
     // ── scanDataset: discovery, sort, filename union ──────────────────────────
 
@@ -86,6 +99,163 @@ class ProjectionInputScannerTest {
         layer(dataset, "1");  // ...but contain no TIFFs
 
         assertThrows(IOException.class, () -> ProjectionInputScanner.scanDataset(dataset));
+    }
+
+    // ── scanDataset: which of the three "no z-layers" states it reports ────────
+
+    @Test
+    void scanDataset_unreadableFolder_saysSo_ratherThanBlamingTheSubFolderNames(@TempDir Path dir) {
+        // listFiles returns null: not a folder, missing, or no permission. Reporting that as
+        // "no numeric sub-folders" would send the user looking at names that don't exist.
+        File missing = new File(dir.toFile(), "does-not-exist");
+
+        IOException e = assertThrows(IOException.class,
+                () -> ProjectionInputScanner.scanDataset(missing));
+        assertTrue(e.getMessage().contains("Cannot read dataset folder"),
+                "should name the real state: " + e.getMessage());
+        assertFalse(e.getMessage().contains("sub-folder(s) were found"),
+                "must not claim sub-folders were inspected: " + e.getMessage());
+    }
+
+    @Test
+    void scanDataset_noSubFoldersAtAll_saysSo_withoutListingNames(@TempDir Path dir)
+            throws Exception {
+        File dataset = dir.toFile();
+        writeShortTiff(dataset, "loose.tif", 2, 2, 0);  // files only, no sub-folders
+
+        IOException e = assertThrows(IOException.class,
+                () -> ProjectionInputScanner.scanDataset(dataset));
+        assertTrue(e.getMessage().contains("No sub-folders in dataset"),
+                "should distinguish empty from all-rejected: " + e.getMessage());
+        assertFalse(e.getMessage().contains("sub-folder(s) were found"),
+                "nothing was found, so nothing should be listed: " + e.getMessage());
+    }
+
+    @Test
+    void scanDataset_subFoldersPresentButNoneNumeric_namesTheRejectedOnes(@TempDir Path dir) {
+        File dataset = dir.toFile();
+        assertTrue(new File(dataset, "notes").mkdirs());
+        assertTrue(new File(dataset, "z-300").mkdirs());
+
+        IOException e = assertThrows(IOException.class,
+                () -> ProjectionInputScanner.scanDataset(dataset));
+        assertTrue(e.getMessage().contains("No numeric z-layer sub-folders"),
+                "should name the cause: " + e.getMessage());
+        // Assert on the bracketed list, not on a bare "z-300": the message's own rename hint
+        // spells out "z-300" as the counter-example, so a plain contains() would self-match.
+        assertTrue(e.getMessage().contains("[notes, z-300]"),
+                "should list what it rejected: " + e.getMessage());
+        assertTrue(e.getMessage().contains("2 sub-folder(s) were found"),
+                "should say how many were inspected: " + e.getMessage());
+    }
+
+    @Test
+    void scanDataset_manyRejectedSubFolders_listsFiveThenCountsTheRest(@TempDir Path dir) {
+        File dataset = dir.toFile();
+        for (String name : new String[]{"nA", "nB", "nC", "nD", "nE", "nF", "nG"}) {
+            assertTrue(new File(dataset, name).mkdirs());
+        }
+
+        IOException e = assertThrows(IOException.class,
+                () -> ProjectionInputScanner.scanDataset(dataset));
+        assertTrue(e.getMessage().contains("[nA, nB, nC, nD, nE, …and 2 more]"),
+                "should cap the list and state the remainder: " + e.getMessage());
+        assertTrue(e.getMessage().contains("7 sub-folder(s) were found"),
+                "the total must still be exact: " + e.getMessage());
+    }
+
+    // ── The once-per-run note about sub-folders that were not read as Z layers ─
+
+    @Test
+    void reportIgnoredSubFolders_silentWhenEverySubFolderWasAZLayer(@TempDir Path dir) {
+        assertEquals(Collections.emptyList(),
+                ProjectionInputScanner.reportIgnoredSubFolders(dir.toFile(), Collections.emptyList()));
+    }
+
+    @Test
+    void reportIgnoredSubFolders_explainsTheRealConsequence_withoutAssertingAnythingIsWrong(
+            @TempDir Path dir) {
+        String text = String.join("\n", ProjectionInputScanner.reportIgnoredSubFolders(
+                new File(dir.toFile(), "ds1"), Collections.singletonList("notes")));
+
+        assertTrue(text.contains("not read as Z layers"), text);
+        assertTrue(text.contains("ignored: 'notes'"), text);
+        assertTrue(text.contains("dataset 'ds1'"), "should say where it was first seen: " + text);
+        // The corrected consequence: no index shift, but a layer that never competes.
+        assertTrue(text.contains("does not shift the Z indices"), text);
+        assertTrue(text.contains("never competes"), text);
+        assertTrue(text.contains("nearest surviving layer"), text);
+        assertTrue(text.contains("exactly right"),
+                "should say the unaffected pixels are entirely correct: " + text);
+        // Judgement left with the user — this must not read as a verdict.
+        assertTrue(text.contains("Normal for folders that are not Z layers"), text);
+        assertFalse(text.contains("WARNING"), "note, not warning: " + text);
+        assertFalse(text.contains("ERROR"), "note, not error: " + text);
+    }
+
+    @Test
+    void reportIgnoredSubFolders_reportsEachNameOnce_acrossDatasetsAndProjectionModes(
+            @TempDir Path dir) {
+        File ds1 = new File(dir.toFile(), "ds1");
+        File ds2 = new File(dir.toFile(), "ds2");
+
+        List<String> first = ProjectionInputScanner.reportIgnoredSubFolders(
+                ds1, Arrays.asList("notes", "QC"));
+        // Same names, a different dataset — and then the same dataset again, as the second
+        // projection mode would re-scan it. Neither may repeat anything.
+        List<String> second = ProjectionInputScanner.reportIgnoredSubFolders(
+                ds2, Arrays.asList("notes", "QC"));
+        List<String> secondMode = ProjectionInputScanner.reportIgnoredSubFolders(
+                ds1, Arrays.asList("notes", "QC"));
+
+        assertTrue(String.join("\n", first).contains("ignored: 'notes'"), "" + first);
+        assertTrue(String.join("\n", first).contains("ignored: 'QC'"), "" + first);
+        assertEquals(Collections.emptyList(), second, "a second dataset must not repeat the names");
+        assertEquals(Collections.emptyList(), secondMode, "a second mode must not repeat them either");
+    }
+
+    @Test
+    void reportIgnoredSubFolders_explanationPrintedOnce_laterDatasetsAddOnlyTheirNewNames(
+            @TempDir Path dir) {
+        ProjectionInputScanner.reportIgnoredSubFolders(
+                new File(dir.toFile(), "ds1"), Collections.singletonList("notes"));
+
+        List<String> later = ProjectionInputScanner.reportIgnoredSubFolders(
+                new File(dir.toFile(), "ds9"), Arrays.asList("notes", "_backup"));
+
+        assertEquals(1, later.size(), "only the new name, no repeated explanation: " + later);
+        assertTrue(later.get(0).contains("ignored: '_backup'"), later.get(0));
+        assertTrue(later.get(0).contains("dataset 'ds9'"), later.get(0));
+    }
+
+    @Test
+    void resetIgnoredSubFolderReport_startsANewRun_soASecondRunIsNotSilent(@TempDir Path dir) {
+        File ds = new File(dir.toFile(), "ds1");
+        ProjectionInputScanner.reportIgnoredSubFolders(ds, Collections.singletonList("notes"));
+        assertEquals(Collections.emptyList(),
+                ProjectionInputScanner.reportIgnoredSubFolders(ds, Collections.singletonList("notes")));
+
+        ProjectionInputScanner.resetIgnoredSubFolderReport();
+
+        List<String> nextRun = ProjectionInputScanner.reportIgnoredSubFolders(
+                ds, Collections.singletonList("notes"));
+        assertTrue(String.join("\n", nextRun).contains("ignored: 'notes'"),
+                "the dedup is per run, not per JVM: " + nextRun);
+    }
+
+    @Test
+    void scanDataset_feedsItsRejectedSubFolderNamesToTheReport(@TempDir Path dir) throws Exception {
+        // Proves the wiring without capturing IJ.log: after a successful scan, the names it
+        // rejected must already be marked as reported for this run.
+        File dataset = new File(dir.toFile(), "ds1");
+        writeShortTiff(layer(dataset, "-300"), "0001.tif", 2, 2, 0);
+        assertTrue(new File(dataset, "notes").mkdirs());
+
+        ProjectionInputScanner.scanDataset(dataset);
+
+        assertEquals(Collections.emptyList(),
+                ProjectionInputScanner.reportIgnoredSubFolders(dataset, Collections.singletonList("notes")),
+                "scanDataset should already have reported 'notes'");
     }
 
     // ── loadTimepoint: pixel/dim/bit-depth reads + global-index remap ──────────

@@ -68,6 +68,13 @@ public class ZProjectorPlugin implements PlugIn {
         if (!dialog.showDialog()) return;
         ZProjectorDialog.Config cfg = dialog.getConfig();
 
+        // Marks the run boundary for the scanner's once-per-run note about sub-folders it did not
+        // read as Z layers. A bare static signal carrying no data — the alternative, threading a
+        // collector up through ProjectionSource, would put type-specific state on the boundary
+        // that keeps every check below type-independent. Unconditional on purpose: the stack input
+        // type simply never populates it, so there is no per-type branch here either.
+        ProjectionInputScanner.resetIgnoredSubFolderReport();
+
         // Resolve the dataset folder(s) to process.
         List<File> datasets = resolveDatasets(cfg);
         if (datasets.isEmpty()) {
