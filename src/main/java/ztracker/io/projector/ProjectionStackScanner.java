@@ -214,6 +214,19 @@ public final class ProjectionStackScanner {
                         bitDepth = ip.getBitDepth();
                         buffer   = new float[ip.getHeight()][ip.getWidth()];
                     } else if (ip.getWidth() != buffer[0].length || ip.getHeight() != buffer.length) {
+                        // Defensive, and deliberately untested — though not because a
+                        // mismatched slice is refused. ImageStack.addSlice *accepts* a
+                        // differently-sized processor and silently re-frames it to the stack's
+                        // size (crop or zero-pad, ij 1.54f ImageStack:106-114), and
+                        // ImageStack.getProcessor then builds every processor at that one
+                        // width/height — so no ImageStack can report per-slice sizes at all.
+                        // Both ways this method obtains a stack are closed too: tryOpenVirtual
+                        // demands info.length == 1, whose single FileInfo is cloned per slice,
+                        // and the IJ.openImage fallback sends a multi-IFD TIFF through
+                        // Opener.openTiffStack, which bails out unless allSameSizeAndType
+                        // (Opener:800). The folder layout's identical check IS tested, because
+                        // there each Z layer is a separate file opened on its own and nothing
+                        // enforces a common size — the asymmetry is the layouts', not a gap.
                         throw new IOException(
                                 "Inconsistent slice dimensions within '" + label + "': slice " + slice
                                 + " is " + ip.getWidth() + "x" + ip.getHeight() + ", expected "
