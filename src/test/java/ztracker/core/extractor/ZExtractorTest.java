@@ -2,6 +2,7 @@ package ztracker.core.extractor;
 
 import org.junit.jupiter.api.Test;
 import ztracker.core.ZAggregator;
+import ztracker.io.extractor.TiffStackLoader;
 import ztracker.io.extractor.TiffStackLoader.LoadedStack;
 import ztracker.model.ExtractionResult;
 import ztracker.model.TrackData;
@@ -147,6 +148,68 @@ class ZExtractorTest {
         assertEquals(0, result.missingFrameCount);
         assertEquals(0, result.outOfBoundsCount);
         assertEquals(ExtractionResult.STATUS_UNMAPPED_INDEX, result.sampleStatus[0]);
+    }
+
+    @Test
+    void extract_noDataSentinelPixel_isUnmapped_withoutAnyDownstreamSpecialCase() {
+        // p10.12's whole case for costing two lines is that TiffStackLoader.NO_DATA needs no
+        // downstream handling: it is negative, and ZMappingLoader's key pattern is "(\d+)" —
+        // digits only — so a negative key CANNOT exist in any mapping, by construction rather
+        // than by luck. indicesToZ therefore turns it into NaN on its own. ZExtractor contains
+        // no reference to NO_DATA, deliberately; if that ever changes, this test still holds.
+        int[][] frame = {
+            {TiffStackLoader.NO_DATA, 1},
+            {1, 1}
+        };
+        Map<Integer, Integer> frameToIdx = new HashMap<>();
+        frameToIdx.put(0, 0);
+        LoadedStack stack = new LoadedStack(new int[][][]{frame}, frameToIdx,
+                new ArrayList<>(Arrays.asList(0)), 2, 2);
+
+        TrackData track = new TrackData(
+                new double[]{0.0}, new double[]{0.0}, new int[]{0},
+                new double[]{1.0}, new String[]{"1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+
+        ExtractionResult result = ZExtractor.extract(
+                track, stack, zMapping(), 0,
+                ZSampler.Method.SINGLE_PIXEL, ZAggregator.Method.MEDIAN, CENTER);
+
+        assertTrue(Double.isNaN(result.z[0]), "a no-data pixel must not yield a Z");
+        assertEquals(1, result.numSamples[0], "a pixel WAS sampled...");
+        assertEquals(1, result.numUnmapped[0], "...and is disclosed as unmapped");
+        assertEquals(ExtractionResult.STATUS_UNMAPPED_INDEX, result.sampleStatus[0]);
+        // Not confused with the other two NaN-Z causes, which need different fixes.
+        assertEquals(0, result.missingFrameCount);
+        assertEquals(0, result.outOfBoundsCount);
+    }
+
+    @Test
+    void extract_noDataSentinelAlongsideMappedNeighbours_stillAggregatesOverTheRest() {
+        // Partial no-data behaves like partial unmapped: ZAggregator NaN-filters, so the
+        // aggregate still succeeds over the real samples and numUnmapped discloses the rest.
+        int[][] frame = {
+            {1, 1, 1},
+            {1, TiffStackLoader.NO_DATA, 1},
+            {1, 1, 1}
+        };
+        Map<Integer, Integer> frameToIdx = new HashMap<>();
+        frameToIdx.put(0, 0);
+        LoadedStack stack = new LoadedStack(new int[][][]{frame}, frameToIdx,
+                new ArrayList<>(Arrays.asList(0)), 3, 3);
+
+        TrackData track = new TrackData(
+                new double[]{1.0}, new double[]{1.0}, new int[]{0},
+                new double[]{1.5}, new String[]{"1"},
+                "X", "Y", "Frame", "Track_ID", "Radius", 3.5);
+
+        ExtractionResult result = ZExtractor.extract(
+                track, stack, zMapping(), 0,
+                ZSampler.Method.RADIUS, ZAggregator.Method.MEDIAN, CENTER);
+
+        assertEquals(0.0, result.z[0], "index 1 maps to 0.0 — the real neighbours carry it");
+        assertEquals(ExtractionResult.STATUS_OK, result.sampleStatus[0]);
+        assertTrue(result.numUnmapped[0] >= 1, "the no-data pixel is still disclosed");
     }
 
     @Test

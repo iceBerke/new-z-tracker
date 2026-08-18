@@ -22,6 +22,29 @@ public class TiffStackLoader {
 
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+");
 
+    /**
+     * Stand-in index for a 32-bit pixel that holds {@code NaN} — i.e. carries no index at all.
+     *
+     * <p>Needed because the pixel store is {@code int[][][]} and cannot hold {@code NaN}, while
+     * {@code Math.round(Float.NaN)} is <b>0</b> in Java — and 0 is the perfectly valid index of
+     * the lowest-Z layer, so such a pixel used to resolve to a real depth and be reported as a
+     * success (p10.12).
+     *
+     * <p><b>Provably unmappable, not merely unlikely:</b> {@link ZMappingLoader}'s entry pattern
+     * captures keys as {@code "(\d+)"} — digits only, no sign — so a mapping key can never be
+     * negative. Any negative value is therefore absent from every mapping by construction, and
+     * {@code ZExtractor.indicesToZ} turns it into {@code NaN} → {@code STATUS_UNMAPPED_INDEX},
+     * counted in {@code numUnmapped}, logged, and dropped from the 3-D export only.
+     *
+     * <p>{@code -1} rather than {@code Integer.MIN_VALUE} on purpose: {@code Math.round} already
+     * maps −Infinity to {@code Integer.MIN_VALUE} (and +Infinity to {@code Integer.MAX_VALUE}),
+     * both of which are likewise unmappable and so already fail loudly today. Keeping this
+     * distinct preserves the difference between a NaN pixel and an infinite one should it ever
+     * matter. Public so {@code ZExtractor} could one day tell the two apart without a signature
+     * change — it deliberately does not do so yet.
+     */
+    public static final int NO_DATA = -1;
+
     // ── Public result container ───────────────────────────────────────────────
 
     public static class LoadedStack {
@@ -213,9 +236,16 @@ public class TiffStackLoader {
             ImageProcessor ip = imp.getProcessor();
             for (int y = 0; y < height; y++) {
                 for (int x = 0; x < width; x++) {
-                    dest[y][x] = (bitDepth == 32)
-                            ? Math.round(ip.getf(x, y))
-                            : ip.getPixel(x, y);
+                    if (bitDepth == 32) {
+                        // NaN must not go through Math.round: it would become 0, the lowest-Z
+                        // layer's own index, and so resolve to a real depth reported as a
+                        // success. 16-bit needs no such check — a ShortProcessor read via
+                        // getPixel is an unsigned 0–65535 int and cannot be NaN.
+                        float v = ip.getf(x, y);
+                        dest[y][x] = Float.isNaN(v) ? NO_DATA : Math.round(v);
+                    } else {
+                        dest[y][x] = ip.getPixel(x, y);
+                    }
                 }
             }
         } finally {

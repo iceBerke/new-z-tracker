@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -89,6 +90,47 @@ class TiffStackLoaderTest {
             for (int x = 0; x < 2; x++)
                 assertEquals(frame[y][x], stack.pixels[idx][y][x],
                         "16-bit index must read unsigned at (" + x + "," + y + ")");
+    }
+
+    @Test
+    void load_32BitNaNPixel_becomesTheNoDataSentinel_notIndexZero(@TempDir Path dir)
+            throws Exception {
+        // Math.round(Float.NaN) == 0 in Java, and 0 is the LOWEST-Z LAYER'S OWN INDEX — so
+        // before p10.12 a NaN pixel resolved to a real depth and was reported STATUS_OK,
+        // counted valid and written to .npy. The int[][][] store cannot hold NaN, so the value
+        // becomes a sentinel that no mapping can contain (ZMappingLoader keys are "(\d+)" —
+        // digits only, so a negative key cannot exist).
+        writeFloatTiff(new File(dir.toFile(), "z_origin_32bit_0000.tif"),
+                new float[][]{{Float.NaN, 2f}});
+
+        LoadedStack stack = TiffStackLoader.load(dir.toFile());
+
+        int idx = stack.frameToIdx.get(0);
+        assertEquals(TiffStackLoader.NO_DATA, stack.pixels[idx][0][0],
+                "a NaN pixel must not collapse to index 0");
+        assertNotEquals(0, stack.pixels[idx][0][0],
+                "index 0 is a legitimate layer — the sentinel must never collide with it");
+        assertTrue(TiffStackLoader.NO_DATA < 0,
+                "the sentinel must be negative, which is what makes it unmappable");
+        assertEquals(2, stack.pixels[idx][0][1], "real indices must be untouched");
+    }
+
+    @Test
+    void load_32BitInfinities_keepTheirRoundedValues_distinctFromTheNoDataSentinel(
+            @TempDir Path dir) throws Exception {
+        // Infinities already failed loudly before p10.12 (both round to values no mapping
+        // holds), so they are deliberately NOT folded into the sentinel — keeping -1 distinct
+        // from Math.round(-Infinity) preserves the difference should it ever matter.
+        writeFloatTiff(new File(dir.toFile(), "z_origin_32bit_0000.tif"),
+                new float[][]{{Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}});
+
+        LoadedStack stack = TiffStackLoader.load(dir.toFile());
+
+        int idx = stack.frameToIdx.get(0);
+        assertEquals(Integer.MAX_VALUE, stack.pixels[idx][0][0]);
+        assertEquals(Integer.MIN_VALUE, stack.pixels[idx][0][1]);
+        assertNotEquals(TiffStackLoader.NO_DATA, stack.pixels[idx][0][1],
+                "-Infinity must stay distinguishable from a NaN pixel");
     }
 
     @Test
