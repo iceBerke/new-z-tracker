@@ -292,6 +292,8 @@ Filenames are ordered by the integer they **end with**, so any zero-padding widt
 (`00001.tif`, `7.tif`, `00010.tif` sort numerically, not lexicographically), and the filename
 carries straight through to the outputs (`00001.tif` → `z_origin_00001.tif`).
 
+##### Reading Z from the slice labels
+
 **Where Z comes from.** There are no Z-named folders here, so each layer's physical Z (µm) is
 read from the **ImageJ slice label** — the `z = -400.000` form Fiji writes for a Z stack (a
 label that is just a bare number works too). Layers are then sorted **ascending by Z**, exactly
@@ -299,6 +301,59 @@ as the folder layout sorts its Z-named sub-folders, so the JSON mapping's `index
 and the tie-breaking rule are identical for both input types no matter what order the slices sit
 in inside the file. A slice label with no readable Z is **rejected with a clear message** rather
 than guessed at — a silently mislabelled depth would corrupt every downstream Z coordinate.
+
+This is the type B counterpart of [Naming the Z-layer folders](#naming-the-z-layer-folders) for
+type A: the same decision — where a layer's depth comes from — made in a different place, and
+worth settling *before* you acquire, not after.
+
+**Two forms are accepted:** ImageJ's `z = …` assignment appearing anywhere in the label (labels
+are often multi-line), or a label that is **nothing but** a number.
+
+| Slice label | Result |
+|---|---|
+| `z = -400.000`, `Z = -400.000`, `z=-400.000`, `z   =   -400.000` | ✅ Z = −400 µm |
+| `z: -400.000`, `Z:12.5` | ✅ `:` works as well as `=` |
+| `00001.tif` ⏎ `z = -400.000` | ✅ multi-line — the form Fiji actually writes |
+| `slice 3, z = -400.000, ch 1` | ✅ found anywhere in the label (constructed example — see note) |
+| `-400.000`, `0`, `400`, `12.5`, `1e2`, `-3.5e-2` | ✅ bare number as the **whole** label |
+| `+300`, `.5`, `5.`, `1,5`, `NaN`, `Infinity`, `400 um` | ❌ as a whole label — **not** accepted |
+| `depth = 400`, `zz = 400`, `az = 400`, `z 400`, `z - 400` | ❌ no usable `z=` / `z:` |
+| `00001-0003.tif`, `z_stack_0003.tif`, `MAX_z_0003` | ❌ no number is mined out of arbitrary text |
+
+The `z` is **case-insensitive**, must be followed by `=` or `:` (spaces around it optional, any
+number of them), and must stand on its own — `zz =`, `az =` and `_z =` are not matched. Negatives,
+decimals and scientific notation all work; a `+` sign does not.
+
+:::note
+**The assignment form stops reading at the first character that cannot continue the number and
+ignores the rest, which cuts both ways.** That tolerance is the point of the form — it is what
+lets a depth be found inside a label full of other metadata — but it has two edges worth knowing.
+
+Helpfully, `z = -400.000 um` and `z = -400.000µm` both give −400: a trailing unit does no harm.
+Unhelpfully, **`z = 1,5` gives 1.0, not 1.5** — a decimal comma silently truncates, so write
+`z = 1.5`. And a label of the form `z:3/401` would give **3.0**, the slice *number* read as a
+depth. Neither is detected.
+
+Two caveats on how seriously to take these, since neither has a known producer. Fiji itself does
+**not** write `z:3/401` into a slice label — that shape is ImageJ's *window subtitle*
+(`StackWindow.createSubtitle()`), drawn above the image and never stored in the stack or saved to
+a TIFF — so it could only reach you from a third-party writer. And the multi-metadata example in
+the table above (`slice 3, z = -400.000, ch 1`) is a **constructed** example showing what the
+parser accepts, not a format observed in the wild.
+
+The bare-number form is stricter and rejects all of these outright; only the `z = …` form
+tolerates trailing text. If your depths come out as small integers or suspiciously round, the
+labels are the first thing to check.
+:::
+
+**An unreadable label fails loudly — the opposite of type A's misnamed folder.** A `z-298/`
+sub-folder in type A is simply not seen as a Z layer and the run continues with a `NOTE`; a slice
+whose label carries no readable Z **stops the work**, naming the slice number, the file, and the
+offending label text. Where it stops depends on which stack it is in: in the dataset's **first**
+stack the whole dataset is refused before anything is written, and in any **later** timepoint just
+that timepoint is skipped with the reason logged, counted in the run summary's skipped-timepoint
+`WARNING` and never counted as a success. This is deliberate — a wrong depth is far worse than a
+refusal, so nothing is guessed.
 
 The dataset's Z layers are taken from its **first** stack; every later timepoint is checked
 against them. A timepoint covering only *some* of those layers is fine (the same way a timepoint
