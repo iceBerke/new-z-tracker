@@ -113,6 +113,9 @@ public class Step4AlignmentDemo {
     }
 
     public static void main(String[] args) {
+        // The committed snapshot must not depend on the machine's decimal separator.
+        Locale.setDefault(Locale.ROOT);
+
         scenario("A) 0-based CSV, 1-based TIFF, user accepts the +1 suggestion (CORRECT fix)",
                 new int[]{0, 1, 2, 3}, new int[]{1, 2, 3, 4}, 1);
 

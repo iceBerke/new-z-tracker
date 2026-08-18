@@ -287,7 +287,10 @@ public class Step5MethodsDemo {
         TrackExportManager.export(t, pixelMean, config,
                 tmp.resolve("single_pixel").resolve("mean"), "");
 
-        System.out.println("  Exported under: " + tmp);
+        // The real path is a fresh system temp directory whose name carries a random suffix,
+        // so printing it would make this demo's committed snapshot differ on every run and
+        // hide real changes among the noise. Name what it is, not where it is.
+        System.out.println("  Exported under: <temp>/ztracker-step5-demo* (path masked: it varies per run)");
         try (Stream<Path> walk = Files.walk(tmp)) {
             walk.filter(Files::isRegularFile)
                     .map(tmp::relativize)
@@ -504,6 +507,9 @@ public class Step5MethodsDemo {
     }
 
     public static void main(String[] args) throws IOException {
+        // The committed snapshot must not depend on the machine's decimal separator.
+        Locale.setDefault(Locale.ROOT);
+
         LoadedStack s = stack();
         Map<Integer, Double> zMap = zMapping();
         TrackData t = track();

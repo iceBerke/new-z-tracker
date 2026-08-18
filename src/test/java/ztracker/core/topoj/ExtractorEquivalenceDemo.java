@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -53,6 +54,9 @@ public class ExtractorEquivalenceDemo {
     };
 
     public static void main(String[] args) {
+        // The committed snapshot must not depend on the machine's decimal separator.
+        Locale.setDefault(Locale.ROOT);
+
         line('=');
         System.out.println("  EXTRACTOR EQUIVALENCE — indexed (Tool 2) vs. direct-Z / TopoJ (Tool 3)");
         line('=');

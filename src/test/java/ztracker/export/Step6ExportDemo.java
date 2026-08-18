@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -182,7 +183,10 @@ public class Step6ExportDemo {
         Path tmp = Files.createTempDirectory("ztracker-step6-demo-export");
         TrackExportManager.export(track, result, config, tmp, "");
 
-        System.out.println("  Exported under: " + tmp);
+        // The real path is a fresh system temp directory whose name carries a random suffix,
+        // so printing it would make this demo's committed snapshot differ on every run and
+        // hide real changes among the noise. Name what it is, not where it is.
+        System.out.println("  Exported under: <temp>/ztracker-step6-demo-export* (path masked: it varies per run)");
         try (Stream<Path> walk = Files.walk(tmp)) {
             walk.filter(Files::isRegularFile)
                     .map(tmp::relativize)
@@ -282,6 +286,9 @@ public class Step6ExportDemo {
     }
 
     public static void main(String[] args) throws IOException {
+        // The committed snapshot must not depend on the machine's decimal separator.
+        Locale.setDefault(Locale.ROOT);
+
         System.out.println("============================================================");
         System.out.println("Step-6 demo: .npy byte format and cross-format X/Y identity");
         System.out.println("============================================================");
