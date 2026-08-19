@@ -65,8 +65,13 @@ for the capability rule.
    row because the row is where someone who finds a run of patches sharing one version will
    actually look; a commit message is not enough. *This is the rule from p10.21 onward — earlier
    rows are inconsistent about it (only p10.15 and p10.20 state it), and rows are never edited, so
-   that gap is permanent.*
-6. Commit. **Push only when asked** — push is always a separate step, never assumed.
+   that gap is permanent.* **Draft the row here, after approval — not as part of the changes
+   reviewed at step 2 — but show its text alongside the commit message before committing.** A row
+   is permanent the moment it lands, so it must not be the one artifact nobody read.
+6. Commit, **after showing the proposed commit message for approval** — approving the change at
+   step 2 does not approve the wording, and neither does a prompt that specifies in detail what
+   the message must cover. **Push only when asked** — push is always a separate step, never
+   assumed, and approving the message does not approve the push.
 
 **Reporting rule.** A completion report must state the outcome of **every** item in the prompt,
 including items that went fine. p10.20 is the worked example: four requested italic lines were
