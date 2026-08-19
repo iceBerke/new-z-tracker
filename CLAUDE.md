@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Where the documentation lives
+
+| File | Holds | Open it when |
+|---|---|---|
+| **`CLAUDE.md`** (this file) | Architecture, the patch workflow, and a one-line index into the gotchas | Always — start here |
+| **`docs/GOTCHAS.md`** | Bugs that reached working code, with the reasoning behind each fix | The index below matches what you are about to touch |
+| **`docs/DECISIONS.md`** | Costed and **declined** — *"no, and here is why"* | Considering something that may already have been ruled out |
+| **`docs/BACKLOG.md`** | Wanted but **not done** — *"yes, eventually"* | Picking up work, or deferring something |
+| **`docs/TESTS.md`** | Suite index, the demos, fixtures, and the test-count rule | Adding a test, or counting them |
+| **`docs/CHANGELOG.md`** | Every patch, newest first. **Rows are never edited** | Asking why something is the way it is |
+| **`README.md`** | User-facing: install, pipeline, input requirements, memory | Explaining the plugin to someone who runs it |
+| **`docs/ZTracker_User_Guide.md`** | The colleague-facing guide. **Single source** — `node docs/build-guide.mjs` regenerates the `.html`/`.txt`/`.pdf`, which are never hand-edited | Changing anything a non-technical user sees |
+
 ## Build, Install & Test
 
 ```bash
