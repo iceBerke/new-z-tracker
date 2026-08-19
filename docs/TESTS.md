@@ -1,8 +1,8 @@
 # Test suite index
 
 What exists and roughly what it covers — an index, not a restatement of the assertions. For
-*why* a given guard exists, see the gotcha it belongs to in `CLAUDE.md`; the tests are named
-after the behaviour they pin, so the name plus the gotcha is usually enough.
+*why* a given guard exists, see the entry it belongs to in [docs/GOTCHAS.md](GOTCHAS.md); the
+tests are named after the behaviour they pin, so the name plus the entry is usually enough.
 
 Run everything with:
 
@@ -34,8 +34,10 @@ Also: do not take counts by summing `target/surefire-reports/*.xml`. That direct
 reports from any class run since the last `clean`, including throwaway probe classes, so the sum
 silently overcounts. Take the number from a clean run.
 
-*(This rule is also stated in `CLAUDE.md`'s gotchas. The duplication is deliberate and
-temporary — it is de-duplicated when the gotchas move, in a later patch.)*
+*This file is where the count itself lives. The incident that produced the rule — a stale
+report inflating 226 to 227, and the wrong number reaching a changelog row that had only been
+computed, never edited — is recorded in
+[Counting tests after a patch](GOTCHAS.md#counting-tests-and-updating-the-changelog-row-after-a-patch).*
 
 ---
 
