@@ -1,0 +1,169 @@
+# Backlog — wanted, not yet done
+
+Work that is **intended** but not built. The answer here is *"yes, eventually"*.
+
+**This is not `docs/DECISIONS.md`, and the two are easy to confuse.** `DECISIONS.md` holds items
+that were **costed and consciously declined** — the answer there is *"no, and here is why"*, and
+re-deriving that reasoning is the waste it exists to prevent. Nothing in this file has been
+declined; nothing in that one is pending.
+
+Items move **both ways**. Backlog → decisions, when something here is costed and turns out not to
+be worth it. Decisions → backlog, when the thing that "would change the answer" actually happens —
+each entry over there names its own trigger. Where an item's origin is known, it is stated below.
+
+Ordered by **value**, which here means: how much it reduces the chance of a silently wrong result
+or a silently stale claim, weighed against what it costs to build. Age is not a factor — item 2
+has been outstanding longest and sits third. Items touching production code rank above
+documentation, because only they can produce a wrong answer for a user.
+
+---
+
+### 1. An automated check that the gotcha index maps onto `GOTCHAS.md`
+
+`CLAUDE.md` carries a one-line index routing to every entry in `docs/GOTCHAS.md`. p10.20 verified
+the correspondence **by hand** in both directions — every index link resolves to a heading that
+exists, every heading has at least one index line.
+
+**Why:** a drifted index is a *confidently wrong pointer* — it sends a session to an entry that
+does not exist, or silently omits one that does, which is the failure class this project refuses
+everywhere else. Nothing prevents drift today; the next entry added without an index line breaks
+it silently.
+
+**Cost:** small. Parse `###` headings out of `GOTCHAS.md`, parse `docs/GOTCHAS.md#anchor` links
+out of `CLAUDE.md`, compare both directions. The awkward part is where it runs — this repo has no
+CI, so it would be a test, a script, or a build step.
+
+**It must allow a heading to have MORE than one index line.** The frame-offset entry is
+deliberately dual-routed, appearing under both "Dialogs & frame alignment" and "Tools 2/3 —
+sampling & extraction" because it genuinely serves both triggers. A one-to-one check would fail on
+correct content.
+
+**Urgent when:** a session ever follows an index line to a heading that is not there.
+
+### 2. Producer-side gaps in Tool 1
+
+Two checks Tool 1 does not make, both of which let it emit output that Tool 2 later refuses or
+misreads:
+
+- **No cross-timepoint dimension check on output.** Tool 1 skips a timepoint whose *input* size
+  differs, but nothing verifies the z-origin TIFFs it writes are mutually consistent.
+- **No warning when emitting digit-less output filenames.** Tool 1 refuses digit-less *input*
+  names since p10.9, but a dataset can still produce output names that `TiffStackLoader` rejects
+  (16-bit) or silently misreads as frame 32 (32-bit, from the `32bit` in the name).
+
+**Why:** the producer knows at write time what the consumer will do with the name; discovering it
+one tool later is strictly worse.
+
+**Cost:** moderate, and **this is the only item here that touches production code** — so unlike
+every patch since p10.14 it needs a **manual Fiji run** before push, and it moves
+`<patch.version>`.
+
+**Urgent when:** anyone hits the p10.9 failure from the producer side rather than the consumer
+side.
+
+### 3. `@Tag` grouping to separate I/O-free tests from real TIFF I/O
+
+The suite mixes pure-logic tests with tests doing real headless TIFF reads and writes. Splitting
+them with JUnit 5 `@Tag` would let a session run the fast ones alone.
+
+**Why:** flagged repeatedly and never taken — at p10.14 and again at p10.19. The case got stronger
+at p10.14: `ProjectionStackScannerMemoryTest` writes **~100 MiB to a temp directory on every
+run**, which is the single largest cost in the suite and is pure I/O.
+
+**Cost:** small but spread wide — a tag on each I/O-touching class, plus Surefire configuration
+for the groups. The complication is the existing **two-execution** split (see `docs/TESTS.md`):
+tags would have to compose with it rather than replace it, and collapsing that split would delete
+the streaming guard.
+
+**Urgent when:** the suite gets slow enough that people skip it — which the rule requiring a green
+suite before `mvn install` makes costly.
+
+### 4. Run the demos in the build and fail on any diff
+
+*(Moved here from `docs/TESTS.md`, reasoning intact.)*
+
+**Run the demos in the build and fail on any diff against their committed snapshot.** Now that the
+output is deterministic this is possible, and it would turn the snapshots into a real regression
+guard rather than a manually-maintained artifact. Note the useful form is **fail-on-diff, not
+auto-regenerate**: a snapshot that the build silently overwrites to match whatever the code now
+does has stopped being evidence of anything, which is the opposite of what it is for. Deferred
+because it is a new guarantee rather than a cleanup.
+
+**Cost:** moderate. The four demos already run deterministically (p10.19), so the work is a runner
+that executes each, captures stdout with the UTF-8 flags, and diffs against the committed file.
+Interacts with item 3: these are I/O-heavy and would want their own group.
+
+**Urgent when:** a demo snapshot is found stale in a way that hid a real behaviour change — the
+p10.19 regeneration found exactly that, a `noData=` counter added at p10.13 and never reflected.
+
+### 5. README reorganisation
+
+README still opens with developer-only material — project structure, build steps, prerequisites —
+before anything a user of the plugin needs.
+
+**Why:** the survey is already recorded in **p10.22's changelog row**, with section-by-section line
+ranges and word counts. Cited rather than restated here deliberately: those ranges drift with every
+edit, and a copy here would be wrong within a patch or two.
+
+**Cost:** moderate, and mostly judgement rather than typing — three sections are genuinely mixed
+(user-relevant content written in internal class names) and need rewriting, not just moving.
+
+**Urgent when:** a colleague is handed README as the way to learn the plugin.
+
+### 6. Update the user guide and regenerate the PDF
+
+`docs/ZTracker_User_Guide.md` predates everything from p10.14 onward, so it does not mention the
+memory guidance, the documentation split, or anything else added since.
+
+**Why:** it is the artifact actually handed to colleagues, so it is the one place where being out
+of date reaches someone who cannot read the source to check.
+
+**Cost:** small mechanically, larger editorially. **Edit only `docs/ZTracker_User_Guide.md`, then
+run `node docs/build-guide.mjs`**, which regenerates the `.html`, `.txt` and `.pdf` together. **The
+generated three must never be hand-edited.** If Edge is unavailable or the PDF is open in a viewer
+the script updates the other two and warns, so check its output rather than assuming all three
+moved.
+
+**Urgent when:** the guide is next given to someone.
+
+---
+
+### 7. Audit the "byte-for-byte unchanged" freeze claims
+
+Several places claim a file or path was left untouched. Checked against `git log` while writing
+this entry, which shrank it considerably:
+
+| Claim subject | Commits since | State |
+|---|---|---|
+| `TiffStackLoader` | 5 — p9.1, p10.1, p10.2, p10.4, p10.12 | **Already handled** — the `GOTCHAS.md` claim is scoped, not stale |
+| `ZSampler` | 2 — p9.1 (package move), p10.13 (radius clamp) | **The real remaining work** |
+| `ZTrackerDialog` | 1 — p9.1 (package move only) | **Clean** — needs a confirming glance, nothing more |
+
+**The motivating case is already closed.** `TiffStackLoader` is the file this audit was proposed
+for, and its claim was found stale and dealt with correctly: `GOTCHAS.md` **scopes** it rather than
+deleting it — *"it is **superseded** as a statement about the present … What survives is the rule
+the exception established."* **That is the precedent for whatever is left** — these claims record
+a design intent worth keeping, so the fix is to date them, not remove them.
+
+**What actually remains** is one substantive check (`ZSampler`, which p10.13's radius clamp
+changed) and one confirmation (`ZTrackerDialog`, untouched apart from a package move, so its claim
+still holds in substance).
+
+**Why:** a freeze claim that is no longer true invites someone to rely on it when judging whether
+a change is safe.
+
+**Cost:** small, and mostly reading — the claims sit in `CLAUDE.md`'s Tool 2/Tool 3 isolation notes
+and `README.md`'s project-structure tree.
+
+**Urgent when:** someone treats one of the two remaining claims as licence to skip checking.
+
+## Declined, not backlog — see `docs/DECISIONS.md`
+
+Recorded here only so they are not re-proposed as if they were pending.
+
+- **A test for the compressed-TIFF fallback in `ProjectionStackScanner.openStack`.** Declined for
+  want of a known producer: the acquisition software writes uncompressed TIFFs, and that is a
+  property of the writer rather than of any one file. **What would move it here:** compressed
+  stacks actually entering the pipeline — new microscope, new acquisition software, or a batch job
+  run to shrink a dataset on disk. Full reasoning, including what is and is not covered today, is
+  in `DECISIONS.md`.

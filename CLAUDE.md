@@ -152,17 +152,11 @@ index stated before any mention of the extractor, and no depth arguments at all)
 `duplicateTimepointIndexError` (the p10.4 collision caught at scan time; last digit run not first,
 numeric grouping so mixed padding widths stay distinct while `7`/`0007` collide, only colliding
 names listed, and digit-free names left to the other check rather than collapsed together).
-**Deliberately NOT covered — four specific unverified behaviours, all of
-them p10.6's exact failure mode:** (1) a dimension-skipped timepoint counts into the
-`total - written` return; (2) it therefore reaches the run-summary `WARNING` about skipped
-timepoints; (3) it does not increment `written`, so it never contributes to a "success"; (4) the
-dimension check runs *before* the bit-depth NOTE, so a skipped timepoint neither emits a NOTE nor
-becomes `previousBitDepth`. None of these is asserted anywhere. They are unreachable from a test
-because `processDataset` is `private` **and** `ZProjectorDialog.Config`'s constructor is
-package-private in `ztracker.ui.projector` — covering them needs *both* widened, which was judged
-a worse trade than this documented gap. The pure helpers were split out precisely so the
-*decisions* are tested even though the loop around them is not; **the only thing that exercises
-these four is a manual Fiji run**, so re-verify them by hand when changing this loop.
+**Four behaviours of `processDataset` are deliberately NOT covered** — the accounting around a
+dimension-skipped timepoint, all of it p10.6's exact failure mode. They are unreachable from a
+test without widening two visibilities, which was costed and declined; the entry in
+`docs/DECISIONS.md` names all four and says why. **The only thing that exercises them is a manual
+Fiji run**, so re-verify them by hand when changing that loop.
 Tool 1's second input type (per-timepoint TIFF stacks, p10.0) adds
 `ztracker.io.projector.ProjectionStackScannerTest` (Z parsed from real slice labels including
 every rejection case, ascending-Z sort with slices stored out of order in the file, numeric
