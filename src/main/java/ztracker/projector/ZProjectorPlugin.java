@@ -461,6 +461,15 @@ public class ZProjectorPlugin implements PlugIn {
      *                     to the same index — both refused up front, before any projection or
      *                     output — or if <em>no</em> timepoint could be projected, naming the
      *                     first failure
+     *
+     * <p><b>Four behaviours of this loop are NOT covered by any test</b> — they are unreachable
+     * without widening this method's visibility <em>and</em> {@code ZProjectorDialog.Config}'s
+     * constructor, which was costed and declined. <b>Re-verify them by hand in Fiji when you
+     * change this loop:</b> a dimension-skipped timepoint (1) counts into the {@code total -
+     * written} return, (2) therefore reaches the run summary's WARNING, (3) never increments
+     * {@code written} so it cannot read as a success, and (4) is skipped <em>before</em> the
+     * bit-depth NOTE, so it neither emits one nor becomes {@code previousBitDepth}. All four are
+     * p10.6's exact failure mode. See {@code docs/DECISIONS.md} for why they are left untested.
      */
     private static int processDataset(File datasetDir, ZProjectorDialog.Config cfg, ZProjector.Mode mode)
             throws Exception {
@@ -545,6 +554,11 @@ public class ZProjectorPlugin implements PlugIn {
                 }
             }
 
+            // ORDER IS LOAD-BEARING: the size skip above must stay ahead of this NOTE. Move it
+            // below and a skipped timepoint starts emitting a depth NOTE and becoming
+            // previousBitDepth, which is p10.6's failure mode again. NO TEST COVERS THIS —
+            // re-verify by hand in Fiji if you reorder here (see the method javadoc).
+            //
             // Depths may differ between timepoints without corrupting anything — each
             // timepoint is projected on its own, and the z-origin output is layer indices —
             // so this is worth flagging, not failing.

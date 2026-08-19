@@ -234,6 +234,12 @@ public class TopoJStackLoader {
                     "Mixed bit depths in TIFF folder: " + file.getName()
                     + " is " + imp.getBitDepth() + "-bit, expected 32-bit float.");
         }
+        // MUST stay a hard error — do not soften this into a crop or a pad. FloatProcessor.getf is
+        // NOT bounds-checked: it indexes pixels[y * width + x] using the processor's own width, so
+        // a mismatched frame shears rows and usually dies with a bare ArrayIndexOutOfBoundsException
+        // whose message on Java 8 is just the index. A larger frame reads in bounds and would
+        // silently become a top-left crop. Written separately here and in TiffStackLoader with no
+        // shared helper, deliberately (p10.1). See docs/GOTCHAS.md.
         if (imp.getWidth() != width || imp.getHeight() != height) {
             imp.close();
             throw new IOException(

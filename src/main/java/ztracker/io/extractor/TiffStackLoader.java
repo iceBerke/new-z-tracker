@@ -224,6 +224,12 @@ public class TiffStackLoader {
                     "Mixed bit depths in TIFF folder: " + file.getName()
                     + " is " + imp.getBitDepth() + "-bit, expected " + bitDepth + "-bit.");
         }
+        // MUST stay a hard error — do not soften this into a crop or a pad. ShortProcessor.getPixel
+        // is bounds-checked and returns 0 outside the image, and 0 is the LOWEST-Z LAYER'S OWN
+        // legitimate mapping key, so a short frame would zero-fill into real-looking Z values
+        // reported STATUS_OK, counted valid and written to .npy with nothing logged. A larger frame
+        // reads in bounds and would silently become a top-left crop. Written separately here and in
+        // TopoJStackLoader with no shared helper, deliberately (p10.1). See docs/GOTCHAS.md.
         if (imp.getWidth() != width || imp.getHeight() != height) {
             imp.close();
             throw new IOException(
