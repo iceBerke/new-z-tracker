@@ -37,6 +37,20 @@ javadoc block in `src/main`; the resulting class file was *not* byte-identical (
 `LineNumberTable` entry shifted by the four lines the comment grew), but `javap -c -p` output was
 identical line for line. Instructions unchanged ⇒ `patch.version` unchanged.
 
+**What it moves *to* is the current patch number.** That much is established practice — **50 of
+the 51 historical moves** set it to the patch number of the commit that changed it. What is new is
+moving it after it has *stood still*: p10.15 onward is the first time it has spanned several
+patches, so this part is a **decision taken here, not a precedent being described**. When it next
+moves it takes the current patch number, **closing the whole gap in one step** — it never steps
+through the intervening numbers and keeps no sequence of its own, because the filename's job is to
+name the patch whose content is in the JAR, and any other value would name a patch whose content
+is not. **JAR filenames are therefore sparse by design:** a gap means those patches produced no
+distinct build, not that versions went missing. Sparseness is in fact already visible in the
+record — no `p5.x` or `p6.x` JAR exists — though that arrived by accident rather than by rule, and
+the single historical mismatch behind it (`ab1f03d`, subject p6.0, setting the version to p7.0) is
+unexplained and was deliberately not investigated: it predates the settled practice, as p3.0 does
+for the capability rule.
+
 **The six steps.**
 
 1. Make the change.
@@ -72,11 +86,23 @@ cannot be trusted to be contemporaneous. `docs/CHANGELOG.md`, `docs/GOTCHAS.md` 
 `docs/DECISIONS.md` each state the append-never-rewrite half of this at the top of the file; the
 version number is the fourth artifact under the same rule.
 
-**Major versions** (`p10.x` → `p11.0`) are governed by the capability rule in README's
-[Versioning](README.md#versioning) section. A major follows these same six steps — same approval
-gate, same changelog row stating its own version decision, same separate push; step 3 resets the
-minor to 0 and step 4 always moves `<patch.version>`, but both of those follow from the rules
-above rather than being major-specific exceptions. A major adds a reachable production path, so
+**Major versions** — `p10.x` → `p11.0` — are earned by **capability**: a major bump means the
+plugin can now do something for a user that it could not do before, such as a new tool, a new
+input type, or a new output format. Fixing, hardening, refactoring or documenting what it already
+does is a minor, however large the change. The minor then resets to 0 (`p10.20` → `p11.0`), as
+every one of the nine major transitions so far has done.
+
+The clearest examples are **p8.0** (added Tool 1, the Z-Projection generator), **p9.0** (added
+Tool 3, the TopoJ / direct-Z extractor) and **p10.0** (Tool 1 gained a second input type). Note
+this rule describes the convention **from p10.21 onward** and does not explain every historical
+boundary — **p3.0**, for instance, was label and description tweaks, which is not a capability;
+the convention settled later than the early majors did.
+
+A major follows these same six steps — same approval gate, same changelog row stating its own
+version decision, same separate push; step 3 resets the minor to 0 and step 4 always moves
+`<patch.version>`, but both follow from the rules above rather than being major-specific
+exceptions. That a major always moves `<patch.version>` follows from the executable-content test:
+new capability is executable production code. A major also adds a reachable production path, so
 the manual Fiji run condition is met and a run is required before push.
 
 **Clean old JARs** — a `maven-antrun-plugin` `clean-old-jars` execution (install phase) *attempts*
