@@ -24,16 +24,9 @@ Both share every other step (frame offset, sampling, export). Pick the one that 
 
 Makes the two inputs Part 2 needs, starting from a raw Z-stack. Open it via **Plugins > ZTracker > Z-Projection + Origin Map**.
 
-**What it needs:** a **dataset folder** holding your raw Z-stack, in either of two layouts — you
-say which with the **Input type** dropdown.
+## What Part 1 needs
 
-**Image depth:** your raw slices can be **8-, 16-, or 32-bit** grayscale. Part 1 only compares
-pixel brightness between depths, so the bit depth affects precision, not whether it works — use
-whatever your microscope produced — but **all the depths of one time frame must be the same bit
-depth** (mixing 8- and 16-bit is rejected: the brighter scale would win everywhere and the depths
-you got back would be wrong). **Colour (RGB) images are rejected** too, with a message naming the
-offending layer or slice — there's no single brightness to compare in a colour pixel. Convert to
-grayscale first (**Image > Type > 8-bit** or **16-bit**) and re-run.
+A **dataset folder** holding your raw Z-stack, in either of two layouts — you say which with the **Input type** dropdown.
 
 _Input type = **Z-layer sub-folders**_ (the default): sub-folders named by their depth in µm
 (e.g. `-300`, `-299`, …), each holding one TIFF per time frame (same filename across depths):
@@ -44,6 +37,8 @@ dataset/
 ├── -299/   frame_0001.tif, ...
 └── ...
 ```
+
+**Name each depth folder as the number alone** — `-300`, not `z-300` or `-300um`. A decimal point is fine (`-300.5`), a decimal comma is not. A sub-folder whose name is not a plain number is **not read as a depth**: it is skipped with a note in the Log and the run carries on. That is deliberate, so `notes` or `QC` folders can sit beside your data — but it means a misnamed depth folder is quietly left out of the projection instead of stopping the run, and the depths you get back will be missing it.
 
 _Input type = **TIFF stacks**_: one multi-slice TIFF **per time frame**, sitting straight in the
 folder — the slices inside each file are the depths:
@@ -61,12 +56,40 @@ Any numbering works (`00001.tif`, `7.tif`, `img_0010.tif`) — files are ordered
 them from. If a slice's label has no depth in it, the tool stops and tells you which slice —
 better that than quietly using a wrong depth.
 
+**Whichever layout you use:**
+
+- **Every time-frame file must carry a number in its name, and no two may resolve to the same number.** A file's time-frame number is the **last run of digits anywhere in its name**, with leading zeros ignored — so `7.tif` and `0007.tif` are both time frame 7 and clash, while `z_0008.tif` is separate. A name with no digits states no position in the sequence, and two files reading as the same number cannot both hold that position. Either is refused before anything is written, with every offending name listed, so you can rename them in one go.
+- **Your raw slices can be 8-, 16-, or 32-bit grayscale.** Part 1 only compares pixel brightness between depths, so the bit depth affects precision, not whether it works — use whatever your microscope produced. But **all the depths of one time frame must be the same bit depth**: mixing 8- and 16-bit is rejected, because the brighter scale would win everywhere and the depths you got back would be wrong. Convert them all to the same type (**Image > Type**) and re-run.
+- **Colour (RGB) images are rejected**, with a message naming the offending layer or slice — there is no single brightness to compare in a colour pixel. Convert to grayscale first (**Image > Type > 8-bit** or **16-bit**) and re-run.
+- **Every time frame should be the same pixel size.** One that differs from the first frame written is skipped rather than written out, because a folder of mixed-size images cannot be loaded by Part 2 at all. The run continues and warns at the end. The frame everything is compared against is simply the first one that projected successfully, and is never itself checked — so if the odd-sized frame happens to come first, every conforming frame is skipped against it instead. The warning names that reference frame, so check it before re-cropping anything.
+
+:::note
+**Two habits prevent most Part 1 problems.**
+
+- **Check the Input type matches the folder you picked.** The two layouts look nothing alike on disk, and choosing the wrong one is the commonest reason a run finds no data at all. The grey structure line under **Scope** in the dialog spells out what the tool expects to find.
+- **Give every run its own empty output folder.** Re-using an output folder, or copying two runs' results together afterwards, mixes files that were never meant to share a folder — and Part 2 then either refuses it (two images claiming the same frame number) or is handed frames of different sizes. Part 1 keeps a single run over one dataset consistent; it cannot police a folder you assembled yourself.
+:::
+
+:::note
+**Memory, before you start a big one.** What Fiji needs depends on which **Input type** you picked — not on how many time frames you have, since those are handled one at a time either way.
+
+- **Z-layer sub-folders** (the default) is the expensive layout: every depth of a time frame is held at once, roughly **width × height × 4 bytes × number of depths**. A 1051 × 1674 frame with 401 depths comes to over 2.6 GB.
+- **TIFF stacks** are cheap: slices are read one at a time, so the cost stays modest — a few tens of MB — no matter how deep the stack is. The exception is a **compressed** TIFF, which has to be unpacked whole, so budget roughly the size of the file itself.
+
+These are estimates from the formula rather than measured requirements — put your own frame size and depth count in. If a run stalls or fails on a large dataset, raise the ceiling at **Edit > Options > Memory & Threads** and restart Fiji. That setting is what Fiji is allowed to use, not how much RAM your machine has.
+:::
+
+## Running Part 1
+
 **In the dialog** you pick, top to bottom:
 
 - **Input type** (asked first) — _Z-layer sub-folders_ or _TIFF stacks_, as above.
 - **Scope** — _Single dataset_ (one dataset folder) or _Batch_ (a folder holding many such
   datasets). A grey line under it spells out exactly what your input folder should contain for
-  the combination you picked.
+  the combination you picked. In **Batch**, a candidate folder whose depth folders are all
+  misnamed is skipped with no message while the rest of the run reports success, so check the
+  dataset count in the Log is the number you expected. In **Single** the same folder fails
+  outright and names the sub-folders it rejected.
 - **Input folder** and **Output folder**.
 - **Projection** — _Max-Z_ (keeps the **brightest** pixel at each position — the usual choice for
   fluorescence), _Min-Z_ (keeps the **darkest**), or _Both_ (runs both, into separate `max_z` and
@@ -77,13 +100,15 @@ better that than quietly using a wrong depth.
 
 The 8-bit "raw" preview picture is always saved — there's nothing to switch on.
 
-**What it makes** — for each dataset, a `max_z_<dataset>` (or `min_z_<dataset>`) folder in your
+## What Part 1 produces
+
+For each dataset, a `max_z_<dataset>` (or `min_z_<dataset>`) folder in your
 output folder; in Batch these are grouped one level down under a `max_z` / `min_z` folder. Inside:
 
 | Output | What it is |
 | --- | --- |
 | **z_origin/** (16-bit) and/or **z_origin_32bit/** (32-bit) | The depth-coded projection TIFFs — point Part 2's **Z-origin TIFF folder** here. Only the bit depth you chose is written (16-bit by default). |
-| **z_layer_mapping.json** | The pixel-code → depth map — this is Part 2's **Z-mapping JSON**. |
+| **z_layer_mapping.json** and/or **z_layer_mapping_32bit.json** | The pixel-code → depth map — this is Part 2's **Z-mapping JSON**. Only the bit depth you chose is written: 16-bit writes `z_layer_mapping.json`, 32-bit writes `z_layer_mapping_32bit.json`, Both writes both. They hold the same depths, but use the one whose name matches the TIFF set you point Part 2 at. |
 | **raw/** | A plain 8-bit projection picture for looking at (Part 2 ignores it). |
 
 :::tip
@@ -93,12 +118,9 @@ than ~65,000 Z-layers (essentially never), in which case use the 32-bit set.
 
 :::tip
 Both input types produce **exactly the same output**, so Part 2 doesn't care which one you used.
-Big TIFF stacks are fine too — the tool reads one slice at a time rather than loading the whole
-file, so a 400-slice, 700 MB time frame goes through in a couple of seconds without needing a
-large memory setting in Fiji.
 :::
 
-The `z_origin` folder + `z_layer_mapping.json` this makes are exactly what Part 2 reads next.
+The `z_origin` folder and its matching `.json` map are exactly what Part 2 reads next.
 
 ## Part 2 — 3D Z-Coordinate Extractor
 
@@ -114,9 +136,11 @@ It reads depth from the **Z-origin projection TIFF images** (from Part 1), where
 | **Z-origin TIFF folder** | A folder of TIFF images (one per time frame), 16-bit or 32-bit. These are the depth-coded projection images. (Part 1 makes this.) 8-bit and colour (RGB) TIFFs are rejected with a clear message — a pixel here is a code that has to reach into the depth map, and 8-bit only counts to 256. |
 | **Tracking CSV** | Your tracks exported from TrackMate (or another tracker). Must contain X, Y, Frame, and Track ID columns. |
 
-**Two things the Z-origin TIFF folder must get right.** Both are checked as soon as the folder loads, so you'll see the message before the wizard goes any further:
+**Four things the Z-origin TIFF folder must get right.** All are checked as soon as the folder loads, so you'll see the message before the wizard goes any further:
 
+- **Point it at the depth-coded folder, not the preview.** Part 1 writes `z_origin` (or `z_origin_32bit`) and a `raw` folder side by side. `raw` holds the plain 8-bit preview pictures rather than depth codes, so choosing it is rejected — pick the `z_origin` folder whose bit depth matches the `.json` map you are using.
 - **Every filename must contain the frame number.** The frame index is the **last run of digits anywhere in the name**, so a prefix with its own numbers is fine — `z_origin_0007.tif` and `z_origin_32bit_0007.tif` both load as frame 7. Any zero-padding width works, and the widths may differ from file to file within the same folder — `z_7.tif`, `z_0008.tif`, and `z_00000009.tif` load as three separate frames (7, 8, 9), not as a clash. A file with **no digits at all** in its name (e.g. `frame.tif`) is rejected, and the message lists every offending file so you can rename them in one go. Note this rule is **looser than the TopoJ / direct-Z extractor's**, which needs the number at the very **end** of the name: `topoj_0007_final.tif` loads fine here as frame 7, but that same file is rejected by the TopoJ extractor. (It doesn't work the other way round — anything the TopoJ extractor accepts is fine here too, with the same frame number.)
+- **No two filenames may resolve to the same frame number.** `run1_0007.tif` and `run2_0007.tif` both read as frame 7, so one would replace the other and vanish from the stack. The folder is refused, naming the frame number and every file that landed on it. This almost always means two runs were mixed into one folder — keep each run's output separate.
 - **Every image must be the same size as the first one.** If any TIFF's width or height differs from the first frame's, the folder is rejected and the message names the file along with both sizes. This applies to images that are **larger** as well as smaller — a larger frame used to load quietly, cropped to the first frame's top-left corner, and now stops the run instead. If you're deliberately working with a cropped subset, crop every frame to the same size first.
 
 ## Opening the plugin
@@ -131,7 +155,7 @@ Use the `...` browse buttons to select the **Z-mapping JSON**, the **Z-origin TI
 
 ### Step 2 — Confirm the CSV format
 
-The plugin asks how to read your CSV (header row, rows to skip, default cell radius). TrackMate exports have 3 extra info rows under the header — the defaults usually handle this. If you're unsure, leave the defaults and continue.
+The plugin asks how to read your CSV (header row, rows to skip, default cell radius). TrackMate exports have 3 extra info rows under the header — the defaults usually handle this. If you're unsure, leave the defaults and continue. If your CSV has a radius column, any cell that is blank, zero, negative or unreadable falls back to the default radius — the Log reports how many rows that happened to and names the first few.
 
 ### Step 3 — Confirm the columns
 
@@ -178,7 +202,7 @@ X and Y are in **pixels**, Z is in **micrometers**, and T is the frame number.
 
 - **No track is thrown away.** If one point is bad (e.g. its frame is missing or it falls outside the image), only that single point is dropped — the rest of the track is still exported.
 - **Dropped points leave a gap** in the frame numbers rather than renumbering — this is intentional.
-- **Check the Log window** after running. It reports how many points were extracted and how many were skipped, and why.
+- **Check the Log window** after running. It reports how many points were extracted and how many were skipped, and why. Its summary line counts the dropped points by reason: `invalidXY` (the CSV's X or Y was not a number), `missingFrame` (no image for that frame), `outOfBounds` (the point lies outside the image), `unmappedIndex` (the pixel's code is not in the depth map) and `noData` (TopoJ images only — that pixel holds no depth).
 - If you picked **All** in Step 5, each method gets its own sub-folder inside your output folder.
 
 ## Part 2 (alternative) — 3D Z-Extractor (TopoJ / direct-Z)
@@ -205,20 +229,10 @@ Not sure which one you have? If your projection folder came with a `z_layer_mapp
 | --- | --- |
 | Lots of points show "missing frame" | Revisit **Step 4** — the frame offset is probably wrong (try +1 or 0). |
 | Lots of points show "out of bounds" | Check your CSV X/Y match the TIFF image size, and check the pixel convention in Step 5. |
-| Columns detected wrong | Fix them manually in **Step 3**. |
 | Plugin not in the menu | Restart Fiji, or use `Help > Refresh Menus`. |
 | Nothing seems to export | Make sure at least one format is ticked in **Step 6**, and read `export_report.txt`. |
-| "Inconsistent image dimensions in TIFF folder" | One TIFF is a different size from the first one in the folder — the message names it and gives both sizes. Remove it or re-crop everything to one size. Worth knowing: Part 1 doesn't compare sizes *between* timepoints, so a projection run can produce a folder like this. |
-| "These TIFF filenames contain no frame number" | One or more TIFFs have no digits in the name, so there's no frame index to read — the message lists them all. Rename each so it carries its frame number (e.g. `z_origin_0007.tif`). |
-| "These TIFF files resolve to the same frame number" | Two or more TIFFs point at the same frame, so one would have replaced the other — the message shows the frame number and every file that landed on it. Usually two runs mixed into one folder (`run1_0007.tif`, `run2_0007.tif` are both frame 7). Separate them into their own folders, or rename so each frame appears once. |
+| "Inconsistent image dimensions in TIFF folder" | One TIFF is a different size from the first one in the folder — the message names it and gives both sizes. Remove it or re-crop everything to one size. Part 1 keeps this from happening within a single run over one dataset, but combining two runs' output into one folder — or assembling a folder by hand — still can. |
 | "requires 32-bit float TIFFs" error | You opened the **TopoJ / direct-Z** extractor with indexed images — use the standard **3D Z-Coordinate Extractor** (with its JSON map) instead. |
-| Part 1: "no Z-layer sub-folders" or "no .tif stacks found" | The **Input type** doesn't match your folder — switch it (or the Scope) and check the grey structure line under Scope. |
-| Part 1: NOTE about one time frame being a different bit depth from the previous one | **Not an error** — the run continues and the depth output is unaffected (it stores layer numbers, not brightness). It only means your time frames aren't all the same image type; check if that's intentional, and if it isn't, re-export them consistently. |
-| Part 1: "Inconsistent bit depths within timepoint" | One depth of that time frame is a different bit depth from the others (e.g. 8-bit among 16-bit). The message names it. Convert them all to the same type and re-run. |
+| Part 1: the run finds no data, or fewer datasets than you expected | Check the **Input type** matches your folder's layout first, then the **Scope**, then the input folder itself — the grey structure line under Scope spells out what is expected. In Batch, a dataset whose depth folders are all misnamed is skipped without a message, so a lower-than-expected dataset count is worth chasing. |
 | Part 1: finished, but the Log ends with a **WARNING** about skipped timepoints | Those time frames are **missing from the output** — scroll up to the `skipped timepoint` lines for the reason on each. Don't treat the run as complete: Part 2 will read the result as a normal gap in the frame numbering and say nothing. |
-| Part 1: "Colour (RGB) image/slice" | Your raw stack is in colour, which has no single brightness to project. Convert it with **Image > Type > 8-bit** (or **16-bit**) and re-run — the message names the layer or slice it stopped on. |
 | Part 1: "slice has no readable Z in its label" | Your TIFF stack's slices aren't labelled with their depth (`z = -400.000`). Re-save the stack from Fiji with the depth labels, or use the Z-layer sub-folder layout instead. |
-
----
-
-_For full technical detail, see the project README._
