@@ -128,7 +128,32 @@ moved.
 
 ---
 
-### 7. Audit the "byte-for-byte unchanged" freeze claims
+### 7. Set `project.build.outputTimestamp` to make the build reproducible
+
+`pom.xml` does not set `project.build.outputTimestamp`, so Maven stamps every ZIP entry with the
+moment it was written. Two `mvn clean package` runs over unchanged source therefore produce JARs
+with **different SHA-256 hashes** — measured, at identical size and with all 56 class files inside
+byte-identical.
+
+**What it would buy:** JAR hashes would become meaningful. Today they answer no useful question —
+see [Deciding whether executable content changed](GOTCHAS.md#deciding-whether-executable-content-changed) —
+so "is the deployed JAR the one I just built?" can only be answered by hashing both *right now*,
+not by comparing against a recorded value.
+
+**Cost:** small mechanically — one property, conventionally pinned to the last commit's timestamp.
+The consequences are what need thought: the value has to be maintained or derived, and a
+deliberately-frozen `<patch.version>` across several patches (which is normal here) would then
+produce JARs that differ only in that stamp, which may be more confusing than the present
+situation rather than less.
+
+**It fixes only half the hazard.** The class-level half — a javadoc edit shifting every
+`LineNumberTable` entry — is inherent and no build setting removes it, so the instruction-level
+`javap` check stays necessary either way.
+
+**Urgent when:** anyone needs to verify a deployed JAR against a recorded hash rather than a
+freshly built one.
+
+### 8. Audit the "byte-for-byte unchanged" freeze claims
 
 Several places claim a file or path was left untouched. Checked against `git log` while writing
 this entry, which shrank it considerably:

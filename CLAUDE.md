@@ -35,7 +35,8 @@ a difference in the artifact that does not exist. The commit hash is the record 
 **The test is executable content, not "a file under `src/main` was touched".** p10.17 edited a
 javadoc block in `src/main`; the resulting class file was *not* byte-identical (every
 `LineNumberTable` entry shifted by the four lines the comment grew), but `javap -c -p` output was
-identical line for line. Instructions unchanged ⇒ `patch.version` unchanged.
+identical line for line. Instructions unchanged ⇒ `patch.version` unchanged. **Do not answer this
+question by comparing hashes** — see [Deciding whether executable content changed](docs/GOTCHAS.md#deciding-whether-executable-content-changed).
 
 **What it moves *to* is the current patch number.** That much is established practice — **50 of
 the 51 historical moves** set it to the patch number of the commit that changed it. What is new is
@@ -546,6 +547,7 @@ if one does, open it before you change anything.
 - **[Editing a repo file from PowerShell](docs/GOTCHAS.md#editing-a-repo-file-from-powershell)** — `Set-Content` re-encodes UTF-8 to CP1252 and corrupts every em-dash in the file, including ones you never touched. Invisible in normal output.
 - **[Running `mvn install` with Fiji open](docs/GOTCHAS.md#running-mvn-install-with-fiji-open)** — the superseded JAR cannot be deleted and survives, making Fiji register all three tools twice. `verify-deploy` fails the build on it.
 - **[Indexing a PowerShell hashtable](docs/GOTCHAS.md#indexing-a-powershell-hashtable-whose-key-is-also-a-member-name)** — `$h.count` returns the entry count, not the `'count'` key. Surfaces as a type error far from the cause, and can silently delete generated text.
+- **[Deciding whether executable content changed](docs/GOTCHAS.md#deciding-whether-executable-content-changed)** — a hash comparison always reports "changed", at both JAR and class level, so trusting it bumps `<patch.version>` on every patch. Compare `javap -c -p` output instead.
 
 **Dialogs & frame alignment**
 
