@@ -79,6 +79,15 @@ implemented correctly but never mentioned, which from outside is indistinguishab
 been dropped during that patch's mid-flight restart — and resolving the ambiguity cost a full
 verification round. **An unmentioned item is not a silent success; it is an unknown.**
 
+**Verify both ways.** Step 2's "every claim verified" is the *before* half: check the prompt's
+premises — paths, line numbers, counts, "X is unchanged" — against the actual files, and if one
+does not hold, say so and stop rather than proceeding on a silently corrected premise. The *after*
+half is the same discipline pointed the other way: once the change is made, **re-run whatever it
+could plausibly have disturbed** — the suite, the encoding sweep, cross-link resolution,
+committed-row integrity — and report the result **including when nothing moved**. A change that
+verified clean on the way in can still break something on the way out, and "no change" is a
+finding while silence is not.
+
 **Manual Fiji run** — required before push when the change touches a reachable production path,
 and in particular for any UI/AWT change (see the testing note below: that code is manual-only).
 Documentation, test, and comment-only changes need none.
