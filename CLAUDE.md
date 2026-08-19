@@ -86,6 +86,17 @@ for the capability rule.
    the message must cover. **Push only when asked** — push is always a separate step, never
    assumed, and approving the message does not approve the push.
 
+**Commit message shape.** Subject **targets 50 characters, hard maximum 72**; body wrapped at
+**72**. The body states **what** changed and routes to the changelog row for **why**, so the two
+stop carrying the same reasoning twice — the row is the record, the message is the pointer. This
+is a **real change, not a description of practice**: measured over the last 60 commits, subjects
+reach **135** characters and bodies wrap at about **85** (86 measured). It is **prospective**,
+took effect at **p10.29**, and **no past commit is rewritten** — history stays as it was written,
+for the same reason changelog rows do. Subject conventions, which *are* existing practice and
+should be kept: imperative, sentence case, no trailing period, and the patch number as a
+` — p10.N` suffix; join two clauses with `, and` rather than a semicolon (no subject in the
+history uses one).
+
 **Reporting rule.** A completion report must state the outcome of **every** item in the prompt,
 including items that went fine. p10.20 is the worked example: four requested italic lines were
 implemented correctly but never mentioned, which from outside is indistinguishable from having
@@ -575,6 +586,7 @@ if one does, open it before you change anything.
 - **[Running `mvn install` with Fiji open](docs/GOTCHAS.md#running-mvn-install-with-fiji-open)** — the superseded JAR cannot be deleted and survives, making Fiji register all three tools twice. `verify-deploy` fails the build on it.
 - **[Indexing a PowerShell hashtable](docs/GOTCHAS.md#indexing-a-powershell-hashtable-whose-key-is-also-a-member-name)** — `$h.count` returns the entry count, not the `'count'` key. Surfaces as a type error far from the cause, and can silently delete generated text.
 - **[Deciding whether executable content changed](docs/GOTCHAS.md#deciding-whether-executable-content-changed)** — a hash comparison always reports "changed", at both JAR and class level, so trusting it bumps `<patch.version>` on every patch. Compare `javap -c -p` output instead.
+- **[Verifying a claim with a shell pipeline or a text comparison](docs/GOTCHAS.md#verifying-a-claim-with-a-shell-pipeline-or-a-text-comparison)** — a missing binary and a set-instead-of-multiset comparison both report **clean** without having compared anything. `0` from "did not run" is indistinguishable from `0` from "found nothing".
 
 **Dialogs & frame alignment**
 

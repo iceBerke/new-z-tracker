@@ -12,9 +12,20 @@ be worth it. Decisions → backlog, when the thing that "would change the answer
 each entry over there names its own trigger. Where an item's origin is known, it is stated below.
 
 Ordered by **value**, which here means: how much it reduces the chance of a silently wrong result
-or a silently stale claim, weighed against what it costs to build. Age is not a factor — item 2
-has been outstanding longest and sits third. Items touching production code rank above
-documentation, because only they can produce a wrong answer for a user.
+or a silently stale claim, weighed against what it costs to build. Age is not a factor — the
+oldest entry here, **"Producer-side gaps in Tool 1"**, still does not head the list. Items
+touching production code rank above documentation, because only they can produce a wrong answer
+for a user.
+
+**The numbers below are positions, not identities.** Because the list is re-ranked whenever an
+item is added or completed, a number records only where an item sat at the moment someone wrote
+it down. **Reading an older reference:** a changelog row citing "backlog item N" means the item
+that held position N *when that row was written* — it may since have moved, or been completed and
+removed, and the row is never edited to catch up. **Writing a new one:** cite a backlog item by
+**name**, with the number as a convenience at most, so the reference still resolves after the next
+re-ranking. p10.24's row is the pattern to copy: it says "now **backlog item 7**" *and* names
+`project.build.outputTimestamp` in the same clause, so it stays unambiguous whatever the number
+does. That number happens to be unchanged after this re-ranking — coincidence, not a guarantee.
 
 ---
 
@@ -91,12 +102,32 @@ because it is a new guarantee rather than a cleanup.
 
 **Cost:** moderate. The four demos already run deterministically (p10.19), so the work is a runner
 that executes each, captures stdout with the UTF-8 flags, and diffs against the committed file.
-Interacts with item 3: these are I/O-heavy and would want their own group.
+Interacts with **"`@Tag` grouping to separate I/O-free tests from real TIFF I/O"** (item 3 as
+this is written): these are I/O-heavy and would want their own group.
 
 **Urgent when:** a demo snapshot is found stale in a way that hid a real behaviour change — the
 p10.19 regeneration found exactly that, a `noData=` counter added at p10.13 and never reflected.
 
-### 5. README reorganisation
+### 5. A one-sentence summary at the head of every new changelog row
+
+Rows in `docs/CHANGELOG.md` open straight into their reasoning. That is what makes them worth
+keeping, but it means finding the row that explains a given behaviour requires reading into each
+one — and the rows have grown, the p10.29 row being the longest yet.
+
+**Why:** the changelog is the artifact the workflow leans on every patch, and a record nobody can
+scan is one people stop consulting. A leading sentence stating *what changed* would let the file
+be skimmed while the reasoning stays exactly where it is.
+
+**Cost:** effectively nil, and it is a **convention rather than a change** — one sentence at the
+head of each new row, written as the row is written.
+
+**Prospective only.** Rows are never edited, so this applies to new rows and makes **no claim
+about existing ones**; the file will be mixed for a long time, and that is correct rather than
+untidy. Do not retrofit.
+
+**Urgent when:** someone needs a row they know exists and cannot find it.
+
+### 6. README reorganisation
 
 README still opens with developer-only material — project structure, build steps, prerequisites —
 before anything a user of the plugin needs.
@@ -109,22 +140,6 @@ edit, and a copy here would be wrong within a patch or two.
 (user-relevant content written in internal class names) and need rewriting, not just moving.
 
 **Urgent when:** a colleague is handed README as the way to learn the plugin.
-
-### 6. Update the user guide and regenerate the PDF
-
-`docs/ZTracker_User_Guide.md` predates everything from p10.14 onward, so it does not mention the
-memory guidance, the documentation split, or anything else added since.
-
-**Why:** it is the artifact actually handed to colleagues, so it is the one place where being out
-of date reaches someone who cannot read the source to check.
-
-**Cost:** small mechanically, larger editorially. **Edit only `docs/ZTracker_User_Guide.md`, then
-run `node docs/build-guide.mjs`**, which regenerates the `.html`, `.txt` and `.pdf` together. **The
-generated three must never be hand-edited.** If Edge is unavailable or the PDF is open in a viewer
-the script updates the other two and warns, so check its output rather than assuming all three
-moved.
-
-**Urgent when:** the guide is next given to someone.
 
 ---
 
@@ -181,6 +196,41 @@ a change is safe.
 and `README.md`'s project-structure tree.
 
 **Urgent when:** someone treats one of the two remaining claims as licence to skip checking.
+
+### 9. `build-guide.mjs` support for a deeper heading level
+
+The user guide is structurally **flat** — every section is an `h2`, including the three that
+belong under Part 1 — because the generator caps headings at three levels.
+
+**Why:** flat was chosen at p10.29 only because nesting was unavailable, not because it is right.
+The cap is also a **trap**: `build-guide.mjs` matches headings with `/^(#{1,3})\s/`, so a
+fourth-level heading falls through to the paragraph accumulator. Verified by probe during p10.29 —
+it leaks literal hashes into the `.html`, `.txt` **and** `.pdf`, and because a paragraph is not a
+section boundary it swallows the section inside the preceding step card. That is the p10.3 failure
+mode: the parser silently mangling output while the `.md` renders correctly on GitHub.
+
+**Cost:** small but spread across three renderers — the two heading regexes, plus an `h4` case in
+the HTML and text paths, plus a decision about whether an `h4` closes an open step card. No test
+covers the generator, so it needs careful before/after reading of all three outputs.
+
+**Urgent when:** someone writes a fourth-level heading without knowing the cap exists — the output
+is visibly broken rather than silently wrong, but it reaches a colleague-facing PDF.
+
+### 10. `build-guide.mjs` table-cell wrapping for the `.txt`
+
+The text renderer sizes each column to its **longest cell** and never wraps cell content, so one
+long cell widens every row in that table.
+
+**Why:** it is the only place the `.txt` exceeds its 72-column budget. **Currently a
+nice-to-have, not a fix** — p10.29 moved two over-long cells into prose and brought the widest
+line to **397**, below the 401 it inherited, so nothing is presently worse than it was.
+
+**Cost:** moderate, and larger than it looks — wrapping cells means multi-line rows, which means
+padding continuation lines and tracking row height, and it changes **every** table in the guide at
+once. Same untested-generator caveat as **"`build-guide.mjs` support for a deeper heading level"**.
+
+**Urgent when:** a future row or cell pushes the widest line back above where it started, or the
+`.txt` is actually read in a fixed-width terminal rather than kept as a fallback format.
 
 ## Declined, not backlog — see `docs/DECISIONS.md`
 
