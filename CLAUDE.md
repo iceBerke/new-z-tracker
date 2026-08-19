@@ -14,12 +14,70 @@ there, and verifies both steps succeeded. The tools appear under **Plugins > ZTr
 (in pipeline order: **Z-Projection + Origin Map**, **3D Z-Coordinate Extractor**, and
 **3D Z-Extractor (TopoJ / direct-Z)**) after restarting Fiji.
 
-**Version number** — controlled by `<patch.version>` in `pom.xml` line 18. Increment the
-patch number (e.g. `p1.3` → `p2.0`) for a major new capability, or the minor version
-(e.g. `p1.3` → `p1.4`) for iterative fixes within the same feature.
+**Auto-deploy path** — machine-specific. To use on a different machine, update the
+`<outputDirectory>` of the `copy-to-fiji` execution in `pom.xml`.
 
-**Auto-deploy path** — machine-specific. To use on a different machine, update
-`<outputDirectory>` in `pom.xml` line 126.
+### Patch workflow
+
+**Three identifiers, and two of them look alike.** (a) and (b) share the `p10.N` format and are
+easy to conflate; they are not the same thing and are currently **not equal**.
+
+| | What it is | When it changes |
+|---|---|---|
+| **(a) patch number** — e.g. `p10.21` | Identifies the *patch*: the changelog row and the commit subject | **Every patch, without exception** |
+| **(b) `<patch.version>`** — `pom.xml` properties, now `p10.14` | The only thing that names the built JAR, via `finalName` `z-tracker-v4-${patch.version}` | **Only when the JAR's executable content changes** |
+| **(c) `<version>`** — `1.0.0` | The Maven artifact version, overridden by `finalName` for the JAR | Not part of this workflow; deliberately left alone |
+
+**They diverge, and that is correct.** Patches p10.15 onward all sit at `patch.version p10.14`,
+because none changed executable content — the JAR they build would differ in name only, asserting
+a difference in the artifact that does not exist. The commit hash is the record instead.
+
+**The test is executable content, not "a file under `src/main` was touched".** p10.17 edited a
+javadoc block in `src/main`; the resulting class file was *not* byte-identical (every
+`LineNumberTable` entry shifted by the four lines the comment grew), but `javap -c -p` output was
+identical line for line. Instructions unchanged ⇒ `patch.version` unchanged.
+
+**The six steps.**
+
+1. Make the change.
+2. **Report for review** — diffs shown, every claim verified against the repo, mismatches reported
+   rather than silently fixed, unrequested scope flagged for accept-or-drop. **Stop here; do not
+   commit.**
+3. On approval, increment the **patch number** (a).
+4. Update **`<patch.version>`** (b) *only if* the JAR's executable content changed.
+5. Add the changelog row to `docs/CHANGELOG.md`. **The row must state that patch's own version
+   decision** — whether `<patch.version>` moved, and if not, why. That reasoning belongs in the
+   row because the row is where someone who finds a run of patches sharing one version will
+   actually look; a commit message is not enough. *This is the rule from p10.21 onward — earlier
+   rows are inconsistent about it (only p10.15 and p10.20 state it), and rows are never edited, so
+   that gap is permanent.*
+6. Commit. **Push only when asked** — push is always a separate step, never assumed.
+
+**Reporting rule.** A completion report must state the outcome of **every** item in the prompt,
+including items that went fine. p10.20 is the worked example: four requested italic lines were
+implemented correctly but never mentioned, which from outside is indistinguishable from having
+been dropped during that patch's mid-flight restart — and resolving the ambiguity cost a full
+verification round. **An unmentioned item is not a silent success; it is an unknown.**
+
+**Manual Fiji run** — required before push when the change touches a reachable production path,
+and in particular for any UI/AWT change (see the testing note below: that code is manual-only).
+Documentation, test, and comment-only changes need none.
+
+**One principle, four artifacts.** Neither the version number nor a changelog row may assert
+something untrue. A `<patch.version>` that moves without the JAR changing claims a difference in
+the artifact that does not exist; a row revised after the fact claims to record what was
+understood at the time when it no longer does. Both edits look like tidying, and both destroy the
+record's value as evidence — a version that cannot be trusted to mean anything, and a log that
+cannot be trusted to be contemporaneous. `docs/CHANGELOG.md`, `docs/GOTCHAS.md` and
+`docs/DECISIONS.md` each state the append-never-rewrite half of this at the top of the file; the
+version number is the fourth artifact under the same rule.
+
+**Major versions** (`p10.x` → `p11.0`) are governed by the capability rule in README's
+[Versioning](README.md#versioning) section. A major follows these same six steps — same approval
+gate, same changelog row stating its own version decision, same separate push; step 3 resets the
+minor to 0 and step 4 always moves `<patch.version>`, but both of those follow from the rules
+above rather than being major-specific exceptions. A major adds a reachable production path, so
+the manual Fiji run condition is met and a run is required before push.
 
 **Clean old JARs** — a `maven-antrun-plugin` `clean-old-jars` execution (install phase) *attempts*
 to delete any `z-tracker-v4-*.jar` in the Fiji plugins folder **except the current

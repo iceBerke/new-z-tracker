@@ -231,7 +231,7 @@
                                 <available file="C:/Users/berke.santos/Desktop/Fiji-Stable/plugins/z-tracker-v4-${patch.version}.jar"
                                            property="fiji.jar.exists"/>
                                 <fail unless="fiji.jar.exists"
-                                      message="JAR not copied to Fiji plugins folder. Check outputDirectory in pom.xml line 126."/>
+                                      message="JAR not copied to Fiji plugins folder. Check the &lt;outputDirectory&gt; of the copy-to-fiji execution in pom.xml."/>
                                 <!-- "the new JAR is there" is not the same as "the old one is gone".
                                      clean-old-jars cannot fail the build (see its comment), so a
                                      superseded JAR held open by a running Fiji survives silently and

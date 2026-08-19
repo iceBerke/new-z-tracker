@@ -95,14 +95,38 @@ ZTracker_Fiji/
 
 ### Versioning
 
-The JAR filename is controlled by `<patch.version>` in `pom.xml` line 18:
-- Increment the patch number (e.g. `p1.3` → `p2.0`) for a major new capability.
-- Increment the minor version (e.g. `p1.3` → `p1.4`) for iterative fixes within the same feature.
+Two different `p10.N` numbers are in play and they are **not** the same thing:
+
+- The **patch number** (`p10.21`) identifies a patch. It appears in the changelog row and the
+  commit subject, and increments on **every** patch.
+- **`<patch.version>`** in `pom.xml` names the built JAR (`z-tracker-v4-p10.14.jar`). It moves
+  **only when the JAR's executable content changes** — so a documentation-only patch leaves it
+  alone rather than shipping a differently-named but functionally identical JAR. The test is the
+  instructions, not the file: a javadoc-only edit shifts line-number tables without changing
+  behaviour, and does not earn a bump.
+
+**Major versions** — `p10.x` → `p11.0` — are earned by **capability**: a major bump means the
+plugin can now do something for you that it could not do before, such as a new tool, a new input
+type, or a new output format. Fixing, hardening, refactoring or documenting what it already does
+is a minor, however large the change. The minor then resets to 0 (`p10.20` → `p11.0`), as every
+one of the nine major transitions so far has done.
+
+The clearest examples are **p8.0** (added Tool 1, the Z-Projection generator), **p9.0** (added
+Tool 3, the TopoJ / direct-Z extractor) and **p10.0** (Tool 1 gained a second input type). Note
+this rule describes the convention **from p10.21 onward** and does not explain every historical
+boundary — **p3.0**, for instance, was label and description tweaks, which is not a capability;
+the convention settled later than the early majors did.
+
+Because new capability is executable production code, a major bump always moves
+`<patch.version>` too — that follows from the executable-content test above rather than being a
+separate rule.
+
+The full patch workflow, including when each identifier changes, is in `CLAUDE.md`.
 
 ### Adapting to a different machine
 
-The Fiji plugins path is machine-specific. Update `<outputDirectory>` in `pom.xml` line 126
-to point to your local `Fiji.app/plugins/` folder.
+The Fiji plugins path is machine-specific. Update the `<outputDirectory>` of the `copy-to-fiji`
+execution in `pom.xml` to point to your local `Fiji.app/plugins/` folder.
 
 ---
 
