@@ -255,6 +255,32 @@ once. Same untested-generator caveat as **"`build-guide.mjs` support for a deepe
 **Urgent when:** a future row or cell pushes the widest line back above where it started, or the
 `.txt` is actually read in a fixed-width terminal rather than kept as a fallback format.
 
+### 12. A progress callback for the whole-stack TopoJ decode
+
+`TopoJStackDecoder.decode` makes two passes over every pixel — about **12 seconds** on the
+362-frame, 636,893,388-pixel reference dataset — and says nothing while it does. The plugin sets
+the status line to `Decoding TopoJ values to Z…` before the call, and the progress bar then sits
+still, because the decoder makes **no ImageJ calls at all**. It is the only phase of a Tool 3 run
+without feedback; the loader drives the bar frame by frame.
+
+**Why:** judged acceptable at p11.0 — the manual Fiji run reported that it reads as working rather
+than hung — so this is polish, not a fix.
+
+**Cost:** small, with one property that must survive it. The decoder deliberately holds **no
+ImageJ types**, which is what keeps it testable headlessly and keeps a UI dependency out of
+`core`. A `java.util.function.IntConsumer` parameter preserves exactly that, being a JDK type: the
+plugin passes `f -> IJ.showProgress(f, total)` and tests pass a no-op — the same shape as
+`LoadedFloatStack.frameView()` keeping `FrameAligner` free of pixel access. Two details decide the
+work: **both** passes must report, or the bar jumps 0 → 50 → 100 and the silent half is still
+silent; and it means either a new parameter on `decode` or an overload, and p10.32 ruled out
+overloads as convenience surface — so it is a signature change touching existing tests.
+
+**It sits last on purpose.** It cannot produce a wrong answer, which is the axis this list ranks
+on, however visible it is.
+
+**Urgent when:** someone runs it on a dataset large enough that the silent window stops reading as
+working, or it lands inside a batch loop where the absence of per-item feedback compounds.
+
 ## Declined, not backlog — see `docs/DECISIONS.md`
 
 Recorded here only so they are not re-proposed as if they were pending.

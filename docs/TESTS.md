@@ -12,15 +12,15 @@ mvn clean test
 
 ---
 
-## Test counts: two Surefire executions, 276 + 1 = 277
+## Test counts: two Surefire executions, 278 + 1 = 279
 
 `mvn clean test` prints **two** `Tests run:` totals and the suite size is their **sum**:
 
 | Execution | Tests | Heap |
 |-----------|------:|------|
-| `default-test` | 276 | default |
+| `default-test` | 278 | default |
 | `streaming-invariant-test` | 1 | `-Xmx96m` |
-| **Total** | **277** | |
+| **Total** | **279** | |
 
 Do not read the first total as the whole suite. **The split is the point, not an accident of
 configuration.** `ProjectionStackScannerMemoryTest` asserts that Tool 1's TIFF-stack input still
@@ -73,6 +73,7 @@ computed, never edited — is recorded in
 | `ztracker.core.topoj.TopoJExtractorTest` | 9 | Identity-Z extraction and failure classification, including `STATUS_NO_DATA` for an all-NaN sample |
 | `ztracker.io.topoj.TopoJStackLoaderTest` | 10 | The 32-bit float loader: Z surviving un-rounded, 32-bit-only enforcement, the trailing-integer frame rule, and the dimension guard |
 | `ztracker.core.topoj.ExtractorEquivalenceTest` | 2 | The **cross-tool parity proof**: Tools 2 and 3 produce identical results across every sampling × aggregation × convention combination, with the one allowed divergence asserted explicitly |
+| `ztracker.topoj.TopoJTrackerPluginTest` | 2 | The ambiguity warning text — the plugin's only non-orchestration logic. It is tested because the symptom it announces is an **absence**: without it a user sees a Z range that is merely short at one end. Asserts both candidate depths, what was discarded, the recalibration fix, and that no warning is emitted when the sentinel cannot collide |
 | `ztracker.core.topoj.TopoJStackDecoderTest` | 9 | The whole-stack decode, **wired to nothing yet**: validation strictly before mutation (a failed stack is left byte-for-byte untouched), NaN passing through as no-data rather than refusing the file, one off-lattice pixel failing everything, and the per-frame and implied-slice-count reporting |
 | `ztracker.core.topoj.TopoJZConversionTest` | 13 | The standalone TopoJ value→Z decode, **wired to nothing yet**: sentinel classification, the relative lattice tolerance a non-terminating `encodingScale` needs, and above all the same `1.0f` resolving to a depth or to NaN purely by whether it collides with a legitimate slice |
 
@@ -87,7 +88,7 @@ computed, never edited — is recorded in
 | `ztracker.export.FijiPointsExporterTest` | 5 | One ROI per detection, the XZ/YZ projection sets, the results-table header, and X/Y preservation |
 | `ztracker.export.TrackExportManagerTest` | 19 | Per-point dropping (never whole-track), 2D/3D gated independently, drop reasons that do not conflate, frame numbers never renumbered, and the per-track report |
 
-**Total: 277 `@Test` methods across 24 classes.**
+**Total: 279 `@Test` methods across 25 classes.**
 
 ---
 

@@ -202,22 +202,38 @@ X and Y are in **pixels**, Z is in **micrometers**, and T is the frame number.
 
 - **No track is thrown away.** If one point is bad (e.g. its frame is missing or it falls outside the image), only that single point is dropped — the rest of the track is still exported.
 - **Dropped points leave a gap** in the frame numbers rather than renumbering — this is intentional.
-- **Check the Log window** after running. It reports how many points were extracted and how many were skipped, and why. Its summary line counts the dropped points by reason: `invalidXY` (the CSV's X or Y was not a number), `missingFrame` (no image for that frame), `outOfBounds` (the point lies outside the image), `unmappedIndex` (the pixel's code is not in the depth map) and `noData` (TopoJ images only — that pixel holds no depth).
+- **Check the Log window** after running. It reports how many points were extracted and how many were skipped, and why. Its summary line counts the dropped points by reason: `invalidXY` (the CSV's X or Y was not a number), `missingFrame` (no image for that frame), `outOfBounds` (the point lies outside the image), `unmappedIndex` (the pixel's code is not in the depth map) and `noData` (TopoJ images only — no depth could be read there, either because TopoJ found no surface or because the value was ambiguous; see Part 2).
 - If you picked **All** in Step 5, each method gets its own sub-folder inside your output folder.
 
 ## Part 2 (alternative) — 3D Z-Extractor (TopoJ / direct-Z)
 
-Use this instead of the standard extractor when your depth images come from **Fiji's TopoJ** (or any tool that writes the depth straight into the pixel value). Here each pixel of the projection TIFF **is** the depth in µm — there is no pixel-code and no `.json` map.
+Use this instead of the standard extractor when your depth images come from **Fiji's TopoJ**, with no `.json` map alongside them.
+
+**Read this before anything else: a TopoJ image does not contain depths.** TopoJ writes a *counter*. Each pixel holds `(slice count − k) × voxel depth`, where `k` is the slice of your **source** stack that was brightest at that pixel, and *voxel depth* is whatever Fiji had recorded for that stack **at the moment TopoJ ran** — which is **1.0 if nobody calibrated it**. Nothing in the file records the real depths, so the plugin has to be told how to convert them. That is what **Step 2** is for, and getting it wrong silently changes every depth in your results.
 
 Open it via **Plugins > ZTracker > 3D Z-Extractor (TopoJ / direct-Z)**.
 
-**What's different from the standard extractor:**
+**Step 2 — Z calibration.** Four numbers, all read from the **source stack you ran TopoJ on** (`Image > Properties…`). None of them is stored in the TopoJ output.
+
+- **Z of first slice (k = 0), µm** — the physical depth of that stack's first slice.
+- **Z step per slice, µm** — the **true** physical spacing between its slices.
+- **Source stack slice count** — how many slices it had.
+- **Encoding scale (voxel depth TopoJ used)** — the voxel depth Fiji held **when TopoJ ran**. **It is 1.0 if nobody calibrated the stack**, even when the true step is 2 µm or anything else.
+
+The last two bullets are the ones to be careful with: **Z step and encoding scale are different quantities.** They are equal only if the stack was calibrated correctly before TopoJ ran. If TopoJ ran uncalibrated and you enter your true step as the encoding scale, every depth in the run comes out rescaled — with no error and nothing to notice.
+
+**If you see a WARNING that the value 1.0 is ambiguous, read it.** TopoJ writes a literal `1.0` into any pixel it never assigned — meaning the surface was at or above the very top of the stack — and does *not* scale that literal by the voxel depth. So when your encoding scale is 1.0 (or 0.5, 0.25, 0.2…), `1.0` is **also** a legitimate depth, the one for the deepest slice, and nothing in the file says which a given pixel means. The plugin refuses to guess: those pixels are dropped as **no data**, detections landing on them report no depth, and the depth of that one slice cannot appear anywhere in the run — so your Z range looks short at one end for a reason you would otherwise never see. The warning states both depths the value could have meant and how many pixels were dropped. **The fix is to set the source stack's voxel depth in Fiji (`Image > Properties > Voxel depth`) before running TopoJ, then re-run TopoJ and enter that value as the encoding scale.** At a voxel depth of 2, for instance, `1.0` is no longer a legitimate value and the ambiguity disappears entirely.
+
+**If the numbers do not match the images**, the run stops with a message naming how many pixels could not be decoded, up to five of them with their frame and position, and what they were checked against. Nothing is converted in that case — you never get a half-decoded result.
+
+**What else is different from the standard extractor:**
 
 - **No Z-mapping JSON.** Step 1 asks for just **two** inputs — the **TopoJ Z-map TIFF folder** and your **tracking CSV**.
-- **32-bit float images only.** The depth is stored as a real number per pixel, so the TIFFs must be 32-bit float. (16-bit/8-bit images are rejected with a clear message — those belong to the standard, indexed extractor.)
+- **32-bit float images only.** (16-bit/8-bit images are rejected with a clear message — those belong to the standard, indexed extractor.)
 - **Filenames must end with the frame number.** The frame index is read from the number your filename **ends with**, so any name prefix works and the zero-padding can be any width — `frame7.tif`, `topoj_0007.tif`, and `height_map_00000100.tif` all load fine (as frames 7, 7, and 100). A file that does **not** end with a number (e.g. `topoj_0007_final.tif`) is **rejected with a message listing the offending names** — rename it so the frame number comes last, right before `.tif`.
+- **Seven steps, not six.** Step 2 is the extra one, so every later step is numbered one higher than in the standard extractor: CSV format is Step 3, columns Step 4, the frame-offset check Step 5, the method choices Step 6, and output Step 7.
 
-**Everything else is identical** to the standard extractor: the same CSV format/column steps, the same live frame-offset check (Step 4), the same sampling/aggregation/pixel-convention choices (Step 5), the same output folder and formats (Step 6), and the same per-point drop behaviour and reports. X/Y stay in pixels, Z is in µm, T is the frame number.
+**Everything else is identical** to the standard extractor: the same CSV format and column steps, the same live frame-offset check, the same sampling/aggregation/pixel-convention choices, the same output folders and formats, and the same per-point drop behaviour and reports. X/Y stay in pixels, Z is in µm, T is the frame number.
 
 :::tip
 Not sure which one you have? If your projection folder came with a `z_layer_mapping.json`, use the **standard** extractor. If it's a bare folder of 32-bit float TIFFs from TopoJ with no JSON, use this **direct-Z** one.
@@ -227,8 +243,8 @@ Not sure which one you have? If your projection folder came with a `z_layer_mapp
 
 | Symptom | Likely fix |
 | --- | --- |
-| Lots of points show "missing frame" | Revisit **Step 4** — the frame offset is probably wrong (try +1 or 0). |
-| Lots of points show "out of bounds" | Check your CSV X/Y match the TIFF image size, and check the pixel convention in Step 5. |
+| Lots of points show "missing frame" | Revisit the frame-offset step (**Step 4** in the standard extractor, **Step 5** in TopoJ) — the offset is probably wrong (try +1 or 0). |
+| Lots of points show "out of bounds" | Check your CSV X/Y match the TIFF image size, and check the pixel convention in the method step (**Step 5** standard, **Step 6** TopoJ). |
 | Plugin not in the menu | Restart Fiji, or use `Help > Refresh Menus`. |
 | Nothing seems to export | Make sure at least one format is ticked in **Step 6**, and read `export_report.txt`. |
 | "Inconsistent image dimensions in TIFF folder" | One TIFF is a different size from the first one in the folder — the message names it and gives both sizes. Remove it or re-crop everything to one size. Part 1 keeps this from happening within a single run over one dataset, but combining two runs' output into one folder — or assembling a folder by hand — still can. |

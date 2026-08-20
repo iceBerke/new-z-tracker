@@ -7,6 +7,7 @@ import ij.io.DirectoryChooser;
 import ztracker.core.FrameAligner;
 import ztracker.core.ZAggregator;
 import ztracker.core.extractor.ZSampler;
+import ztracker.core.topoj.TopoJZConversion;
 import ztracker.export.TrackExportManager.ExportConfig;
 import ztracker.io.extractor.TiffStackLoader.LoadedStack;
 import ztracker.io.topoj.TopoJStackLoader.LoadedFloatStack;
@@ -41,12 +42,14 @@ import java.util.concurrent.CountDownLatch;
  *
  * <p>This is a deliberate duplicate of {@link ZTrackerDialog} so Tool 2's dialog stays
  * byte-for-byte untouched (matching the plugin's isolate-per-tool philosophy — the same
- * reason Tool 1 duplicated its folder-picker layout). The only substantive difference is
- * that <b>Step 1 collects just the TIFF folder and CSV</b> — there is no JSON Z-mapping
- * picker, because a TopoJ pixel value <b>is</b> the Z. Steps 2–6 (CSV format, column
- * confirmation, frame offset, methods, export) are identical.
+ * reason Tool 1 duplicated its folder-picker layout). Two substantive differences: <b>Step 1
+ * collects just the TIFF folder and CSV</b> — there is no JSON Z-mapping picker — and
+ * <b>Step 2 collects the four numbers that decode a TopoJ value into a depth</b>, which Tool 2
+ * has no counterpart for because its depths come from a mapping file. That extra step is why
+ * this wizard has <b>seven</b> steps where Tool 2 has six, and why the numbering diverges from
+ * Tool 2's from Step 3 onward; Steps 3–7 are otherwise identical to Tool 2's Steps 2–6.
  *
- * <p>Step 4 reuses Tool 2's {@link FrameAligner} via {@link LoadedFloatStack#frameView()},
+ * <p>Step 5 reuses Tool 2's {@link FrameAligner} via {@link LoadedFloatStack#frameView()},
  * which exposes only the float stack's frame map (FrameAligner never reads pixel data).
  */
 public class TopoJTrackerDialog {
@@ -55,6 +58,14 @@ public class TopoJTrackerDialog {
 
     public File tiffFolder;
     public File csvFile;
+
+    /** Step 2's four numbers, already validated — the plugin decodes the stack with this. */
+    public TopoJZConversion zConversion;
+    /** The same four values, kept for logging: {@link TopoJZConversion} exposes only nSlices. */
+    public double zFirst;
+    public double zStep;
+    public int    nSlices;
+    public double encodingScale;
 
     public CsvConfig    csvConfig;
     public ColumnConfig columnConfig;   // set by plugin after auto-detection, then confirmed here
@@ -81,20 +92,26 @@ public class TopoJTrackerDialog {
 
     // ── Run groups ────────────────────────────────────────────────────────────
 
-    /** Shows Steps 1 and 2 (file paths + CSV format). */
-    public boolean runSteps1And2() {
-        return step1_files() && step2_csvFormat();
+    /**
+     * Shows Steps 1–3 (file paths, Z calibration, CSV format) — everything collected
+     * <b>before</b> the stack is loaded.
+     *
+     * <p>Step 2 must sit here rather than in {@link #runSteps5To7()}: the plugin decodes the
+     * stack immediately after loading it, so the calibration has to be in hand first.
+     */
+    public boolean runSteps1To3() {
+        return step1_files() && step2_zCalibration() && step3_csvFormat();
     }
 
-    /** Shows Step 3 (column confirmation). Requires {@link #columnConfig} to be set first. */
-    public boolean runStep3Columns() {
-        return step3_columns();
+    /** Shows Step 4 (column confirmation). Requires {@link #columnConfig} to be set first. */
+    public boolean runStep4Columns() {
+        return step4_columns();
     }
 
-    /** Shows Steps 4–6 (frame offset, methods, export). Requires loaded data via
+    /** Shows Steps 5–7 (frame offset, methods, export). Requires loaded data via
      *  {@link #setLoadedData(TrackData, LoadedFloatStack)}. */
-    public boolean runSteps4To6() {
-        return step4_frameOffset() && step5_methods() && step6_export();
+    public boolean runSteps5To7() {
+        return step5_frameOffset() && step6_methods() && step7_export();
     }
 
     // ── Step dialogs ──────────────────────────────────────────────────────────
@@ -131,7 +148,7 @@ public class TopoJTrackerDialog {
         int row = 0;
         row = addInputGroup(grid, row, true,
                 "TopoJ Z-map TIFF folder",
-                "Folder with one 32-bit float TIFF per timepoint whose pixel values are Z depth in µm (TopoJ output). Each filename must end with its frame number — any prefix, any zero-padding width (e.g. frame7.tif, topoj_0007.tif); names not ending in a number are rejected",
+                "Folder with one 32-bit float TIFF per timepoint, as written by Fiji's TopoJ. Pixel values are TopoJ's encoded slice counter, NOT a depth in µm — Step 2 collects the four numbers that convert them. Each filename must end with its frame number — any prefix, any zero-padding width (e.g. frame7.tif, topoj_0007.tif); names not ending in a number are rejected",
                 tiffBtn, tiffPathLbl);
         row = addInputGroup(grid, row, false,
                 "Tracking CSV",
@@ -251,9 +268,68 @@ public class TopoJTrackerDialog {
         return startRow;
     }
 
-    /** Step 2: Configure CSV parsing (header row, skip rows, default radius). */
-    private boolean step2_csvFormat() {
-        GenericDialog gd = new NonBlockingGenericDialog("TopoJ Z-Extractor — Step 2: CSV Format");
+    /**
+     * Step 2: the four numbers that turn a TopoJ value into a physical Z.
+     *
+     * <p>Re-prompts until the values are accepted by {@link TopoJZConversion}, whose constructor
+     * is the single authority on what is usable — the dialog does not re-implement those checks.
+     *
+     * <p><b>zStep and encodingScale are two different quantities</b> and the screen says so in as
+     * many words, because they look interchangeable and are not: they coincide only when the
+     * source stack was calibrated before TopoJ ran, and the whole reason this step exists is the
+     * case where it was not. {@code zStep} and {@code nSlices} start at values the constructor
+     * <i>rejects</i>, deliberately: a run must not be able to proceed on an untouched default,
+     * since a wrong slice count shifts every Z by a constant that nothing downstream can detect.
+     */
+    private boolean step2_zCalibration() {
+        double  fieldZFirst = 0.0;
+        double  fieldZStep  = 0.0;   // invalid on purpose — forces a deliberate entry
+        double  fieldSlices = 0.0;   // invalid on purpose — same reason
+        double  fieldScale  = 1.0;   // the uncalibrated case, and by far the commonest
+
+        while (true) {
+            GenericDialog gd = new NonBlockingGenericDialog(
+                    "TopoJ Z-Extractor — Step 2: Z Calibration");
+            gd.addMessage("TopoJ does not store depth. Each pixel holds (nSlices - k) x voxel depth\n"
+                    + "for the brightest source slice k, so these four numbers are what turn it\n"
+                    + "back into micrometres. Read them from the SOURCE stack you ran TopoJ on\n"
+                    + "(Image > Properties…) — they are not recorded in the TopoJ output.");
+            gd.addNumericField("Z of first slice (k = 0), µm:", fieldZFirst, 3);
+            gd.addNumericField("Z step per slice, µm:", fieldZStep, 3);
+            gd.addNumericField("Source stack slice count:", fieldSlices, 0);
+            gd.addNumericField("Encoding scale (voxel depth TopoJ used):", fieldScale, 3);
+            gd.addMessage("Z step is the TRUE physical spacing between slices.\n"
+                    + "Encoding scale is the voxel depth Fiji held at the moment TopoJ ran —\n"
+                    + "it is 1.0 if nobody calibrated the stack, even when the true step is not.\n"
+                    + "These are equal only when the stack was calibrated correctly; entering the\n"
+                    + "true step here when TopoJ ran uncalibrated rescales every depth.");
+            gd.showDialog();
+
+            if (gd.wasCanceled()) return false;
+
+            fieldZFirst = gd.getNextNumber();
+            fieldZStep  = gd.getNextNumber();
+            fieldSlices = gd.getNextNumber();
+            fieldScale  = gd.getNextNumber();
+
+            try {
+                zConversion   = new TopoJZConversion(
+                        fieldZFirst, fieldZStep, (int) fieldSlices, fieldScale);
+                zFirst        = fieldZFirst;
+                zStep         = fieldZStep;
+                nSlices       = (int) fieldSlices;
+                encodingScale = fieldScale;
+                return true;
+            } catch (IllegalArgumentException e) {
+                IJ.error("TopoJ Z-Extractor — Step 2", e.getMessage());
+                // fall through and re-show with what was typed
+            }
+        }
+    }
+
+    /** Step 3: Configure CSV parsing (header row, skip rows, default radius). */
+    private boolean step3_csvFormat() {
+        GenericDialog gd = new NonBlockingGenericDialog("TopoJ Z-Extractor — Step 3: CSV Format");
         gd.addMessage("Specify the CSV header format and pixel size default.");
         gd.addMessage("e.g., TrackMate default: header=0, skip 3 metadata rows.");
         gd.addNumericField("Header row index:", 0, 0);
@@ -271,16 +347,16 @@ public class TopoJTrackerDialog {
     }
 
     /**
-     * Step 3: Show auto-detected column names; let user override if needed.
+     * Step 4: Show auto-detected column names; let user override if needed.
      * {@link #columnConfig} must be set before calling this step.
      */
-    private boolean step3_columns() {
+    private boolean step4_columns() {
         if (columnConfig == null) {
-            IJ.error("TopoJ Z-Extractor", "Internal error: column config not set before Step 3.");
+            IJ.error("TopoJ Z-Extractor", "Internal error: column config not set before Step 4.");
             return false;
         }
 
-        GenericDialog gd = new NonBlockingGenericDialog("TopoJ Z-Extractor — Step 3: CSV Columns");
+        GenericDialog gd = new NonBlockingGenericDialog("TopoJ Z-Extractor — Step 4: CSV Columns");
         gd.addMessage("Auto-detected columns are shown below.\nEdit any that are incorrect.");
         gd.addStringField("X column name:", orEmpty(columnConfig.xCol), 20);
         gd.addStringField("Y column name:", orEmpty(columnConfig.yCol), 20);
@@ -306,16 +382,16 @@ public class TopoJTrackerDialog {
     }
 
     /**
-     * Step 4: Frame offset — a single custom dialog that lets the user enter the
+     * Step 5: Frame offset — a single custom dialog that lets the user enter the
      * CSV-to-TIFF offset and see a live per-track verdict update as they type, then
      * confirm. Requires {@link #setLoadedData(TrackData, LoadedFloatStack)} first.
      *
      * <p>Reuses Tool 2's {@link FrameAligner} against a {@link LoadedFloatStack#frameView()}
      * (a pixel-less frame-index view of the float stack).
      */
-    private boolean step4_frameOffset() {
+    private boolean step5_frameOffset() {
         if (loadedTrack == null || loadedStack == null) {
-            IJ.error("TopoJ Z-Extractor", "Internal error: data not loaded before Step 4.");
+            IJ.error("TopoJ Z-Extractor", "Internal error: data not loaded before Step 5.");
             return false;
         }
 
@@ -328,7 +404,7 @@ public class TopoJTrackerDialog {
         // while this box is open — the per-track table is logged there for review.
         final Dialog dlg = new Dialog(
                 parent != null ? parent : new Frame(),
-                "TopoJ Z-Extractor — Step 4: Frame Alignment", false);
+                "TopoJ Z-Extractor — Step 5: Frame Alignment", false);
         dlg.setLayout(new BorderLayout(8, 8));
         final CountDownLatch closeLatch = new CountDownLatch(1);
 
@@ -463,8 +539,8 @@ public class TopoJTrackerDialog {
 
     private static final String ALL_LABEL = "All (run every method)";
 
-    /** Step 5: Sampling and aggregation method selection (identical to Tool 2's Step 5). */
-    private boolean step5_methods() {
+    /** Step 6: Sampling and aggregation method selection (identical to Tool 2's Step 5). */
+    private boolean step6_methods() {
         String[] samplingLabels = {
             ZSampler.Method.RADIUS.label,
             ZSampler.Method.FOUR_NEIGHBOR.label,
@@ -484,7 +560,7 @@ public class TopoJTrackerDialog {
         Frame parent = IJ.getInstance();
         final Dialog dlg = new Dialog(
                 parent != null ? parent : new Frame(),
-                "TopoJ Z-Extractor — Step 5: Extraction Methods", false);
+                "TopoJ Z-Extractor — Step 6: Extraction Methods", false);
         dlg.setLayout(new BorderLayout(8, 8));
         final CountDownLatch closeLatch = new CountDownLatch(1);
 
@@ -629,12 +705,12 @@ public class TopoJTrackerDialog {
         return true;
     }
 
-    /** Step 6: Output directory and export format selection (identical to Tool 2's Step 6). */
-    private boolean step6_export() {
+    /** Step 7: Output directory and export format selection (identical to Tool 2's Step 6). */
+    private boolean step7_export() {
         Frame parent = IJ.getInstance();
         final Dialog dlg = new Dialog(
                 parent != null ? parent : new Frame(),
-                "TopoJ Z-Extractor — Step 6: Output & Export", false);
+                "TopoJ Z-Extractor — Step 7: Output & Export", false);
         dlg.setLayout(new BorderLayout(8, 8));
         final CountDownLatch closeLatch = new CountDownLatch(1);
 

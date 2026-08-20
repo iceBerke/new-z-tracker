@@ -3,6 +3,7 @@ package ztracker.topoj;
 import ij.IJ;
 import ij.plugin.PlugIn;
 import ztracker.core.topoj.TopoJExtractor;
+import ztracker.core.topoj.TopoJStackDecoder;
 import ztracker.core.ZAggregator;
 import ztracker.core.extractor.ZExtractor;
 import ztracker.core.extractor.ZSampler;
@@ -42,10 +43,10 @@ public class TopoJTrackerPlugin implements PlugIn {
 
         TopoJTrackerDialog dialog = new TopoJTrackerDialog();
 
-        // ── Step 1–2: Collect file paths and CSV format ───────────────────────
-        if (!dialog.runSteps1And2()) return;
+        // ── Step 1–3: Collect file paths, Z calibration, and CSV format ───────
+        if (!dialog.runSteps1To3()) return;
 
-        // ── Load TopoJ float stack (pixel value = Z in µm) ────────────────────
+        // ── Load TopoJ float stack (pixel value = TopoJ's encoded slice counter) ──
         TopoJStackLoader.LoadedFloatStack stack;
         try {
             IJ.showStatus("Loading TopoJ Z-map stack…");
@@ -54,6 +55,24 @@ public class TopoJTrackerPlugin implements PlugIn {
             IJ.error("TopoJ Z-Extractor", "Failed to load TopoJ TIFF stack:\n" + e.getMessage());
             return;
         }
+
+        // ── Decode the stack in place: encoded slice counter → physical Z (µm) ──
+        // The catch is IllegalArgumentException specifically, and wraps only this call.
+        // TopoJStackDecoder throws it to mean "the declared parameters do not match this
+        // data" — a user error with a message written for the user. Catching
+        // RuntimeException, or wrapping a wider block, would relabel a genuine bug as bad
+        // input and send the user to re-check parameters that were right.
+        TopoJStackDecoder.Report decodeReport;
+        try {
+            IJ.showStatus("Decoding TopoJ values to Z…");
+            decodeReport = TopoJStackDecoder.decode(stack, dialog.zConversion);
+        } catch (IllegalArgumentException e) {
+            IJ.error("TopoJ Z-Extractor — decode failed", e.getMessage());
+            IJ.log("[TopoJTrackerPlugin] Decode refused the stack; nothing was converted.");
+            IJ.log("[TopoJTrackerPlugin] " + e.getMessage());
+            return;
+        }
+        logDecodeReport(decodeReport, dialog);
 
         // ── Auto-detect CSV columns (Step 3 pre-processing) ───────────────────
         TrackCsvLoader.ColumnConfig detectedCols;
@@ -67,8 +86,8 @@ public class TopoJTrackerPlugin implements PlugIn {
 
         dialog.columnConfig = detectedCols;
 
-        // ── Step 3: Column confirmation ───────────────────────────────────────
-        if (!dialog.runStep3Columns()) return;
+        // ── Step 4: Column confirmation ───────────────────────────────────────
+        if (!dialog.runStep4Columns()) return;
 
         // ── Load CSV data ─────────────────────────────────────────────────────
         TrackData trackData;
@@ -81,9 +100,9 @@ public class TopoJTrackerPlugin implements PlugIn {
             return;
         }
 
-        // ── Steps 4–6: Frame offset, methods, export config ───────────────────
+        // ── Steps 5–7: Frame offset, methods, export config ───────────────────
         dialog.setLoadedData(trackData, stack);
-        if (!dialog.runSteps4To6()) return;
+        if (!dialog.runSteps5To7()) return;
 
         // ── Extract Z coordinates ─────────────────────────────────────────────
         IJ.showStatus("Extracting Z coordinates…");
@@ -134,6 +153,94 @@ public class TopoJTrackerPlugin implements PlugIn {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Puts the whole decode on the record: what every pixel classified as, how the unassigned
+     * sentinel is distributed across frames, and whether the declared slice count is
+     * corroborated by the data. Written before extraction starts, because after it the numbers
+     * are only recoverable by decoding again.
+     */
+    private static void logDecodeReport(TopoJStackDecoder.Report r, TopoJTrackerDialog d) {
+        IJ.log(String.format(
+                "[TopoJDecode] Parameters: zFirst=%.3f µm | zStep=%.3f µm | nSlices=%d | encodingScale=%.3f",
+                d.zFirst, d.zStep, d.nSlices, d.encodingScale));
+        IJ.log(String.format(
+                "[TopoJDecode] %,d px decoded: %,d valid | %,d unassigned (1.0) | "
+                + "%,d below-threshold (-1.0) | %,d no-data (NaN) | %,d invalid",
+                r.totalPixels(), r.validCount, r.unassignedCount,
+                r.belowThresholdCount, r.nanCount, r.invalidCount));
+
+        if (!r.perFrame.isEmpty()) {
+            double min = Double.MAX_VALUE, max = -Double.MAX_VALUE, sum = 0.0;
+            for (TopoJStackDecoder.Report.FrameSentinel f : r.perFrame) {
+                min = Math.min(min, f.unassignedPercent);
+                max = Math.max(max, f.unassignedPercent);
+                sum += f.unassignedPercent;
+            }
+            IJ.log(String.format(
+                    "[TopoJDecode] Unassigned per frame over %d frames: min %.3f%% | max %.3f%% | mean %.3f%%",
+                    r.perFrame.size(), min, max, sum / r.perFrame.size()));
+        }
+
+        IJ.log(String.format(
+                "[TopoJDecode] Slice count: implied minimum %s vs declared %d — %s",
+                r.impliedMinimumSliceCount.isPresent()
+                        ? String.valueOf(r.impliedMinimumSliceCount.getAsInt())
+                        : "none (no decodable pixel)",
+                r.declaredSliceCount,
+                r.sliceCountAgrees() ? "agree" : "DO NOT agree"));
+        if (!r.sliceCountAgrees() && r.impliedMinimumSliceCount.isPresent()) {
+            IJ.log("[TopoJDecode]   The data implies fewer slices than declared, which means no "
+                    + "pixel anywhere was brightest at source slice 1. That is legitimate for a "
+                    + "surface that never reaches the top of the acquired range — but if the "
+                    + "slice count is simply wrong, every Z in this run is shifted by a constant "
+                    + "and nothing else will reveal it.");
+        }
+
+        String warning = buildAmbiguityWarning(r);
+        if (!warning.isEmpty()) {
+            for (String line : warning.split("\n")) IJ.log("[TopoJDecode] " + line);
+        }
+    }
+
+    /**
+     * The warning for the case where {@code 1.0} means two different depths at once, or an
+     * <b>empty string</b> when the sentinel cannot collide under these parameters and there is
+     * nothing to warn about. Pure string building, kept separate from the logging so the wording
+     * can be read in one piece — and so the decision of <i>whether</i> to warn lives here rather
+     * than at the call site, where a second copy of the condition could drift out of step with
+     * this one.
+     *
+     * <p>It has to be loud and complete: the visible symptom is only that one extreme of the Z
+     * range is missing, which is exactly the kind of absence nobody notices. So it states both
+     * readings the value could carry, how much data was dropped rather than guessed, what that
+     * costs downstream, and the one action that removes the ambiguity for good.
+     */
+    static String buildAmbiguityWarning(TopoJStackDecoder.Report r) {
+        // Also load-bearing, not just an early return: the Ambiguity accessors below throw when
+        // there is no collision, so this guard is what makes them safe to read.
+        if (!r.ambiguity.isAmbiguous()) return "";
+
+        double pct = r.totalPixels() == 0 ? 0.0 : 100.0 * r.unassignedCount / r.totalPixels();
+        return String.format(
+                "⚠ WARNING — the value 1.0 is AMBIGUOUS under these parameters.%n"
+                + "  TopoJ writes 1.0 into any pixel it never assigned (brightest source slice = 0),%n"
+                + "  and does NOT scale that literal by the voxel depth. With this encoding scale,%n"
+                + "  1.0 is ALSO the legitimate encoding of source slice %d.%n"
+                + "  As the sentinel it means Z = %.3f µm; as slice %d it means Z = %.3f µm.%n"
+                + "  Nothing in the file distinguishes them, so %,d of %,d pixels (%.2f%%) were%n"
+                + "  DISCARDED as no-data rather than guessed.%n"
+                + "  Consequences: detections landing on those pixels report no depth, and slice %d's%n"
+                + "  depth cannot appear anywhere in this run — the Z range will look short at one end.%n"
+                + "  FIX: set the source stack's voxel depth in Fiji (Image > Properties > Voxel depth)%n"
+                + "  before running TopoJ, then re-run TopoJ and give that value as the encoding scale.",
+                r.ambiguity.collidingSliceIndex(),
+                r.ambiguity.sentinelCandidateZ(),
+                r.ambiguity.collidingSliceIndex(),
+                r.ambiguity.sliceCandidateZ(),
+                r.unassignedCount, r.totalPixels(), pct,
+                r.ambiguity.collidingSliceIndex());
+    }
 
     private static void logExtractionSummary(ExtractionResult result) {
         int valid = result.countValid();
