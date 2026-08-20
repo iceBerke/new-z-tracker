@@ -104,6 +104,13 @@ public class TopoJStackDecoder {
      *         legitimate encoded slice. The message states the total count, names up to
      *         {@value #MAX_EXAMPLES} offenders with their frame and coordinates, and restates the
      *         parameters they failed against. Nothing has been converted when it is thrown.
+     *
+     * @implNote <b>No automated test reaches this method from a file.</b> Every decoder and
+     *         conversion test builds {@code float[][][]} in memory; {@code TopoJStackLoaderTest}
+     *         does real TIFF I/O but stops at the loader. <b>The suite can therefore stay green
+     *         while the decoded numbers move</b>, and the only verification is a manual Fiji run.
+     *         See {@code docs/BACKLOG.md}, "An end-to-end decode test over a committed TopoJ
+     *         fixture".
      */
     public static Report decode(LoadedFloatStack stack, TopoJZConversion conversion) {
         if (stack == null)      throw new IllegalArgumentException("stack must not be null");

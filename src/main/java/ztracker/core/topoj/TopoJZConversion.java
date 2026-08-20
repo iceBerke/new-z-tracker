@@ -236,6 +236,11 @@ public class TopoJZConversion {
             case SENTINEL_BELOW_THRESHOLD:
                 return Double.NaN;
             case VALID:
+                // No automated test reaches this formula from a real TopoJ file — every test of
+                // this class and of TopoJStackDecoder builds arrays in memory, and
+                // TopoJStackLoaderTest stops at the loader. The suite can stay green while these
+                // numbers move; only a manual Fiji run checks them. See docs/BACKLOG.md,
+                // "An end-to-end decode test over a committed TopoJ fixture".
                 return zFirst + zStep * (nSlices - latticeIndex(v));
             default:
                 throw new IllegalArgumentException(describeInvalid(v));
