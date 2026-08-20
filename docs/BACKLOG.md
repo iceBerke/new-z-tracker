@@ -124,6 +124,10 @@ if the crop still contains the cases** — at minimum one sentinel pixel, one va
 the lattice, and one off-lattice value for the refusal test — which must be checked when cutting it,
 not assumed.
 
+**The manual substitute, until this is taken:** `docs/DECODE_VERIFICATION.md` — the three-case Fiji
+procedure (ambiguous scale, a scale that must be refused, unambiguous scale) that this item would
+replace with something the suite runs.
+
 **Urgent when — and this is edit-triggered, not symptom-triggered, because the gap costs nothing
 until someone touches the path.** Before merging any change to: `TopoJZConversion`'s encoding
 formula, lattice tolerance, sentinel handling or ambiguity rule; `TopoJStackDecoder`'s validation

@@ -108,9 +108,10 @@ public class TopoJStackDecoder {
      * @implNote <b>No automated test reaches this method from a file.</b> Every decoder and
      *         conversion test builds {@code float[][][]} in memory; {@code TopoJStackLoaderTest}
      *         does real TIFF I/O but stops at the loader. <b>The suite can therefore stay green
-     *         while the decoded numbers move</b>, and the only verification is a manual Fiji run.
-     *         See {@code docs/BACKLOG.md}, "An end-to-end decode test over a committed TopoJ
-     *         fixture".
+     *         while the decoded numbers move</b>, and the only verification is the manual Fiji run
+     *         written up in {@code docs/DECODE_VERIFICATION.md} — run it before pushing a change
+     *         here. The automated replacement is {@code docs/BACKLOG.md}, "An end-to-end decode
+     *         test over a committed TopoJ fixture".
      */
     public static Report decode(LoadedFloatStack stack, TopoJZConversion conversion) {
         if (stack == null)      throw new IllegalArgumentException("stack must not be null");

@@ -239,8 +239,9 @@ public class TopoJZConversion {
                 // No automated test reaches this formula from a real TopoJ file — every test of
                 // this class and of TopoJStackDecoder builds arrays in memory, and
                 // TopoJStackLoaderTest stops at the loader. The suite can stay green while these
-                // numbers move; only a manual Fiji run checks them. See docs/BACKLOG.md,
-                // "An end-to-end decode test over a committed TopoJ fixture".
+                // numbers move; the only check is the manual run in docs/DECODE_VERIFICATION.md,
+                // to be done before pushing a change here. The automated replacement is
+                // docs/BACKLOG.md, "An end-to-end decode test over a committed TopoJ fixture".
                 return zFirst + zStep * (nSlices - latticeIndex(v));
             default:
                 throw new IllegalArgumentException(describeInvalid(v));

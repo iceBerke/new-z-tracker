@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | **`docs/DECISIONS.md`** | Costed and **declined** — *"no, and here is why"* | Considering something that may already have been ruled out |
 | **`docs/BACKLOG.md`** | Wanted but **not done** — *"yes, eventually"* | Picking up work, or deferring something |
 | **`docs/TESTS.md`** | Suite index, the demos, fixtures, and the test-count rule | Adding a test, or counting them |
+| **`docs/DECODE_VERIFICATION.md`** | The manual Fiji procedure for Tool 3's decode — the **only** check against real data, since no test reaches it from disk | Changing anything on the decode path |
 | **`docs/CHANGELOG.md`** | Every patch, newest first. **Rows are never edited** | Asking why something is the way it is |
 | **`README.md`** | User-facing: install, pipeline, input requirements, memory | Explaining the plugin to someone who runs it |
 | **`docs/ZTracker_User_Guide.md`** | The colleague-facing guide. **Single source** — `node docs/build-guide.mjs` regenerates the `.html`/`.txt`/`.pdf`, which are never hand-edited | Changing anything a non-technical user sees |
