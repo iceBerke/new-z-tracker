@@ -3,10 +3,12 @@ package ztracker.core.topoj;
 /**
  * Decodes a Fiji <b>TopoJ</b> height-map pixel value into a physical Z coordinate.
  *
- * <p><b>Standalone and unwired.</b> Nothing in the plugin calls this class yet — Tool 3
- * still treats a TopoJ pixel value as Z directly ({@link TopoJExtractor}). This is the
- * arithmetic on its own, so it can be reviewed and tested before anything depends on it.
- * Pure computation: no ImageJ types, no I/O, no logging.
+ * <p><b>Where it is used.</b> {@link TopoJStackDecoder} applies this across a whole loaded
+ * stack, and {@link ztracker.topoj.TopoJTrackerPlugin} runs that decode immediately after
+ * loading, before any sampling happens. The four parameters come from the user, collected in
+ * the dialog's Step 2 — see the note on why they are declared rather than read from the file
+ * in {@code docs/DECISIONS.md}. This class itself stays pure computation: no ImageJ types,
+ * no I/O, no logging.
  *
  * <h3>What TopoJ actually writes</h3>
  *

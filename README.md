@@ -10,8 +10,9 @@ A Fiji/ImageJ plugin with **three tools** under `Plugins > ZTracker`, covering t
    projection stacks and, given 2D tracks, extracts the Z-coordinate for every detection and
    exports 3D cell tracks. Ports `3D_tracking_Jay_app_unified_v1.py`.
 3. **3D Z-Extractor (TopoJ / direct-Z)** — *step 2, alternative*: the same extraction for
-   projection images whose **pixel value is the Z depth in µm directly** (32-bit float, e.g.
-   Fiji's **TopoJ** output) — no index, no JSON mapping. Ports `3D_tracking_Jay_app_v2.py`,
+   **Fiji TopoJ height maps** (32-bit float). No index and no JSON mapping — instead the pixel
+   holds TopoJ's **encoded slice counter**, which the tool decodes to depth from four numbers you
+   supply about the source stack. Ports `3D_tracking_Jay_app_v2.py`,
    superseding that script's old frame-check/filtering with the current `FrameAligner` offset and
    per-point drop logic.
 
@@ -771,9 +772,10 @@ ceiling). (A colour/RGB TIFF is **rejected** since p10.5: there is no single int
 compare, and projecting one would run on packed ARGB values — convert to grayscale first.)
 Tool 2's pixel value is an integer **index** into the JSON mapping, so it needs 16- or 32-bit to
 carry the index range — 8-bit would cap the dataset at 256 Z-layers, and it plus 24-bit RGB are
-rejected outright. Tool 3's pixel value **is** the Z coordinate in µm, so it must be 32-bit
-**float**: a 16-bit integer image could only hold whole micrometres, silently rounding every
-depth it stores.
+rejected outright. Tool 3's pixel value is TopoJ's **encoded slice counter**, `(nSlices - k) × pixelDepth`, and it
+must be 32-bit **float** because that product is not generally a whole number — a voxel depth of
+0.3 µm puts every value off the integer grid, and a 16-bit integer image would round each one,
+destroying the lattice the decode checks against.
 
 ---
 
@@ -815,6 +817,28 @@ quadruple for 32-bit). A file matching the product stores every pixel raw and ta
 path; one meaningfully smaller than it is compressed. In practice acquisition software writes
 uncompressed files, so this is rare — and compressed input **gives exactly the same results**
 either way. The only difference is memory and time.
+
+### Step 2 (TopoJ): the whole stack is held at once
+
+The TopoJ extractor is the other part of the pipeline with a real memory appetite, and unlike
+step 1's projector it does **not** stream: `TopoJStackLoader` reads every frame into one
+`float[][][]` and keeps it there for the rest of the run, because the decode, the frame alignment
+and the sampling all need random access across frames. Its requirement therefore scales with the
+**length of the recording**, which is exactly what step 1's does not.
+
+| | The general rule | Worked on one real acquisition |
+|---|---|---|
+| **Resident stack** | `width × height × 4 bytes × number of frames` | 1051 × 1674 × 4 × **362 frames** ≈ **2.4 GB** |
+| **Decode** | no extra allocation — it converts in place | ~12 s over 636,893,388 pixels |
+
+So **Fiji's heap must exceed the stack size**, with headroom — set it in
+`Edit > Options > Memory & Threads` and restart Fiji. For the example above, 4 GB is comfortable
+and 2 GB will not load it at all. Halving the frame count halves the requirement; the number of
+**source** Z slices does not enter into it, since a height map is one frame per timepoint however
+deep the stack it came from.
+
+There is no progress bar during the decode — the status line reads `Decoding TopoJ values to Z…`
+and Fiji stays responsive, but nothing counts up for those few seconds. It is working.
 
 ---
 

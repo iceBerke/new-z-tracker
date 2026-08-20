@@ -15,11 +15,18 @@ import java.util.regex.Pattern;
  * Tool 3 (TopoJ / direct-Z) counterpart to {@link TiffStackLoader}.
  *
  * <p>Loads a folder of <b>32-bit float</b> TIFF projection images — as produced by
- * Fiji's TopoJ — into a 3-D {@code float} array. Unlike {@link TiffStackLoader}
- * (whose pixel values are integer <i>indices</i> into a JSON Z-mapping and are
- * therefore rounded to {@code int} on read), a TopoJ pixel value <b>is</b> the
- * physical Z coordinate in micrometres directly, so it must be kept as a float —
- * there is no mapping and no rounding.
+ * Fiji's TopoJ — into a 3-D {@code float} array, <b>exactly as stored</b>. A TopoJ pixel is
+ * not a depth: it holds {@code (nSlices - k) * pixelDepth} for the brightest source slice
+ * {@code k}, an encoded slice counter that {@link ztracker.core.topoj.TopoJStackDecoder}
+ * turns into physical Z once the whole stack is loaded and validated. This class performs no
+ * part of that conversion and knows none of its parameters.
+ *
+ * <p>Values are nevertheless kept <b>un-rounded</b>, which matters as much as it did when they
+ * were mistaken for depths: the encoding scale need not be an integer, so a stored
+ * {@code (nSlices - k) * 0.3} is perfectly ordinary, and rounding it would destroy the lattice
+ * the decoder checks against. Unlike {@link TiffStackLoader} — whose pixel values are integer
+ * <i>indices</i> into a JSON Z-mapping and are therefore rounded to {@code int} on read —
+ * nothing here is rounded, and there is no mapping.
  *
  * <p>Everything else mirrors {@link TiffStackLoader}: files are natural-sorted by the
  * trailing integer in the filename, a {@code frame → stackIndex} map is built, and
@@ -49,7 +56,10 @@ public class TopoJStackLoader {
     // ── Public result container ───────────────────────────────────────────────
 
     public static class LoadedFloatStack {
-        /** Pixel data: [stackIndex][y][x]. Values are Z coordinates in µm (un-rounded). */
+        /** Pixel data: [stackIndex][y][x]. As loaded these are TopoJ's raw encoded values,
+         *  un-rounded; {@link ztracker.core.topoj.TopoJStackDecoder#decode} replaces them
+         *  <b>in place</b> with physical Z in µm. Which of the two an array holds depends
+         *  entirely on whether decode has run over it yet. */
         public final float[][][] pixels;
         /** Maps frame number (from filename) → index into {@code pixels}. */
         public final Map<Integer, Integer> frameToIdx;
@@ -169,8 +179,8 @@ public class TopoJStackLoader {
         if (bitDepth != 32) {
             throw new IOException(
                     "Unsupported TIFF bit depth (" + bitDepth + "-bit): " + tifFiles[0].getName()
-                    + "\nThe TopoJ / direct-Z extractor requires 32-bit float TIFFs whose pixel"
-                    + " values are Z coordinates in µm. (For 16-bit/32-bit indexed projections"
+                    + "\nThe TopoJ / direct-Z extractor requires the 32-bit float TIFFs"
+                    + " that Fiji's TopoJ writes. (For 16-bit/32-bit indexed projections"
                     + " with a JSON Z-mapping, use the 3D Z-Coordinate Extractor instead.)");
         }
 

@@ -15,8 +15,11 @@ public class ExtractionResult {
     public static final String STATUS_OUT_OF_BOUNDS = "out of bounds";
     /** {@link #sampleStatus} value: pixels were sampled, but none had a Z-mapping entry. */
     public static final String STATUS_UNMAPPED_INDEX = "unmapped index";
-    /** {@link #sampleStatus} value: pixels were sampled, but every sampled value was NaN
-     *  (a "no-data" pixel in a direct-Z / TopoJ float map). The direct-Z counterpart of
+    /** {@link #sampleStatus} value: pixels were sampled, but every sampled value was NaN.
+     *  Two things produce that NaN in a TopoJ map: a genuine no-data pixel, and — since the
+     *  decode landed — a pixel the decoder refused to resolve because TopoJ's {@code 1.0}
+     *  sentinel was ambiguous under the declared calibration, which is by far the commoner
+     *  cause. The direct-Z counterpart of
      *  {@link #STATUS_UNMAPPED_INDEX} — produced by {@link ztracker.core.topoj.TopoJExtractor},
      *  never by {@link ztracker.core.extractor.ZExtractor} (Tool 2 has no NaN pixel indices). */
     public static final String STATUS_NO_DATA = "no data";

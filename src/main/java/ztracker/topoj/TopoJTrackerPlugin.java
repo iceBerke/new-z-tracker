@@ -24,9 +24,12 @@ import java.util.List;
  * <p>Registered in {@code plugins.config} as:
  * <pre>Plugins>ZTracker, "3D Z-Extractor (TopoJ / direct-Z)", ztracker.TopoJTrackerPlugin</pre>
  *
- * <p>Structurally identical to {@link ZTrackerPlugin}, minus the JSON Z-mapping: a TopoJ
- * projection pixel value <b>is</b> the Z coordinate in µm, so there is no mapping to load
- * and {@link TopoJExtractor} aggregates sampled values directly. All downstream machinery
+ * <p>Structurally Tool 2's orchestrator with the JSON Z-mapping replaced by a decode. A TopoJ
+ * pixel holds an <b>encoded slice counter</b>, not a depth, so instead of loading a mapping
+ * this plugin collects four calibration numbers in Step 2 and hands them to
+ * {@link ztracker.core.topoj.TopoJStackDecoder}, which validates every pixel and converts the
+ * whole stack to physical Z in place — before any sampling. {@link TopoJExtractor} therefore
+ * aggregates values that already are Z, with no per-sample lookup. All downstream machinery
  * (frame alignment, sampling/aggregation methods, per-point drop logic, every export
  * format) is shared with Tool 2 unchanged.
  *

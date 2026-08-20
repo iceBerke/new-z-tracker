@@ -116,7 +116,8 @@ public class TopoJTrackerDialog {
 
     // ── Step dialogs ──────────────────────────────────────────────────────────
 
-    /** Step 1: Select the TIFF folder and CSV (no JSON mapping — pixel value is Z). */
+    /** Step 1: Select the TIFF folder and CSV. No JSON mapping — a TopoJ pixel is an encoded
+     *  slice counter, decoded from Step 2's four numbers rather than looked up. */
     private boolean step1_files() {
         Frame parent = IJ.getInstance();
         // Modeless (not modal) so other ImageJ windows (e.g. the Log) stay interactive

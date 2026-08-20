@@ -359,13 +359,27 @@ formats**, so the round-trip (project → extract) is a first-class invariant, l
 extractor's own `TiffStackLoader` + `ZMappingLoader`). The extractor's (Tool 2) code path was
 entirely unchanged when the projector (Tool 1) was added.
 
-**Tool 3 — 3D Z-Extractor (TopoJ / direct-Z) (`TopoJTrackerPlugin`, added p9.0).** A second
-flavour of the extractor for projection images whose pixel value **is** the Z coordinate in µm
-directly — e.g. Fiji's **TopoJ** height maps — rather than an index into a JSON mapping. It is
-structurally Tool 2 *minus* the index → Z lookup: it loads a folder of **32-bit float** TIFFs
-(`TopoJStackLoader`, values kept un-rounded; 16-bit/8-bit are rejected — those belong to Tool 2),
-samples them (`TopoJSampler`, same geometry as `ZSampler`), and aggregates the sampled values
-**as-is** (`TopoJExtractor`, no mapping). Native-Java port of `3D_tracking_Jay_app_v2.py` (which
+**Tool 3 — 3D Z-Extractor (TopoJ / direct-Z) (`TopoJTrackerPlugin`, added p9.0; decode wired
+p11.0).** A second flavour of the extractor for Fiji's **TopoJ** height maps. **A TopoJ pixel is
+not a depth** — it holds `(nSlices - k) * pixelDepth` for the brightest source slice `k`, a
+reversed slice counter scaled by whatever calibration the stack carried when TopoJ ran — so the
+pipeline is **load raw → decode the whole stack → sample and extract Z-valued floats**:
+
+1. `TopoJStackLoader` loads a folder of **32-bit float** TIFFs exactly as stored, un-rounded
+   (16-bit/8-bit are rejected — those belong to Tool 2). It does no conversion.
+2. `TopoJStackDecoder.decode` (p10.32) validates **every pixel** against a `TopoJZConversion`
+   (p10.31) built from the four numbers Step 2 collects — `zFirst`, `zStep`, `nSlices`,
+   `encodingScale` — then converts the stack **in place**. Validation strictly precedes mutation,
+   so a refusal leaves the pixels untouched rather than half-decoded.
+3. `TopoJSampler` (same geometry as `ZSampler`) and `TopoJExtractor` then work over values that
+   **already are** Z in µm, aggregating them as-is with no per-sample lookup.
+
+**Two things that only look like details.** `zStep` and `encodingScale` are separate quantities —
+the true slice spacing versus the voxel depth TopoJ ran with, equal only if the stack was
+calibrated — and TopoJ's `1.0` sentinel (a pixel it never assigned) collides with a legitimate
+depth whenever `1/encodingScale` is a reachable slice index, in which case those pixels decode to
+NaN and the plugin warns loudly. Why the four parameters are user-declared rather than read from
+the file — ImageJ drops voxel depth on single-slice TIFFs — is in `docs/DECISIONS.md`. Native-Java port of `3D_tracking_Jay_app_v2.py` (which
 used a 32-bit-float projection stack and its own crude "TIFF must start at 0" frame check). It
 **deliberately supersedes** that script's old behaviour with Tool 2's improvements: the
 suggest-and-confirm `FrameAligner` offset (Step 4), per-point drop (no whole-track NaN/min-length/
@@ -401,7 +415,7 @@ The pipeline's core output is `.npy` files:
 - **3D export**: shape `(N, >=4)`, column order **`[X, Y, Z, T]`**.
 - **2D export**: shape `(N, 3)`, column order **`[X, Y, T]`**.
 - **X and Y are in PIXELS** (taken from the tracking CSV; converted to physical units downstream).
-- **Z is in MICROMETERS**, pre-converted via the JSON mapping before saving (the indexed extractor, Tool 2) — or read straight from the float pixel value, which already is Z in µm (Tool 3 / TopoJ).
+- **Z is in MICROMETERS**, pre-converted via the JSON mapping before saving (the indexed extractor, Tool 2) — or decoded from TopoJ's encoded slice counter by `TopoJStackDecoder`, which converts the whole stack before any sampling (Tool 3 / TopoJ).
 - **T is the frame number.**
 
 The NPY writer (`NpyExporter`) is hand-rolled pure Java targeting the **NumPy v1.0 binary format**: 6-byte magic, header dict (`'<f8'`, `fortran_order: False`, shape), 64-byte alignment padding, little-endian `float64`, C-order. It **must stay byte-compatible with `numpy.load()`** — do not change layout, padding, or dtype. `NpyExporterTest` checks this directly (magic/version/dtype/fortran_order bytes, 64-byte header alignment across several row/column counts, exact little-endian float64 data, and `write2DTrack`/`write3DTrack`'s `[X,Y,T]`/`[X,Y,Z,T]` column order) using its own independent raw-byte reader, separate from `TrackExportManagerTest`'s — so a bug shared between the writer and one hand-rolled reader can't silently pass both suites. `TrackExportManagerTest.export_preservesInputXYCoordinatesIdenticallyAcrossEveryFormat` and `FijiPointsExporterTest`'s coordinate-preservation tests additionally confirm **X/Y** — the only coordinates actually present in the input CSV — survive unchanged through to `.npy` (both dimensions), Results Table CSV, and the ROI `.zip` (decoded back via `ij.io.RoiDecoder`), catching a column swap, wrong-index bug, or accidental unit conversion in any one format. Z is not an "input" in this sense — it's produced by `ZExtractor`, not read from the CSV — so these tests just confirm the already-computed Z value is written to the correct column/field, not that it round-trips from anywhere.
@@ -489,10 +503,14 @@ multi-step dialog with I/O** so each user choice is validated against loaded dat
 8. **Export** — `TrackExportManager` groups by track and writes outputs (no whole-track filtering — every track is exported).
 
 `TopoJTrackerPlugin` (Tool 3, added p9.0) is Tool 2's orchestrator with the JSON-mapping load
-removed: Steps 1–2 collect the **32-bit float TIFF folder** + CSV (no JSON), `TopoJStackLoader`
-loads the float stack, Steps 3–6 run exactly as Tool 2's, then `TopoJExtractor.extractAll`
-produces the `ExtractionResult`s (sampled float = Z, no lookup) and the **same**
-`TrackExportManager` / `ZExtractor.resolveComboOutputDir` handle export. It reuses no
+replaced by a whole-stack decode, and it runs **seven** dialog steps where Tool 2 runs six:
+Steps 1–3 collect the **32-bit float TIFF folder** + CSV (no JSON), the four decode parameters,
+and the CSV format; `TopoJStackLoader` loads the raw stack; `TopoJStackDecoder.decode` converts it
+to Z **immediately after the load**, with its `IllegalArgumentException` caught at that call site
+alone (a wider catch would relabel a genuine bug as bad user input); Steps 4–7 run as Tool 2's
+Steps 3–6 do, so the numbering diverges from Step 3 onward — **that divergence is deliberate, not
+drift**. `TopoJExtractor.extractAll` then produces the `ExtractionResult`s (sampled float = Z, no
+lookup) and the **same** `TrackExportManager` / `ZExtractor.resolveComboOutputDir` handle export. It reuses no
 `ZTrackerPlugin`/`ZTrackerDialog` code (the dialog is a deliberate **duplicate**, `TopoJTrackerDialog`,
 so Tool 2's dialog is untouched) but shares every stack-agnostic contract.
 
@@ -520,7 +538,7 @@ Keep the package layout clean — `model` / `io` / `core` / `project` / `export`
   `write32Bit` carry the bit-depth selection (at least one always true); `Config.stackInput`
   carries the input type (`false` = z-layer sub-folders, the default).
 - `ztracker.io` — input loaders. Shared at root: `TrackCsvLoader`. `extractor.ZMappingLoader` + `extractor.TiffStackLoader` (indexed loaders, Tool 2); `topoj.TopoJStackLoader` (Tool 3's 32-bit float stack); `projector.ProjectionSource` (Tool 1's layout-agnostic input contract) with its two implementations `projector.ProjectionInputScanner` + `projector.FolderProjectionSource` (z-layer/timepoint folder structure) and `projector.ProjectionStackScanner` (per-timepoint TIFF stacks).
-- `ztracker.core` — extraction logic. Shared at root: `FrameAligner` + `ZAggregator`. `extractor.ZSampler` + `extractor.ZExtractor` (Tool 2); `topoj.TopoJSampler` + `topoj.TopoJExtractor` (Tool 3 — duplicates of the sampler/extractor geometry over a float stack, values taken as Z directly).
+- `ztracker.core` — extraction logic. Shared at root: `FrameAligner` + `ZAggregator`. `extractor.ZSampler` + `extractor.ZExtractor` (Tool 2); `topoj.TopoJSampler` + `topoj.TopoJExtractor` (Tool 3 — duplicates of the sampler/extractor geometry over a float stack, sampling values the decode has already turned into Z), plus `topoj.TopoJZConversion` (one value → Z, pure arithmetic) and `topoj.TopoJStackDecoder` (that conversion applied across a whole loaded stack, validating before it mutates).
 - `ztracker.project` — projection logic (`ZProjector`: I/O-free min/max projection + per-pixel z-origin index map, plus `ZProjector.Accumulator`, the incremental one-slice-at-a-time form used by the TIFF-stack input). Tool 1's counterpart to `core`; no subpackage since it's entirely Tool 1's.
 - `ztracker.export` — output writers. Shared at root: `NpyExporter`, `FijiPointsExporter`, `TrackExportManager`. `projector.ProjectionExporter` (Tool 1's z-origin TIFFs + JSON mappings + raw projection).
 - `ztracker.model` — data containers (`TrackData`, `ExtractionResult`) — shared, at root.

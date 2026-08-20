@@ -16,9 +16,11 @@ import java.util.OptionalInt;
  * loaded, exactly as {@link TopoJSampler} and {@link TopoJExtractor} do with the same
  * {@link LoadedFloatStack} type, and {@code io} is where files are read.
  *
- * <p><b>Standalone and unwired.</b> Nothing in the plugin calls this class yet; Tool 3 still reads
- * a TopoJ pixel value as Z directly. A later patch wires it in and collects the four parameters
- * {@link TopoJZConversion} needs.
+ * <p><b>Where it is used.</b> {@link ztracker.topoj.TopoJTrackerPlugin} calls {@link #decode}
+ * immediately after {@code TopoJStackLoader} returns, so every stage downstream — sampler,
+ * extractor, export — sees physical Z rather than TopoJ's encoding. The four parameters
+ * {@link TopoJZConversion} needs are collected from the user in the dialog's Step 2, which runs
+ * before the load for exactly that reason.
  *
  * <h3>Two passes, validation strictly before mutation</h3>
  *
@@ -79,8 +81,9 @@ import java.util.OptionalInt;
  * {@code RuntimeException} or {@code Exception} around a wider block. A blanket catch would
  * present a genuine bug — a null, an index error — to the user as "your parameters are wrong",
  * which is worse than the stack trace it replaces: it sends them to re-check inputs that were
- * correct, and buries the defect. (Note for the patch that wires this in; nothing here catches
- * anything.)
+ * correct, and buries the defect. {@code TopoJTrackerPlugin} does exactly this — it catches
+ * {@code IllegalArgumentException} around the {@link #decode} call itself and nothing wider.
+ * Nothing in this class catches anything.
  */
 public class TopoJStackDecoder {
 

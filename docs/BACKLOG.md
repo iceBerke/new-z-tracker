@@ -25,8 +25,8 @@ removed, and the row is never edited to catch up. **Writing a new one:** cite a 
 **name**, with the number as a convenience at most, so the reference still resolves after the next
 re-ranking. p10.24's row is the pattern to copy: it says "now **backlog item 7**" *and* names
 `project.build.outputTimestamp` in the same clause, so it stays unambiguous whatever the number
-does. That number survived p10.30's re-ranking unchanged and **p10.31 moved it to 8** — the rule
-demonstrating itself, not an argument against citing numbers at all.
+does. That number survived p10.30's re-ranking unchanged, was moved to 8 by p10.31 and to **9** by
+p11.1 — the rule demonstrating itself twice over, not an argument against citing numbers at all.
 
 ---
 
@@ -73,29 +73,64 @@ every patch since p10.14 it needs a **manual Fiji run** before push, and it move
 **Urgent when:** anyone hits the p10.9 failure from the producer side rather than the consumer
 side.
 
-### 3. Carve NaN out of any whole-image validation the TopoJ loader gains
+### 3. Carve NaN out of any *future* file-level use of `ValueClass.INVALID`
 
-`TopoJZConversion.classify` returns **`INVALID` for NaN**, which is correct in isolation: NaN is
-neither sentinel nor a point on the encoding lattice. But Tool 3 today treats a NaN pixel as
-**no data** — `TopoJStackLoader` keeps it un-rounded, `ZAggregator` filters it out, and a detection
-whose sampled pixels are *all* NaN reports `STATUS_NO_DATA`, which is a per-detection outcome, not
-a reason to refuse the file.
+*(Partly discharged at p10.32 — `TopoJStackDecoder` handles this correctly and is the reference
+implementation. What remains is the surface it does not cover.)*
 
-**Why:** the two readings collide the moment the loader gains whole-image validation — the natural
-next use of the conversion class, and already costed as cheap because the loader holds every frame
-in memory anyway. A rule shaped like *"refuse the file if any pixel classifies INVALID"* would
-reject every legitimately NaN-bearing float map, all of which load today. That is a **behaviour
-regression**, and its loudness is not a defence: the user gets a file they have always been able to
-open now refused outright, with no way to tell it from a genuinely malformed one.
+`TopoJZConversion.classify` still returns **`INVALID` for NaN**, which is correct per value: NaN is
+neither sentinel nor a point on the encoding lattice. It is wrong as a *file-level* verdict,
+because Tool 3 treats a NaN pixel as **no data** — the loader keeps it, `ZAggregator` filters it
+out, and a detection whose sampled pixels are all NaN reports `STATUS_NO_DATA`, a per-detection
+outcome rather than a reason to refuse the file.
 
-**Cost:** effectively nil *if it is remembered* — one branch in whatever validation gets written.
-The entire cost sits in not remembering, which is why this is recorded before the validation
-exists rather than after it ships.
+**What is already handled:** `TopoJStackDecoder.decode` checks `Float.isNaN` *before* calling
+`classify`, counts NaN separately from INVALID, passes it through unchanged, and never lets it
+trigger a refusal. Copy that shape.
 
-**Urgent when:** anyone writes whole-image validation into `TopoJStackLoader`, or promotes
-`TopoJZConversion.ValueClass.INVALID` into a file-level refusal anywhere else.
+**Why the item stays open anyway:** the classifier's behaviour is unchanged, so the same mistake is
+available to anyone writing a *different* check — a validation pass in `TopoJStackLoader`, a
+pre-flight scan in the dialog, a batch-mode gate, or anything else that promotes
+`ValueClass.INVALID` into a file-level refusal. Such a rule would reject every legitimately
+NaN-bearing map, all of which load today. That is a **behaviour regression**, and its loudness is
+no defence: the user gets a file they have always been able to open now refused outright, with no
+way to tell it from a genuinely malformed one.
 
-### 4. `@Tag` grouping to separate I/O-free tests from real TIFF I/O
+**Cost:** effectively nil *if it is remembered* — one branch, and there is now a worked example to
+copy. The entire cost sits in not remembering.
+
+**Urgent when:** anyone adds a second place that turns `ValueClass.INVALID` into a whole-file
+verdict.
+
+### 4. Separate a sentinel-refused no-data drop from a genuinely empty one
+
+The export run summary reports one figure — `noData=N` — for two different situations: a detection
+whose pixels held no depth in the TopoJ map, and one whose pixels the decoder **refused** because
+TopoJ's `1.0` sentinel was ambiguous under the declared calibration. `TopoJExtractor` assigns
+`STATUS_NO_DATA` on a NaN aggregate, and by then both look identical: the decode writes NaN for a
+refusal, and a genuine no-data pixel was NaN already. `TrackExportManager` folds that one status
+into one counter, and the per-track report merges on the same string.
+
+**Why:** the two point at opposite fixes. A genuinely empty map is the data's problem and there is
+nothing to do; an ambiguity is the *parameters'* problem and is fixable in minutes by recalibrating
+the source stack and re-running TopoJ. Pooling them means a user reading `noData=12` is as likely
+to conclude "my images have holes" as "my calibration collided", and the first conclusion ends the
+investigation. Since p11.0 the sentinel is by far the commoner cause on real data, so the pooled
+label now mostly reports the wrong one.
+
+**Cost: one line, and specifically NOT per-pixel provenance.** Tracking which NaN came from where
+would need a parallel mask — a bitset is ~80 MB over the reference dataset's 637 M pixels, an array
+2.4 GB — to carry information the in-place decode deliberately destroys. That is a great deal of
+memory for a diagnostic. It is also unnecessary: **ambiguity is a property of the run, not of a
+pixel**, decided by the parameters before extraction starts and already reported by
+`TopoJStackDecoder.Report.ambiguity`. Annotating the summary when the run was ambiguous separates
+the two cases for free, and the decode's own log already gives the global split
+(`unassignedCount` against `nanCount`).
+
+**Urgent when:** someone investigates no-data drops on an ambiguous run and treats the count as a
+statement about their images.
+
+### 5. `@Tag` grouping to separate I/O-free tests from real TIFF I/O
 
 The suite mixes pure-logic tests with tests doing real headless TIFF reads and writes. Splitting
 them with JUnit 5 `@Tag` would let a session run the fast ones alone.
@@ -112,7 +147,7 @@ the streaming guard.
 **Urgent when:** the suite gets slow enough that people skip it — which the rule requiring a green
 suite before `mvn install` makes costly.
 
-### 5. Run the demos in the build and fail on any diff
+### 6. Run the demos in the build and fail on any diff
 
 *(Moved here from `docs/TESTS.md`, reasoning intact.)*
 
@@ -125,13 +160,13 @@ because it is a new guarantee rather than a cleanup.
 
 **Cost:** moderate. The four demos already run deterministically (p10.19), so the work is a runner
 that executes each, captures stdout with the UTF-8 flags, and diffs against the committed file.
-Interacts with **"`@Tag` grouping to separate I/O-free tests from real TIFF I/O"** (item 4 as
+Interacts with **"`@Tag` grouping to separate I/O-free tests from real TIFF I/O"** (item 5 as
 this is written): these are I/O-heavy and would want their own group.
 
 **Urgent when:** a demo snapshot is found stale in a way that hid a real behaviour change — the
 p10.19 regeneration found exactly that, a `noData=` counter added at p10.13 and never reflected.
 
-### 6. A one-sentence summary at the head of every new changelog row
+### 7. A one-sentence summary at the head of every new changelog row
 
 Rows in `docs/CHANGELOG.md` open straight into their reasoning. That is what makes them worth
 keeping, but it means finding the row that explains a given behaviour requires reading into each
@@ -150,7 +185,7 @@ untidy. Do not retrofit.
 
 **Urgent when:** someone needs a row they know exists and cannot find it.
 
-### 7. README reorganisation
+### 8. README reorganisation
 
 README still opens with developer-only material — project structure, build steps, prerequisites —
 before anything a user of the plugin needs.
@@ -166,7 +201,7 @@ edit, and a copy here would be wrong within a patch or two.
 
 ---
 
-### 8. Set `project.build.outputTimestamp` to make the build reproducible
+### 9. Set `project.build.outputTimestamp` to make the build reproducible
 
 `pom.xml` does not set `project.build.outputTimestamp`, so Maven stamps every ZIP entry with the
 moment it was written. Two `mvn clean package` runs over unchanged source therefore produce JARs
@@ -191,7 +226,7 @@ situation rather than less.
 **Urgent when:** anyone needs to verify a deployed JAR against a recorded hash rather than a
 freshly built one.
 
-### 9. Audit the "byte-for-byte unchanged" freeze claims
+### 10. Audit the "byte-for-byte unchanged" freeze claims
 
 Several places claim a file or path was left untouched. Checked against `git log` while writing
 this entry, which shrank it considerably:
@@ -220,7 +255,7 @@ and `README.md`'s project-structure tree.
 
 **Urgent when:** someone treats one of the two remaining claims as licence to skip checking.
 
-### 10. `build-guide.mjs` support for a deeper heading level
+### 11. `build-guide.mjs` support for a deeper heading level
 
 The user guide is structurally **flat** — every section is an `h2`, including the three that
 belong under Part 1 — because the generator caps headings at three levels.
@@ -239,7 +274,7 @@ covers the generator, so it needs careful before/after reading of all three outp
 **Urgent when:** someone writes a fourth-level heading without knowing the cap exists — the output
 is visibly broken rather than silently wrong, but it reaches a colleague-facing PDF.
 
-### 11. `build-guide.mjs` table-cell wrapping for the `.txt`
+### 12. `build-guide.mjs` table-cell wrapping for the `.txt`
 
 The text renderer sizes each column to its **longest cell** and never wraps cell content, so one
 long cell widens every row in that table.
@@ -255,7 +290,7 @@ once. Same untested-generator caveat as **"`build-guide.mjs` support for a deepe
 **Urgent when:** a future row or cell pushes the widest line back above where it started, or the
 `.txt` is actually read in a fixed-width terminal rather than kept as a fallback format.
 
-### 12. A progress callback for the whole-stack TopoJ decode
+### 13. A progress callback for the whole-stack TopoJ decode
 
 `TopoJStackDecoder.decode` makes two passes over every pixel — about **12 seconds** on the
 362-frame, 636,893,388-pixel reference dataset — and says nothing while it does. The plugin sets

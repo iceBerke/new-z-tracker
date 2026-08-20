@@ -17,8 +17,9 @@ import java.util.List;
  *
  * <p>Orchestrates Z-coordinate extraction for every detection in a {@link TrackData},
  * sampling a 32-bit float TopoJ stack via {@link TopoJSampler}. The single structural
- * difference from {@link ZExtractor} is that a TopoJ pixel value <b>is</b> the physical
- * Z in µm — so there is no index → Z mapping step. Sampled values are aggregated as-is:
+ * difference from {@link ZExtractor} is that the values it samples <b>already are</b> physical
+ * Z in µm — {@link TopoJStackDecoder} converts the whole stack before extraction starts — so
+ * there is no per-sample index → Z mapping step. Sampled values are aggregated as-is:
  *
  * <ol>
  *   <li>Sample Z values from the float stack ({@link TopoJSampler})</li>
@@ -116,8 +117,11 @@ public class TopoJExtractor {
             z[i]           = zVal;
             zStd[i]        = ZAggregator.std(zSamples);
             numSamples[i]  = zSamples.length;
-            // zVal is only NaN here if every sampled pixel was itself NaN (a no-data pixel);
-            // the direct-Z analogue of ZExtractor's STATUS_UNMAPPED_INDEX.
+            // zVal is only NaN here if every sampled pixel was itself NaN — which since the
+            // decode landed means one of two things, indistinguishable at this point: a genuine
+            // no-data pixel in the map, or one TopoJStackDecoder refused because the 1.0 sentinel
+            // was ambiguous under the declared calibration. Both report the same status; the
+            // decode's own log line is what separates them for a run.
             sampleStatus[i] = Double.isNaN(zVal)
                     ? ExtractionResult.STATUS_NO_DATA
                     : ExtractionResult.STATUS_OK;
