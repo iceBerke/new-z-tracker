@@ -12,15 +12,15 @@ mvn clean test
 
 ---
 
-## Test counts: two Surefire executions, 254 + 1 = 255
+## Test counts: two Surefire executions, 267 + 1 = 268
 
 `mvn clean test` prints **two** `Tests run:` totals and the suite size is their **sum**:
 
 | Execution | Tests | Heap |
 |-----------|------:|------|
-| `default-test` | 254 | default |
+| `default-test` | 267 | default |
 | `streaming-invariant-test` | 1 | `-Xmx96m` |
-| **Total** | **255** | |
+| **Total** | **268** | |
 
 Do not read the first total as the whole suite. **The split is the point, not an accident of
 configuration.** `ProjectionStackScannerMemoryTest` asserts that Tool 1's TIFF-stack input still
@@ -73,6 +73,7 @@ computed, never edited — is recorded in
 | `ztracker.core.topoj.TopoJExtractorTest` | 9 | Identity-Z extraction and failure classification, including `STATUS_NO_DATA` for an all-NaN sample |
 | `ztracker.io.topoj.TopoJStackLoaderTest` | 10 | The 32-bit float loader: Z surviving un-rounded, 32-bit-only enforcement, the trailing-integer frame rule, and the dimension guard |
 | `ztracker.core.topoj.ExtractorEquivalenceTest` | 2 | The **cross-tool parity proof**: Tools 2 and 3 produce identical results across every sampling × aggregation × convention combination, with the one allowed divergence asserted explicitly |
+| `ztracker.core.topoj.TopoJZConversionTest` | 13 | The standalone TopoJ value→Z decode, **wired to nothing yet**: sentinel classification, the relative lattice tolerance a non-terminating `encodingScale` needs, and above all the same `1.0f` resolving to a depth or to NaN purely by whether it collides with a legitimate slice |
 
 **Shared across tools**
 
@@ -85,7 +86,7 @@ computed, never edited — is recorded in
 | `ztracker.export.FijiPointsExporterTest` | 5 | One ROI per detection, the XZ/YZ projection sets, the results-table header, and X/Y preservation |
 | `ztracker.export.TrackExportManagerTest` | 19 | Per-point dropping (never whole-track), 2D/3D gated independently, drop reasons that do not conflate, frame numbers never renumbered, and the per-track report |
 
-**Total: 255 `@Test` methods across 22 classes.**
+**Total: 268 `@Test` methods across 23 classes.**
 
 ---
 

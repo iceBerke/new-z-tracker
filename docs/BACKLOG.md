@@ -25,7 +25,8 @@ removed, and the row is never edited to catch up. **Writing a new one:** cite a 
 **name**, with the number as a convenience at most, so the reference still resolves after the next
 re-ranking. p10.24's row is the pattern to copy: it says "now **backlog item 7**" *and* names
 `project.build.outputTimestamp` in the same clause, so it stays unambiguous whatever the number
-does. That number happens to be unchanged after this re-ranking — coincidence, not a guarantee.
+does. That number survived p10.30's re-ranking unchanged and **p10.31 moved it to 8** — the rule
+demonstrating itself, not an argument against citing numbers at all.
 
 ---
 
@@ -72,7 +73,29 @@ every patch since p10.14 it needs a **manual Fiji run** before push, and it move
 **Urgent when:** anyone hits the p10.9 failure from the producer side rather than the consumer
 side.
 
-### 3. `@Tag` grouping to separate I/O-free tests from real TIFF I/O
+### 3. Carve NaN out of any whole-image validation the TopoJ loader gains
+
+`TopoJZConversion.classify` returns **`INVALID` for NaN**, which is correct in isolation: NaN is
+neither sentinel nor a point on the encoding lattice. But Tool 3 today treats a NaN pixel as
+**no data** — `TopoJStackLoader` keeps it un-rounded, `ZAggregator` filters it out, and a detection
+whose sampled pixels are *all* NaN reports `STATUS_NO_DATA`, which is a per-detection outcome, not
+a reason to refuse the file.
+
+**Why:** the two readings collide the moment the loader gains whole-image validation — the natural
+next use of the conversion class, and already costed as cheap because the loader holds every frame
+in memory anyway. A rule shaped like *"refuse the file if any pixel classifies INVALID"* would
+reject every legitimately NaN-bearing float map, all of which load today. That is a **behaviour
+regression**, and its loudness is not a defence: the user gets a file they have always been able to
+open now refused outright, with no way to tell it from a genuinely malformed one.
+
+**Cost:** effectively nil *if it is remembered* — one branch in whatever validation gets written.
+The entire cost sits in not remembering, which is why this is recorded before the validation
+exists rather than after it ships.
+
+**Urgent when:** anyone writes whole-image validation into `TopoJStackLoader`, or promotes
+`TopoJZConversion.ValueClass.INVALID` into a file-level refusal anywhere else.
+
+### 4. `@Tag` grouping to separate I/O-free tests from real TIFF I/O
 
 The suite mixes pure-logic tests with tests doing real headless TIFF reads and writes. Splitting
 them with JUnit 5 `@Tag` would let a session run the fast ones alone.
@@ -89,7 +112,7 @@ the streaming guard.
 **Urgent when:** the suite gets slow enough that people skip it — which the rule requiring a green
 suite before `mvn install` makes costly.
 
-### 4. Run the demos in the build and fail on any diff
+### 5. Run the demos in the build and fail on any diff
 
 *(Moved here from `docs/TESTS.md`, reasoning intact.)*
 
@@ -102,13 +125,13 @@ because it is a new guarantee rather than a cleanup.
 
 **Cost:** moderate. The four demos already run deterministically (p10.19), so the work is a runner
 that executes each, captures stdout with the UTF-8 flags, and diffs against the committed file.
-Interacts with **"`@Tag` grouping to separate I/O-free tests from real TIFF I/O"** (item 3 as
+Interacts with **"`@Tag` grouping to separate I/O-free tests from real TIFF I/O"** (item 4 as
 this is written): these are I/O-heavy and would want their own group.
 
 **Urgent when:** a demo snapshot is found stale in a way that hid a real behaviour change — the
 p10.19 regeneration found exactly that, a `noData=` counter added at p10.13 and never reflected.
 
-### 5. A one-sentence summary at the head of every new changelog row
+### 6. A one-sentence summary at the head of every new changelog row
 
 Rows in `docs/CHANGELOG.md` open straight into their reasoning. That is what makes them worth
 keeping, but it means finding the row that explains a given behaviour requires reading into each
@@ -127,7 +150,7 @@ untidy. Do not retrofit.
 
 **Urgent when:** someone needs a row they know exists and cannot find it.
 
-### 6. README reorganisation
+### 7. README reorganisation
 
 README still opens with developer-only material — project structure, build steps, prerequisites —
 before anything a user of the plugin needs.
@@ -143,7 +166,7 @@ edit, and a copy here would be wrong within a patch or two.
 
 ---
 
-### 7. Set `project.build.outputTimestamp` to make the build reproducible
+### 8. Set `project.build.outputTimestamp` to make the build reproducible
 
 `pom.xml` does not set `project.build.outputTimestamp`, so Maven stamps every ZIP entry with the
 moment it was written. Two `mvn clean package` runs over unchanged source therefore produce JARs
@@ -168,7 +191,7 @@ situation rather than less.
 **Urgent when:** anyone needs to verify a deployed JAR against a recorded hash rather than a
 freshly built one.
 
-### 8. Audit the "byte-for-byte unchanged" freeze claims
+### 9. Audit the "byte-for-byte unchanged" freeze claims
 
 Several places claim a file or path was left untouched. Checked against `git log` while writing
 this entry, which shrank it considerably:
@@ -197,7 +220,7 @@ and `README.md`'s project-structure tree.
 
 **Urgent when:** someone treats one of the two remaining claims as licence to skip checking.
 
-### 9. `build-guide.mjs` support for a deeper heading level
+### 10. `build-guide.mjs` support for a deeper heading level
 
 The user guide is structurally **flat** — every section is an `h2`, including the three that
 belong under Part 1 — because the generator caps headings at three levels.
@@ -216,7 +239,7 @@ covers the generator, so it needs careful before/after reading of all three outp
 **Urgent when:** someone writes a fourth-level heading without knowing the cap exists — the output
 is visibly broken rather than silently wrong, but it reaches a colleague-facing PDF.
 
-### 10. `build-guide.mjs` table-cell wrapping for the `.txt`
+### 11. `build-guide.mjs` table-cell wrapping for the `.txt`
 
 The text renderer sizes each column to its **longest cell** and never wraps cell content, so one
 long cell widens every row in that table.
