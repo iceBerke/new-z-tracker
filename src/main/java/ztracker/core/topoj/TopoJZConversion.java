@@ -245,6 +245,18 @@ public class TopoJZConversion {
         return ambiguity;
     }
 
+    /**
+     * The declared source-stack slice count, as given at construction.
+     *
+     * <p>Read-only view of an immutable field, exposed so a caller comparing an <i>observed</i>
+     * slice count against the declared one — see {@link Stats#impliedMinimumSliceCount()} — can
+     * read both from the same object instead of carrying the number alongside it, where the two
+     * could drift apart.
+     */
+    public int nSlices() {
+        return nSlices;
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /** True when {@code v} sits on the encoding lattice AND within the reachable slice range. */
