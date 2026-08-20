@@ -30,27 +30,37 @@ p11.1 — the rule demonstrating itself twice over, not an argument against citi
 
 ---
 
-### 1. An automated check that the gotcha index maps onto `GOTCHAS.md`
+### 1. An automated check that `CLAUDE.md`'s indexes map onto `GOTCHAS.md` **and** `DECISIONS.md`
 
-`CLAUDE.md` carries a one-line index routing to every entry in `docs/GOTCHAS.md`. p10.20 verified
-the correspondence **by hand** in both directions — every index link resolves to a heading that
-exists, every heading has at least one index line.
+`CLAUDE.md` carries a one-line index into `docs/GOTCHAS.md` and a second into
+`docs/DECISIONS.md`. p10.20 verified the gotcha correspondence **by hand** in both directions —
+every index link resolves to a heading that exists, every heading has at least one index line.
 
 **Why:** a drifted index is a *confidently wrong pointer* — it sends a session to an entry that
 does not exist, or silently omits one that does, which is the failure class this project refuses
 everywhere else. Nothing prevents drift today; the next entry added without an index line breaks
 it silently.
 
-**Cost:** small. Parse `###` headings out of `GOTCHAS.md`, parse `docs/GOTCHAS.md#anchor` links
-out of `CLAUDE.md`, compare both directions. The awkward part is where it runs — this repo has no
-CI, so it would be a test, a script, or a build step.
+**Both indexes need it, and the one that drifted is not the one this item originally named.**
+p11.2 measured both: the **gotcha** index was clean, 36 headings against 36 links with no dead
+anchors, while the **decisions** index listed **four of nine entries** — two missing since p10.23
+and p10.30, three more added by p11.0 and p11.1 without index lines. Five unrouted entries in an
+index that reads as complete is worse than no index. Fixed by hand at p11.2, which is exactly the
+manual verification this item exists to replace.
+
+**Cost:** small, and the two halves differ in shape. Gotchas: parse `###` headings, parse
+`docs/GOTCHAS.md#anchor` links, compare both ways. Decisions: the entries are `- **Title.**`
+bullets and the index links carry **no anchors** — they point at the file — so matching has to be
+on title text rather than on an anchor, which is the fiddlier half. The awkward part for both is
+where it runs: this repo has no CI, so it would be a test, a script, or a build step.
 
 **It must allow a heading to have MORE than one index line.** The frame-offset entry is
 deliberately dual-routed, appearing under both "Dialogs & frame alignment" and "Tools 2/3 —
 sampling & extraction" because it genuinely serves both triggers. A one-to-one check would fail on
 correct content.
 
-**Urgent when:** a session ever follows an index line to a heading that is not there.
+**Urgent when:** a session follows an index line to an entry that is not there — or, as at p11.2,
+reads an index as a complete list when it is missing half its entries.
 
 ### 2. Producer-side gaps in Tool 1
 
@@ -66,9 +76,10 @@ misreads:
 **Why:** the producer knows at write time what the consumer will do with the name; discovering it
 one tool later is strictly worse.
 
-**Cost:** moderate, and **this is the only item here that touches production code** — so unlike
-every patch since p10.14 it needs a **manual Fiji run** before push, and it moves
-`<patch.version>`.
+**Cost:** moderate, and **this is the only item here that changes what a tool writes.** Others
+touch production code — the NaN carve-out is a guard, the no-data annotation a log line, the decode
+progress callback a parameter — but none of them alters an output file. This one does, so it needs
+a **manual Fiji run** before push and it moves `<patch.version>`.
 
 **Urgent when:** anyone hits the p10.9 failure from the producer side rather than the consumer
 side.
