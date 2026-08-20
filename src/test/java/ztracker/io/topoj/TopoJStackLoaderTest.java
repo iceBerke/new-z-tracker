@@ -21,9 +21,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Tests for {@link TopoJStackLoader} — the direct-Z (TopoJ) float-TIFF loader.
  *
- * <p>The defining behaviour vs. {@link TiffStackLoader} is that 32-bit float pixel values
- * are the physical Z in µm and are kept <b>exactly, un-rounded</b> (Tool 2 rounds to int
- * indices). Uses ImageJ's real TIFF read/write headlessly, same approach as
+ * <p>The defining behaviour vs. {@link TiffStackLoader} is that 32-bit float pixel values are
+ * kept <b>exactly, un-rounded</b>. They are TopoJ's encoded slice counters at this stage, not
+ * depths — {@link ztracker.core.topoj.TopoJStackDecoder} converts them later — and rounding them
+ * here would destroy the lattice that decode validates against, since a non-integer encoding
+ * scale puts every value off the integer grid. Tool 2 rounds to int because its values genuinely
+ * are indices. Uses ImageJ's real TIFF read/write headlessly, same approach as
  * {@code ProjectionExporterTest}.
  */
 class TopoJStackLoaderTest {
@@ -38,7 +41,7 @@ class TopoJStackLoaderTest {
     }
 
     @Test
-    void load_preservesFloatZValuesExactly_unrounded(@TempDir Path dir) throws Exception {
+    void load_preservesStoredFloatsExactly_unrounded(@TempDir Path dir) throws Exception {
         // Values chosen to be exactly representable in a 32-bit float, including a negative,
         // a sub-unit fraction, and a large value — none may be rounded to an integer.
         float[][] frame = {
@@ -56,7 +59,7 @@ class TopoJStackLoaderTest {
         for (int y = 0; y < 2; y++)
             for (int x = 0; x < 2; x++)
                 assertEquals(frame[y][x], stack.pixels[idx][y][x], 0.0f,
-                        "float Z must survive un-rounded at (" + x + "," + y + ")");
+                        "the stored float must survive un-rounded at (" + x + "," + y + ")");
     }
 
     @Test

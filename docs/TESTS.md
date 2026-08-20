@@ -71,7 +71,7 @@ computed, never edited — is recorded in
 |-------|------:|--------|
 | `ztracker.core.topoj.TopoJSamplerTest` | 9 | Geometry parity with `ZSampler` over a float stack — same pixels, the sampled value simply *is* the Z |
 | `ztracker.core.topoj.TopoJExtractorTest` | 9 | Identity-Z extraction and failure classification, including `STATUS_NO_DATA` for an all-NaN sample |
-| `ztracker.io.topoj.TopoJStackLoaderTest` | 10 | The 32-bit float loader: Z surviving un-rounded, 32-bit-only enforcement, the trailing-integer frame rule, and the dimension guard |
+| `ztracker.io.topoj.TopoJStackLoaderTest` | 10 | The 32-bit float loader: stored values surviving un-rounded — TopoJ's encoded counters, not yet depths — 32-bit-only enforcement, the trailing-integer frame rule, and the dimension guard |
 | `ztracker.core.topoj.ExtractorEquivalenceTest` | 2 | The **cross-tool parity proof**: Tools 2 and 3 produce identical results across every sampling × aggregation × convention combination, with the one allowed divergence asserted explicitly |
 | `ztracker.topoj.TopoJTrackerPluginTest` | 2 | The ambiguity warning text — the plugin's only non-orchestration logic. It is tested because the symptom it announces is an **absence**: without it a user sees a Z range that is merely short at one end. Asserts both candidate depths, what was discarded, the recalibration fix, and that no warning is emitted when the sentinel cannot collide |
 | `ztracker.core.topoj.TopoJStackDecoderTest` | 9 | The whole-stack decode Tool 3 runs after loading: validation strictly before mutation (a failed stack is left byte-for-byte untouched), NaN passing through as no-data rather than refusing the file, one off-lattice pixel failing everything, and the per-frame and implied-slice-count reporting |

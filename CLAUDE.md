@@ -255,8 +255,9 @@ ignored, and the empty/no-valid-entries throws). The stack-agnostic suites every
 alongside these: `FrameAlignerTest`, `ZAggregatorTest`, `TrackCsvLoaderTest`, `NpyExporterTest`,
 `FijiPointsExporterTest`, and `TrackExportManagerTest`.
 
-Tool 3's suite mirrors Tool 2's minus the mapping: `ztracker.io.topoj.TopoJStackLoaderTest` (float Z
-surviving **un-rounded** through ImageJ's real headless TIFF I/O, 32-bit-only enforcement rejecting
+Tool 3's suite mirrors Tool 2's minus the mapping: `ztracker.io.topoj.TopoJStackLoaderTest` (stored
+float values surviving **un-rounded** through ImageJ's real headless TIFF I/O — TopoJ's encoded
+counters at that stage, not depths, since the decode runs later, 32-bit-only enforcement rejecting
 16-/8-bit, the frame index read from whatever integer the base name **ends with** at any padding
 width, rejection of names that don't end with one, and p10.1's dimension guard),
 `ztracker.core.topoj.TopoJSamplerTest` (the same geometry `ZSamplerTest` covers, over a float stack,
@@ -396,8 +397,9 @@ Since there is no mapping, the shared `ExtractionResult.numUnmapped` field is al
 `STATUS_UNMAPPED_INDEX` never arises; its direct-Z analogue `ExtractionResult.STATUS_NO_DATA`
 (added p9.0) marks the case where pixels were sampled but every one was NaN (a no-data pixel in
 the float map). `TopoJExtractorTest` / `TopoJSamplerTest` cover the identity-Z + failure-classification
-logic (I/O-free), and `TopoJStackLoaderTest` proves float Z values survive load un-rounded through
-ImageJ's real headless TIFF read/write, that non-32-bit inputs are rejected, and that the frame
+logic (I/O-free), and `TopoJStackLoaderTest` proves the stored float values survive load un-rounded
+through ImageJ's real headless TIFF read/write — they are TopoJ's encoded counters at that point,
+which is exactly why rounding them would be fatal — that non-32-bit inputs are rejected, and that the frame
 index is read from whatever integer the filename **ends with** — any prefix, any zero-padding width
 (`frame7.tif` / `topoj_0007.tif` / `height_map_00000100.tif`), rejecting names that don't end with
 an integer (see [Extracting the frame number from a filename](docs/GOTCHAS.md#extracting-the-frame-number-from-a-filename)).
@@ -674,3 +676,4 @@ Costed and consciously left, not oversights. Full reasoning in **[docs/DECISIONS
 - **[The four TopoJ conversion parameters are user-declared](docs/DECISIONS.md)** — ImageJ drops voxel depth on single-slice TIFFs, so a header check could never tell "not recorded" from a genuine 1.0. The lattice and range tests validate the declared scale against the pixels instead; nothing validates `zStep`.
 - **[The `k = 0` clamp puts a hard floor into aggregated Z](docs/DECISIONS.md)** — on an unambiguous run the unassigned sentinel becomes `zFirst`, a floor rather than a measurement, and nothing excludes it from a median.
 - **[The "direct-Z" menu label is kept](docs/DECISIONS.md)** — rename declined: the label is navigation rather than documentation, and still describes Z taken from pixel values with no JSON map to supply.
+- **[The TopoJ decode's only real-data verification was throwaway probes, now deleted](docs/DECISIONS.md)** — what they measured survives as numbers in the record, but nothing in the repo reproduces any of it; re-verifying means rebuilding a probe or running Fiji by hand.

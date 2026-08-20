@@ -25,8 +25,9 @@ removed, and the row is never edited to catch up. **Writing a new one:** cite a 
 **name**, with the number as a convenience at most, so the reference still resolves after the next
 re-ranking. p10.24's row is the pattern to copy: it says "now **backlog item 7**" *and* names
 `project.build.outputTimestamp` in the same clause, so it stays unambiguous whatever the number
-does. That number survived p10.30's re-ranking unchanged, was moved to 8 by p10.31 and to **9** by
-p11.1 — the rule demonstrating itself twice over, not an argument against citing numbers at all.
+does. That number survived p10.30's re-ranking unchanged, then moved to 8 at p10.31, to 9 at p11.1
+and to **10** at p11.3 — the rule demonstrating itself three times over, not an argument against
+citing numbers at all.
 
 ---
 
@@ -47,6 +48,14 @@ anchors, while the **decisions** index listed **four of nine entries** — two m
 and p10.30, three more added by p11.0 and p11.1 without index lines. Five unrouted entries in an
 index that reads as complete is worse than no index. Fixed by hand at p11.2, which is exactly the
 manual verification this item exists to replace.
+
+**Then it drifted again at p11.3 — during the very patch that ran the check.** That patch added an
+entry to `DECISIONS.md` and omitted its index line, putting the count back to nine of ten one patch
+after the hand repair, in the same file, by the same hand. It was caught only because a verification
+sweep happened to be running alongside. **That is the argument for automating this**, and it is
+stronger than the original one: the failure is not slow decay over many patches but an immediate
+consequence of adding an entry, and the discipline that is supposed to prevent it demonstrably does
+not survive contact with a patch that is busy doing something else.
 
 **Cost:** small, and the two halves differ in shape. Gotchas: parse `###` headings, parse
 `docs/GOTCHAS.md#anchor` links, compare both ways. Decisions: the entries are `- **Title.**`
@@ -84,7 +93,45 @@ a **manual Fiji run** before push and it moves `<patch.version>`.
 **Urgent when:** anyone hits the p10.9 failure from the producer side rather than the consumer
 side.
 
-### 3. Carve NaN out of any *future* file-level use of `ValueClass.INVALID`
+### 3. An end-to-end decode test over a committed TopoJ fixture
+
+**No automated test reads a TopoJ file from disk.** Every `TopoJStackDecoderTest` and
+`TopoJZConversionTest` case builds `float[][][]` by hand and wraps it in a `LoadedFloatStack`
+constructed directly, so the path that actually runs in Fiji — **file → `TopoJStackLoader` →
+`TopoJStackDecoder` → Z** — is exercised by nothing but a manual run. `TopoJStackLoaderTest` does
+real headless TIFF I/O, but it stops at the loader and asserts raw values; no test carries a real
+file through the decode.
+
+**Why:** the decode is the newest and most intricate production path in the plugin, it changed
+every existing user's Z values at p11.0, and its only real-data verification was a set of
+throwaway probes that are now deleted (see `docs/DECISIONS.md`, *"The TopoJ decode has been
+verified against real data only by throwaway probes"*). A regression in the loader's pixel reading,
+the lattice test, the sentinel handling or the in-place conversion would produce plausible depths
+and pass the whole suite.
+
+**Proposed shape:** two or three frames cropped from the reference folder, committed as a fixture
+and decoded at **`encodingScale 1`** so the ambiguous-sentinel path — the one that turns 2.7% of a
+real dataset into NaN — is covered end to end, with a second decode of the same fixture at a wrong
+scale asserting the refusal.
+
+**Size it honestly.** The repo deliberately holds **one** binary fixture, `reference_stack_crop.tif`
+at **11,385 bytes**. A TopoJ frame is 32-bit float, so a crop costs `width x height x 4` bytes
+before compression: a 53 x 68 crop matching the existing fixture's footprint is ~14 KB per frame,
+three frames ~43 KB. That is the same order as what is already committed and is the version to
+build. A full-frame crop is not: 1051 x 1674 x 4 is **7 MB per frame**, and three of those would
+add 21 MB to a repo whose entire binary footprint is currently 11 KB. **The cheap version only works
+if the crop still contains the cases** — at minimum one sentinel pixel, one value at each end of
+the lattice, and one off-lattice value for the refusal test — which must be checked when cutting it,
+not assumed.
+
+**Urgent when — and this is edit-triggered, not symptom-triggered, because the gap costs nothing
+until someone touches the path.** Before merging any change to: `TopoJZConversion`'s encoding
+formula, lattice tolerance, sentinel handling or ambiguity rule; `TopoJStackDecoder`'s validation
+pass or conversion pass; `TopoJStackLoader`'s pixel reading; or on accepting a TopoJ version whose
+initialisation literal or loop bound differs from `k = 1..nSlices-1`. Any of those invalidates the
+manual verification recorded in the changelog, and nothing automated will tell you.
+
+### 4. Carve NaN out of any *future* file-level use of `ValueClass.INVALID`
 
 *(Partly discharged at p10.32 — `TopoJStackDecoder` handles this correctly and is the reference
 implementation. What remains is the surface it does not cover.)*
@@ -113,7 +160,7 @@ copy. The entire cost sits in not remembering.
 **Urgent when:** anyone adds a second place that turns `ValueClass.INVALID` into a whole-file
 verdict.
 
-### 4. Separate a sentinel-refused no-data drop from a genuinely empty one
+### 5. Separate a sentinel-refused no-data drop from a genuinely empty one
 
 The export run summary reports one figure — `noData=N` — for two different situations: a detection
 whose pixels held no depth in the TopoJ map, and one whose pixels the decoder **refused** because
@@ -141,7 +188,7 @@ the two cases for free, and the decode's own log already gives the global split
 **Urgent when:** someone investigates no-data drops on an ambiguous run and treats the count as a
 statement about their images.
 
-### 5. `@Tag` grouping to separate I/O-free tests from real TIFF I/O
+### 6. `@Tag` grouping to separate I/O-free tests from real TIFF I/O
 
 The suite mixes pure-logic tests with tests doing real headless TIFF reads and writes. Splitting
 them with JUnit 5 `@Tag` would let a session run the fast ones alone.
@@ -158,7 +205,7 @@ the streaming guard.
 **Urgent when:** the suite gets slow enough that people skip it — which the rule requiring a green
 suite before `mvn install` makes costly.
 
-### 6. Run the demos in the build and fail on any diff
+### 7. Run the demos in the build and fail on any diff
 
 *(Moved here from `docs/TESTS.md`, reasoning intact.)*
 
@@ -171,13 +218,13 @@ because it is a new guarantee rather than a cleanup.
 
 **Cost:** moderate. The four demos already run deterministically (p10.19), so the work is a runner
 that executes each, captures stdout with the UTF-8 flags, and diffs against the committed file.
-Interacts with **"`@Tag` grouping to separate I/O-free tests from real TIFF I/O"** (item 5 as
+Interacts with **"`@Tag` grouping to separate I/O-free tests from real TIFF I/O"** (item 6 as
 this is written): these are I/O-heavy and would want their own group.
 
 **Urgent when:** a demo snapshot is found stale in a way that hid a real behaviour change — the
 p10.19 regeneration found exactly that, a `noData=` counter added at p10.13 and never reflected.
 
-### 7. A one-sentence summary at the head of every new changelog row
+### 8. A one-sentence summary at the head of every new changelog row
 
 Rows in `docs/CHANGELOG.md` open straight into their reasoning. That is what makes them worth
 keeping, but it means finding the row that explains a given behaviour requires reading into each
@@ -196,7 +243,7 @@ untidy. Do not retrofit.
 
 **Urgent when:** someone needs a row they know exists and cannot find it.
 
-### 8. README reorganisation
+### 9. README reorganisation
 
 README still opens with developer-only material — project structure, build steps, prerequisites —
 before anything a user of the plugin needs.
@@ -212,7 +259,7 @@ edit, and a copy here would be wrong within a patch or two.
 
 ---
 
-### 9. Set `project.build.outputTimestamp` to make the build reproducible
+### 10. Set `project.build.outputTimestamp` to make the build reproducible
 
 `pom.xml` does not set `project.build.outputTimestamp`, so Maven stamps every ZIP entry with the
 moment it was written. Two `mvn clean package` runs over unchanged source therefore produce JARs
@@ -237,7 +284,7 @@ situation rather than less.
 **Urgent when:** anyone needs to verify a deployed JAR against a recorded hash rather than a
 freshly built one.
 
-### 10. Audit the "byte-for-byte unchanged" freeze claims
+### 11. Audit the "byte-for-byte unchanged" freeze claims
 
 Several places claim a file or path was left untouched. Checked against `git log` while writing
 this entry, which shrank it considerably:
@@ -266,7 +313,7 @@ and `README.md`'s project-structure tree.
 
 **Urgent when:** someone treats one of the two remaining claims as licence to skip checking.
 
-### 11. `build-guide.mjs` support for a deeper heading level
+### 12. `build-guide.mjs` support for a deeper heading level
 
 The user guide is structurally **flat** — every section is an `h2`, including the three that
 belong under Part 1 — because the generator caps headings at three levels.
@@ -285,7 +332,7 @@ covers the generator, so it needs careful before/after reading of all three outp
 **Urgent when:** someone writes a fourth-level heading without knowing the cap exists — the output
 is visibly broken rather than silently wrong, but it reaches a colleague-facing PDF.
 
-### 12. `build-guide.mjs` table-cell wrapping for the `.txt`
+### 13. `build-guide.mjs` table-cell wrapping for the `.txt`
 
 The text renderer sizes each column to its **longest cell** and never wraps cell content, so one
 long cell widens every row in that table.
@@ -301,7 +348,7 @@ once. Same untested-generator caveat as **"`build-guide.mjs` support for a deepe
 **Urgent when:** a future row or cell pushes the widest line back above where it started, or the
 `.txt` is actually read in a fixed-width terminal rather than kept as a fallback format.
 
-### 13. A progress callback for the whole-stack TopoJ decode
+### 14. A progress callback for the whole-stack TopoJ decode
 
 `TopoJStackDecoder.decode` makes two passes over every pixel — about **12 seconds** on the
 362-frame, 636,893,388-pixel reference dataset — and says nothing while it does. The plugin sets
