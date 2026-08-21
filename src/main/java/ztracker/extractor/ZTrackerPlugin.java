@@ -22,7 +22,7 @@ import java.util.Map;
  * Fiji plugin entry point for the 3D Z-coordinate extractor.
  *
  * <p>Registered in {@code plugins.config} as:
- * <pre>Plugins>ZTracker, "3D Z-Coordinate Extractor", ztracker.ZTrackerPlugin</pre>
+ * <pre>Plugins>ZTracker, "3D Z-Coordinate Extractor", ztracker.extractor.ZTrackerPlugin</pre>
  *
  * <p>This class is intentionally thin — it only orchestrates the pipeline
  * by delegating to specialised classes in {@code io}, {@code core},

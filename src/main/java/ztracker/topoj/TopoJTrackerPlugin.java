@@ -22,7 +22,7 @@ import java.util.List;
  * Fiji plugin entry point for Tool 3 — the TopoJ / direct-Z coordinate extractor.
  *
  * <p>Registered in {@code plugins.config} as:
- * <pre>Plugins>ZTracker, "3D Z-Extractor (TopoJ / direct-Z)", ztracker.TopoJTrackerPlugin</pre>
+ * <pre>Plugins>ZTracker, "3D Z-Extractor (TopoJ / direct-Z)", ztracker.topoj.TopoJTrackerPlugin</pre>
  *
  * <p>Structurally Tool 2's orchestrator with the JSON Z-mapping replaced by a decode. A TopoJ
  * pixel holds an <b>encoded slice counter</b>, not a depth, so instead of loading a mapping

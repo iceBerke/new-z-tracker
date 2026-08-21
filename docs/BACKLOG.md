@@ -95,7 +95,7 @@ side.
 
 ### 3. An end-to-end decode test over a committed TopoJ fixture
 
-**No automated test reads a TopoJ file from disk.** Every `TopoJStackDecoderTest` and
+**No automated test carries a TopoJ file from disk through the decode.** Every `TopoJStackDecoderTest` and
 `TopoJZConversionTest` case builds `float[][][]` by hand and wraps it in a `LoadedFloatStack`
 constructed directly, so the path that actually runs in Fiji — **file → `TopoJStackLoader` →
 `TopoJStackDecoder` → Z** — is exercised by nothing but a manual run. `TopoJStackLoaderTest` does

@@ -16,10 +16,13 @@ A Fiji/ImageJ plugin with **three tools** under `Plugins > ZTracker`, covering t
    superseding that script's old frame-check/filtering with the current `FrameAligner` offset and
    per-point drop logic.
 
-Tools 1 and 2 are a matched pair: step 1's `z_origin/` folder + `z_layer_mapping.json` are exactly
-what step 2 reads as input, so you generate projections in Fiji and feed them straight into
-extraction. Tool 3 is a drop-in variant of step 2 for direct-Z (TopoJ) images — same CSV, frame
-offset, sampling, and export, only the depth source differs (float pixel vs. indexed pixel + JSON).
+Tools 1 and 2 are one pipeline: step 1's `z_origin/` folder + `z_layer_mapping.json` are what step 2
+reads for depth, alongside a tracking CSV that step 1 does not produce and you supply yourself.
+Tool 3 is a **separate entry point** for Fiji TopoJ height maps, not part of that pipeline — same
+CSV, frame offset, sampling and export, but its pixels are encoded slice counters rather than
+indices, decoded from four numbers you read off the source stack at its own Step 2 before anything
+is sampled. Pairing the right folder with the right tool is yours to get right: the loaders check
+bit depth, not where a folder came from.
 
 ---
 
@@ -36,16 +39,16 @@ ZTracker_Fiji/
     ├── java/ztracker/
     │   ├── projector/ZProjectorPlugin.java       ← Tool 1 entry point (Z-Projection + Origin Map)
     │   ├── extractor/ZTrackerPlugin.java          ← Tool 2 entry point (indexed 3D Z-extractor)
-    │   ├── topoj/TopoJTrackerPlugin.java          ← Tool 3 entry point (TopoJ / direct-Z; Tool 2 minus the JSON lookup)
+    │   ├── topoj/TopoJTrackerPlugin.java          ← Tool 3 entry point (TopoJ / direct-Z; Tool 2 with the JSON lookup replaced by a whole-stack decode)
     │   ├── ui/
     │   │   ├── projector/ZProjectorDialog.java    ← Tool 1 dialog (modeless AWT; addInputGroup pickers, duplicated so ZTrackerDialog is untouched)
     │   │   ├── extractor/ZTrackerDialog.java      ← Tool 2 6-step wizard, all non-modal (Steps 1,4,5,6 custom AWT; 2,3 NonBlockingGenericDialog)
-    │   │   └── topoj/TopoJTrackerDialog.java      ← Tool 3 wizard; duplicate of ZTrackerDialog minus the Step-1 JSON picker
+    │   │   └── topoj/TopoJTrackerDialog.java      ← Tool 3 7-step wizard; duplicate of ZTrackerDialog with no Step-1 JSON picker and an extra Step 2 for the decode parameters
     │   ├── io/
     │   │   ├── TrackCsvLoader.java                ← shared: TrackMate CSV parser + column auto-detect
     │   │   ├── extractor/ZMappingLoader.java      ← Tool 2: JSON index→Z parsing (no external lib)
     │   │   ├── extractor/TiffStackLoader.java     ← Tool 2: indexed TIFF folder loader with frame→index map (int pixels)
-    │   │   ├── topoj/TopoJStackLoader.java        ← Tool 3: 32-bit float TIFF loader (Z in µm, un-rounded); frameView() adapts to LoadedStack for FrameAligner reuse
+    │   │   ├── topoj/TopoJStackLoader.java        ← Tool 3: 32-bit float TIFF loader (TopoJ's encoded counters, un-rounded — the decoder turns them into Z); frameView() adapts to LoadedStack for FrameAligner reuse
     │   │   ├── projector/ProjectionSource.java    ← Tool 1: layout-agnostic contract both input types feed (project one timepoint)
     │   │   ├── projector/ProjectionInputScanner.java ← Tool 1 input A: discovers z-layer/timepoint folders; streams one timepoint at a time
     │   │   ├── projector/FolderProjectionSource.java ← Tool 1 input A: ProjectionSource adapter over the scanner above (leaves it untouched)

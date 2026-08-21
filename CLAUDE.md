@@ -256,7 +256,8 @@ ignored, and the empty/no-valid-entries throws). The stack-agnostic suites every
 alongside these: `FrameAlignerTest`, `ZAggregatorTest`, `TrackCsvLoaderTest`, `NpyExporterTest`,
 `FijiPointsExporterTest`, and `TrackExportManagerTest`.
 
-Tool 3's suite mirrors Tool 2's minus the mapping: `ztracker.io.topoj.TopoJStackLoaderTest` (stored
+Tool 3's suite is **seven** classes: Tool 2's shape minus the mapping, plus the two that cover the
+decode and one for the plugin's ambiguity warning. `ztracker.io.topoj.TopoJStackLoaderTest` (stored
 float values surviving **un-rounded** through ImageJ's real headless TIFF I/O — TopoJ's encoded
 counters at that stage, not depths, since the decode runs later, 32-bit-only enforcement rejecting
 16-/8-bit, the frame index read from whatever integer the base name **ends with** at any padding
@@ -267,6 +268,16 @@ float returned directly as Z, missing-frame vs out-of-bounds tallies kept separa
 regression, `STATUS_NO_DATA` when *every* sampled pixel is NaN contrasted with partial-NaN samples
 still aggregating over what's left, and `extractAll` parity). `ztracker.core.topoj.ExtractorEquivalenceTest`
 is the cross-tool parity proof — see the Tool 3 description below for what it locks in.
+**The three the decode brought are the ones to find when editing it**, and they are the reason this
+list is not Tool 2's shape: `ztracker.core.topoj.TopoJZConversionTest` (the single-value TopoJ→Z
+decode — sentinel classification, the relative lattice tolerance a non-terminating `encodingScale`
+needs, and the same `1.0f` resolving to a depth or to NaN purely by whether it collides with a
+legitimate slice), `ztracker.core.topoj.TopoJStackDecoderTest` (the whole-stack pass — validation
+strictly before mutation, so a refused stack is left byte-for-byte untouched; NaN passing through as
+no-data rather than refusing the file; one off-lattice pixel failing everything; and the per-frame
+and implied-slice-count reporting), and `ztracker.topoj.TopoJTrackerPluginTest` (the ambiguity
+warning text, the plugin's only non-orchestration logic, including that **no** warning fires when
+the sentinel cannot collide). Per-class `@Test` counts live in `docs/TESTS.md`, not here.
 
 `src/test/java/ztracker/core/Step4AlignmentDemo.java` is a **runnable walkthrough** (not a test —
 it has a `main`, no `@Test`, so Surefire ignores it but it stays compiled against the real
@@ -362,7 +373,7 @@ extractor's own `TiffStackLoader` + `ZMappingLoader`). The extractor's (Tool 2) 
 entirely unchanged when the projector (Tool 1) was added.
 
 **Tool 3 — 3D Z-Extractor (TopoJ / direct-Z) (`TopoJTrackerPlugin`, added p9.0; decode wired
-p11.0).** A second flavour of the extractor for Fiji's **TopoJ** height maps. **A TopoJ pixel is
+p11.0).** A separate extractor for Fiji's **TopoJ** height maps. **A TopoJ pixel is
 not a depth** — it holds `(nSlices - k) * pixelDepth` for the brightest source slice `k`, a
 reversed slice counter scaled by whatever calibration the stack carried when TopoJ ran — so the
 pipeline is **load raw → decode the whole stack → sample and extract Z-valued floats**:
@@ -524,9 +535,12 @@ Keep the package layout clean — `model` / `io` / `core` / `project` / `export`
 - `ztracker` — entry points, one per tool subpackage: `projector.ZProjectorPlugin` (Tool 1), `extractor.ZTrackerPlugin` (Tool 2), `topoj.TopoJTrackerPlugin` (Tool 3) (orchestration only).
 - `ztracker.ui` — dialogs, one per tool subpackage: `extractor.ZTrackerDialog` — the 6-step dialog wizard. **All steps are non-modal** so the ImageJ Log window stays interactive/resizable while any step is open (the Step-4 per-track table lives in the Log). Steps 1, 4, 5, and 6 are custom AWT `Dialog`s created modeless (`new Dialog(..., false)`) and block the plugin thread with a `CountDownLatch` counted down on OK/Cancel/close — Step 1 is the resizable file picker, Step 4 the live-updating frame-alignment box, Step 5 the sampling/aggregation/pixel-convention method picker (uses a live `ItemListener` to disable the aggregation `Choice` when Sampling is `SINGLE_PIXEL` alone — see the Pluggable methods section — plus a third `Choice` for `ZSampler.PixelConvention`, Corner listed first as the default, no "All" option), Step 6 the output-directory-and-format picker (same `addInputGroup` grid layout as Step 1, with a `DirectoryChooser`-backed browse button instead of `GenericDialog.addDirectoryField`). Steps 2 and 3 use `NonBlockingGenericDialog` (ImageJ's non-modal `GenericDialog`, whose `showDialog()` still blocks the caller so the existing `wasCanceled()`/`getNext*()` usage is unchanged). Plugins run off the EDT, so blocking the plugin thread doesn't freeze the UI.
   `topoj.TopoJTrackerDialog` (Tool 3) is a deliberate **duplicate** of `ZTrackerDialog` (so Tool 2's
-  dialog stays byte-for-byte unchanged), with one substantive difference: **Step 1 collects only
-  the TIFF folder + CSV** — there is no JSON-mapping picker. Steps 2–6 are identical, and Step 4
-  reuses `FrameAligner` against `LoadedFloatStack.frameView()`.
+  dialog stays byte-for-byte unchanged), with **two** substantive differences: **Step 1 collects only
+  the TIFF folder + CSV** — there is no JSON-mapping picker — and **Step 2 collects the four decode
+  parameters**, which Tool 2 has no counterpart for because its depths come from a mapping file.
+  That extra step is why this wizard runs **seven** steps to Tool 2's six: Steps 3–7 are otherwise
+  identical to Tool 2's Steps 2–6, and **Step 5** reuses `FrameAligner` against
+  `LoadedFloatStack.frameView()`.
   `projector.ZProjectorDialog` (Tool 1) is a single modeless AWT `Dialog` in the same style — an
   input-type `Choice` (Z-layer sub-folders / TIFF stacks) asked **first**, then a scope
   `Choice` (single/batch), then a gray **structure line** that live-updates from both choices to
