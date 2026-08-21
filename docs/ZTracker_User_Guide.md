@@ -12,12 +12,12 @@ ZTracker turns your **2D cell tracks** into **3D tracks** by adding a Z (depth) 
 If a colleague or an earlier run already gave you the depth-coded images and the `.json` map, you can skip Part 1 and go straight to Part 2.
 
 :::note
-**Two flavours of Part 2.** Which extractor you use depends on what your depth images hold:
+**Two extractors, and they are not interchangeable.** Which one you use depends on where your depth images came from:
 
-- **Indexed images + a JSON map** (what Part 1 makes) → use **3D Z-Coordinate Extractor**. Each pixel is a *code* that looks up a real depth in the `.json` file.
-- **Direct-Z images, no JSON** (e.g. Fiji's **TopoJ** output) → use **3D Z-Extractor (TopoJ / direct-Z)**. Each pixel value *is* the depth in µm, so there's no map to load and no JSON to pick.
+- **Indexed images + a JSON map** (what Part 1 makes) → use **3D Z-Coordinate Extractor**. Each pixel is a *code* that looks up a real depth in the `.json` file. Parts 1 and 2 are one pipeline: Part 2 reads both of those, plus a **tracking CSV** that you supply.
+- **Fiji TopoJ height maps, no JSON** → use **3D Z-Extractor (TopoJ / direct-Z)**, a separate entry point that is **not** part of that pipeline. A TopoJ pixel holds an encoded slice counter, **not** a depth in µm, so the tool will not run until you give it four numbers read off the **source stack you ran TopoJ on**. That is its extra **Step 2** — Part 2 (alternative), below, explains all four.
 
-Both share every other step (frame offset, sampling, export). Pick the one that matches your images.
+So the two do **not** share every step: the TopoJ extractor has one more, and each later step is numbered one higher. Getting the pairing right is your job — the tools check bit depth, not where a folder came from, so a folder that loads is not proof you picked the right tool.
 :::
 
 ## Part 1 — Z-Projection + Origin Map
@@ -203,7 +203,7 @@ X and Y are in **pixels**, Z is in **micrometers**, and T is the frame number.
 - **No track is thrown away.** If one point is bad (e.g. its frame is missing or it falls outside the image), only that single point is dropped — the rest of the track is still exported.
 - **Dropped points leave a gap** in the frame numbers rather than renumbering — this is intentional.
 - **Check the Log window** after running. It reports how many points were extracted and how many were skipped, and why. Its summary line counts the dropped points by reason: `invalidXY` (the CSV's X or Y was not a number), `missingFrame` (no image for that frame), `outOfBounds` (the point lies outside the image), `unmappedIndex` (the pixel's code is not in the depth map) and `noData` (TopoJ images only — no depth could be read there, either because TopoJ found no surface or because the value was ambiguous; see Part 2).
-- If you picked **All** in Step 5, each method gets its own sub-folder inside your output folder.
+- If you picked **All** in the method step (**Step 5** standard, **Step 6** TopoJ), each method gets its own sub-folder inside your output folder.
 
 ## Part 2 (alternative) — 3D Z-Extractor (TopoJ / direct-Z)
 
@@ -246,7 +246,7 @@ Not sure which one you have? If your projection folder came with a `z_layer_mapp
 | Lots of points show "missing frame" | Revisit the frame-offset step (**Step 4** in the standard extractor, **Step 5** in TopoJ) — the offset is probably wrong (try +1 or 0). |
 | Lots of points show "out of bounds" | Check your CSV X/Y match the TIFF image size, and check the pixel convention in the method step (**Step 5** standard, **Step 6** TopoJ). |
 | Plugin not in the menu | Restart Fiji, or use `Help > Refresh Menus`. |
-| Nothing seems to export | Make sure at least one format is ticked in **Step 6**, and read `export_report.txt`. |
+| Nothing seems to export | Make sure at least one format is ticked in the output step (**Step 6** standard, **Step 7** TopoJ), and read `export_report.txt`. |
 | "Inconsistent image dimensions in TIFF folder" | One TIFF is a different size from the first one in the folder — the message names it and gives both sizes. Remove it or re-crop everything to one size. Part 1 keeps this from happening within a single run over one dataset, but combining two runs' output into one folder — or assembling a folder by hand — still can. |
 | "requires 32-bit float TIFFs" error | You opened the **TopoJ / direct-Z** extractor with indexed images — use the standard **3D Z-Coordinate Extractor** (with its JSON map) instead. |
 | Part 1: the run finds no data, or fewer datasets than you expected | Check the **Input type** matches your folder's layout first, then the **Scope**, then the input folder itself — the grey structure line under Scope spells out what is expected. In Batch, a dataset whose depth folders are all misnamed is skipped without a message, so a lower-than-expected dataset count is worth chasing. |
