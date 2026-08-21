@@ -621,7 +621,7 @@ if one does, open it before you change anything.
 - **[Running `mvn install` with Fiji open](docs/GOTCHAS.md#running-mvn-install-with-fiji-open)** — the superseded JAR cannot be deleted and survives, making Fiji register all three tools twice. `verify-deploy` fails the build on it.
 - **[Indexing a PowerShell hashtable](docs/GOTCHAS.md#indexing-a-powershell-hashtable-whose-key-is-also-a-member-name)** — `$h.count` returns the entry count, not the `'count'` key. Surfaces as a type error far from the cause, and can silently delete generated text.
 - **[Deciding whether executable content changed](docs/GOTCHAS.md#deciding-whether-executable-content-changed)** — a hash comparison always reports "changed", at both JAR and class level, so trusting it bumps `<patch.version>` on every patch. Compare `javap -c -p` output instead.
-- **[Verifying a claim with a shell pipeline or a text comparison](docs/GOTCHAS.md#verifying-a-claim-with-a-shell-pipeline-or-a-text-comparison)** — a missing binary and a set-instead-of-multiset comparison both report **clean** without having compared anything. `0` from "did not run" is indistinguishable from `0` from "found nothing".
+- **[Verifying a claim with a shell pipeline or a text comparison](docs/GOTCHAS.md#verifying-a-claim-with-a-shell-pipeline-or-a-text-comparison)** — six ways a check reports **clean** without having compared anything: a missing binary, a set-instead-of-multiset comparison, an `&&` chain that skipped the command it was reporting on, a diff filter that dropped every list line, a `git grep` blind to a claim wrapped across a line break, and a `javap` that could not find the class. `0` and exit 1 both read as "found nothing".
 
 **Dialogs & frame alignment**
 
